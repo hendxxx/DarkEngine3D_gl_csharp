@@ -66,6 +66,9 @@ public class Player2DAction
     /// <summary>True = FX streams continuously from the character while the action is
     /// active (fireball trail); false = a one-shot burst when the action starts.</summary>
     public bool FxFollow { get; set; }
+    /// <summary>Size multiplier of this action's FX (burst count AND particle sizes for
+    /// follow streams). 1 = preset default. Edited in the Effects panel.</summary>
+    public float FxScale { get; set; } = 1f;
 
     // ── Projectile launch (action → flying animated sprite) ──
     /// <summary>Master switch: the action launches a projectile at all. False (None)
@@ -94,8 +97,16 @@ public class Player2DAction
     /// <summary>Hit animation (sheet + clip) played once at the impact point.</summary>
     public string ProjectileHitSheet { get; set; } = "";
     public string ProjectileHitClip { get; set; } = "";
-    /// <summary>Optional particle burst preset at the impact point.</summary>
-    public string ProjectileHitFx { get; set; } = "Explosion";
+    /// <summary>Size multiplier of the HIT ANIMATION (Hit Clip) at the impact point —
+    /// 1 = projectile's own WorldHeight, 0.5 = half size, 2 = double. The user's rule:
+    /// hits are played as the Hit CLIP sprite, not as particle FX.</summary>
+    public float ProjectileHitScale { get; set; } = 1f;
+    /// <summary>Optional particle burst preset at the impact point. EMPTY = NO particles
+    /// (user decision: impact is the Hit Clip animation; particles are opt-in and sized
+    /// via ProjectileHitFxScale).</summary>
+    public string ProjectileHitFx { get; set; } = "";
+    /// <summary>Size multiplier of the optional impact particle burst (1 = preset default).</summary>
+    public float ProjectileHitFxScale { get; set; } = 1f;
     /// <summary>Rotate the projectile sprite along its velocity (arc shots).</summary>
     public bool ProjectileRotateToVelocity { get; set; }
     /// <summary>Pass through targets/tiles instead of stopping at the first hit.</summary>
@@ -4953,7 +4964,8 @@ public unsafe class EditorObject
             // anchor instead — Player2DSystem pushes it while the action is active.
             if (!string.IsNullOrWhiteSpace(act.FxPreset) && !act.FxFollow)
                 Effect2DSystem.SpawnBurst(act.FxPreset.Trim(),
-                    new System.Numerics.Vector3(Position.X, Position.Y + Player2DHeight * 0.5f, Position.Z + 0.05f));
+                    new System.Numerics.Vector3(Position.X, Position.Y + Player2DHeight * 0.5f, Position.Z + 0.05f),
+                    MathF.Max(0.01f, act.FxScale));
         }
         return true;
     }
@@ -5502,9 +5514,11 @@ void main() {
         // Upper layers must draw OVER lower ones: all layers bake coplanar at world
         // z=0, so each layer gets a tiny local-Y lift (local Y maps to world depth
         // through the -90° X rotation) — enough to win the depth test without any
-        // visible offset.
-        const float layerLiftStep = 0.01f; // world depth units between stacked layers
-        string cacheKey = $"{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}|{Map2dPaintHeight:R}";
+        // visible offset. Steps stay in the SUB-CHARACTER band: characters start at
+        // world Z ≈ 0.05 (Player2D/Sprite2D render layers), so stacked map layers must
+        // never reach that (the layer-1-tiles-cover-the-sword bug).
+        const float layerLiftStep = 0.002f; // world depth units between stacked layers
+        string cacheKey = $"v2|{map.Width}|{map.Height}|{map.TileSize}|{Map2dTilesetCols}|{Map2dTilesetRows}|{map.Layers.Count}|{Map2dLayerIndex}|{Map2dPaintHeight:R}";
         foreach (var l in map.Layers)
         {
             cacheKey += $"|{l.IsVisible}|{l.Opacity}";
@@ -5659,8 +5673,13 @@ void main() {
         // Center the scaled tile on the original grid cell
         float offsetX = (worldTs - scaledTs) * 0.5f;
         float offsetZ = (worldTs - scaledTs) * 0.5f;
-        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
-        float liftY = -layerIndex * 0.01f;
+        // Tilemap planes live in a SUB-CHARACTER band: player/sprite/projectile Z starts
+        // at ~0.05 (+0.01 per render layer), so a map layer index may NEVER map 1:1 to
+        // world Z (the old z = Map2dLayerIndex put a layer-1 map at z=1.0 — in front of
+        // every character: the sword-rendered-behind-tiles bug). 0.001/index keeps the
+        // per-layer-object stacking order below the character band.
+        float layerZ = Map2dLayerIndex >= 0 ? Map2dLayerIndex * 0.001f : 0f;
+        float liftY = -layerIndex * 0.002f;
         liftY -= Map2dPaintHeight * 0.01f;
         float z = layerZ + liftY;
 
@@ -5750,7 +5769,9 @@ void main() {
         float cell = ts * Tilemap2D.WorldScale;
         float extentW = mapW * cell;
         float extentH = mapH * cell;
-        float layerZ = Map2dLayerIndex >= 0 ? (float)Map2dLayerIndex : 0f;
+        // Sub-character band (see BuildMap2DMesh): map planes stay under Z≈0.05 where
+        // characters begin — layer index must never map 1:1 to world Z.
+        float layerZ = Map2dLayerIndex >= 0 ? Map2dLayerIndex * 0.001f : 0f;
         var model = Matrix4x4.CreateTranslation(0f, 0f, layerZ)
                   * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
 

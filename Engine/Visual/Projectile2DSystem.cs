@@ -46,8 +46,13 @@ public static class Projectile2DSystem
         /// <summary>Hit animation (sheet + clip) played once at the impact point.</summary>
         public string HitSheet = "";
         public string HitClip = "";
-        /// <summary>Optional particle preset burst at the impact (Effect2DSystem.Presets).</summary>
+        /// <summary>Size multiplier of the hit animation sprite (1 = projectile's own
+        /// WorldHeight — the hit plays the HIT CLIP, not particles, per user decision).</summary>
+        public float HitScale = 1f;
+        /// <summary>Optional particle burst preset at the impact point (empty = none).</summary>
         public string HitFx = "";
+        /// <summary>Size multiplier of the optional impact particle burst.</summary>
+        public float HitFxScale = 1f;
         /// <summary>Rotate the sprite along the velocity (fireball arcs). False = face
         /// the travel direction by UV mirroring only.</summary>
         public bool RotateToVelocity = false;
@@ -85,7 +90,6 @@ public static class Projectile2DSystem
         public float Time;
         public bool FacingRight = true;
     }
-
     private static readonly List<Projectile> _projectiles = new();
     private static readonly List<HitEffect> _hits = new();
     /// <summary>Runtime HP per Player2D object (enemy phase-1 health). Cleared per session.</summary>
@@ -107,7 +111,8 @@ public static class Projectile2DSystem
     public static void SpawnFromAction(EditorObject owner, Player2DAction act,
         EditorObjectManager? mgr, float offsetX, float offsetY, float speed, float maxDistance,
         float gravity, float velY, float worldHeight, float damageHp, float damageMp,
-        string hitSheet, string hitClip, string hitFx, bool rotate, bool piercing)
+        string hitSheet, string hitClip, float hitScale, string hitFx, float hitFxScale,
+        bool rotate, bool piercing)
     {
         var cfg = new Config
         {
@@ -121,7 +126,8 @@ public static class Projectile2DSystem
                     : act.ProjectileClip),
             Speed = speed, MaxDistance = maxDistance, Gravity = gravity, VelY = velY,
             WorldHeight = worldHeight, DamageHP = damageHp, DamageMP = damageMp,
-            HitSheet = hitSheet, HitClip = hitClip, HitFx = hitFx,
+            HitSheet = hitSheet, HitClip = hitClip, HitScale = hitScale,
+            HitFx = hitFx, HitFxScale = hitFxScale,
             RotateToVelocity = rotate, Piercing = piercing,
         };
         if (!cfg.IsValid) return;
@@ -224,11 +230,13 @@ public static class Projectile2DSystem
                 Sheet = pr.Cfg.HitSheet,
                 Clip = pr.Cfg.HitClip,
                 Pos = pr.Pos,
-                Height = pr.Cfg.WorldHeight,
+                // Hit Scale: 1 = the projectile's own WorldHeight (the hit IS the
+                // Hit Clip animation; particles are optional extras).
+                Height = MathF.Max(0.01f, pr.Cfg.WorldHeight * MathF.Max(0.01f, pr.Cfg.HitScale)),
                 FacingRight = pr.FacingRight,
             });
         if (!string.IsNullOrWhiteSpace(pr.Cfg.HitFx))
-            Effect2DSystem.SpawnBurst(pr.Cfg.HitFx.Trim(), pr.Pos, 0.6f);
+            Effect2DSystem.SpawnBurst(pr.Cfg.HitFx.Trim(), pr.Pos, MathF.Max(0.01f, pr.Cfg.HitFxScale));
     }
 
     /// <summary>Characters (Player2D objects other than the shooter) whose capsule AABB

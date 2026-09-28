@@ -304,7 +304,8 @@ public static class Player2DSystem
                             act.ProjectileSpeed, act.ProjectileMaxDistance,
                             act.ProjectileGravity, act.ProjectileVelY,
                             act.ProjectileWorldHeight, act.ProjectileDamageHP, act.ProjectileDamageMP,
-                            act.ProjectileHitSheet, act.ProjectileHitClip, act.ProjectileHitFx,
+                            act.ProjectileHitSheet, act.ProjectileHitClip, act.ProjectileHitScale,
+                            act.ProjectileHitFx, act.ProjectileHitFxScale,
                             act.ProjectileRotateToVelocity, act.ProjectilePiercing);
                 }
                     if (act.Name == player.Player2DCurrentAction)
@@ -337,7 +338,9 @@ public static class Player2DSystem
                 var anchor = new Vector3(player.Position.X,
                     player.Position.Y + player.Player2DHeight * 0.5f, player.Position.Z + 0.05f);
                 player.Effect2DRuntimeAnchor = anchor;
-                var fxCfg = Effect2DSystem.PresetConfig(fxCur.FxPreset.Trim());
+                var fxCfg = Effect2DSystem.WithSizeScale(
+                    Effect2DSystem.PresetConfig(fxCur.FxPreset.Trim()),
+                    MathF.Max(0.01f, fxCur.FxScale));
                 fxCfg.Pos = anchor;
                 _actionFxEmit += fxCfg.Rate * dt;
                 while (_actionFxEmit >= 1f) { _actionFxEmit -= 1f; Effect2DSystem.Spawn(fxCfg); }

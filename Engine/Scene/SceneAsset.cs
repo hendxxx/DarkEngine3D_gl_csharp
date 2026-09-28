@@ -552,6 +552,8 @@ public class Player2DActionData
     /// action — burst at action start, or a stream while it plays (FxFollow).</summary>
     public string FxPreset { get; set; } = "";
     public bool FxFollow { get; set; }
+    /// <summary>Size multiplier of this action's FX (burst count + particle sizes).</summary>
+    public float FxScale { get; set; } = 1f;
     // ── Projectile launch (action → flying animated sprite) ──
     public bool ProjectileEnabled { get; set; }
     public string ProjectileSheet { get; set; } = "";
@@ -567,7 +569,12 @@ public class Player2DActionData
     public float ProjectileDamageMP { get; set; } = 0f;
     public string ProjectileHitSheet { get; set; } = "";
     public string ProjectileHitClip { get; set; } = "";
-    public string ProjectileHitFx { get; set; } = "Explosion";
+    /// <summary>Size multiplier of the hit animation (Hit Clip) sprite.</summary>
+    public float ProjectileHitScale { get; set; } = 1f;
+    /// <summary>"" = NO impact particles (default — hits are Hit Clip animations).</summary>
+    public string ProjectileHitFx { get; set; } = "";
+    /// <summary>Size multiplier of the optional impact particle burst.</summary>
+    public float ProjectileHitFxScale { get; set; } = 1f;
     public bool ProjectileRotateToVelocity { get; set; }
     public bool ProjectilePiercing { get; set; }
 }

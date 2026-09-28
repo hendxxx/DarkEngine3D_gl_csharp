@@ -3435,21 +3435,10 @@ public class InspectorPanel
                         }
                     }
 
-                    string[] fxCfg = ["", .. Effect2DSystem.Presets];
-                    string[] fxLabel = ["(none)", .. Effect2DSystem.Presets];
-                    int fxIdx = Array.IndexOf(fxCfg, act.ProjectileHitFx);
-                    if (fxIdx < 0) fxIdx = 0;
-                    if (ImGui.BeginCombo("Hit FX", fxLabel[fxIdx]))
-                    {
-                        for (int fx = 0; fx < fxCfg.Length; fx++)
-                        {
-                            bool sel = fx == fxIdx;
-                            if (ImGui.Selectable(fxLabel[fx], sel))
-                                act.ProjectileHitFx = fxCfg[fx];
-                            if (sel) ImGui.SetItemDefaultFocus();
-                        }
-                        ImGui.EndCombo();
-                    }
+                    // Hit FX moved to the dedicated Effects panel (user decision: impact
+                    // = Hit CLIP animation; the particle burst is opt-in there, with a
+                    // size slider). Point to it instead of duplicating the combo.
+                    ImGui.TextDisabled("Hit FX & scale → panel Effects");
 
                     bool pRot = act.ProjectileRotateToVelocity;
                     if (ImGui.Checkbox("Rotate to Velocity", ref pRot)) act.ProjectileRotateToVelocity = pRot;

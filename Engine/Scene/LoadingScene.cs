@@ -430,6 +430,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         KeyTrigger = a.KeyTrigger,
                         FxPreset = a.FxPreset,
                         FxFollow = a.FxFollow,
+                        FxScale = a.FxScale,
                         ProjectileEnabled = a.ProjectileEnabled,
                         ProjectileSheet = a.ProjectileSheet, ProjectileClip = a.ProjectileClip,
                         ProjectileSpeed = a.ProjectileSpeed,
@@ -439,7 +440,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         ProjectileOffsetX = a.ProjectileOffsetX, ProjectileOffsetY = a.ProjectileOffsetY,
                         ProjectileDamageHP = a.ProjectileDamageHP, ProjectileDamageMP = a.ProjectileDamageMP,
                         ProjectileHitSheet = a.ProjectileHitSheet, ProjectileHitClip = a.ProjectileHitClip,
-                        ProjectileHitFx = a.ProjectileHitFx,
+                        ProjectileHitScale = a.ProjectileHitScale,
+                        ProjectileHitFx = a.ProjectileHitFx, ProjectileHitFxScale = a.ProjectileHitFxScale,
                         ProjectileRotateToVelocity = a.ProjectileRotateToVelocity,
                         ProjectilePiercing = a.ProjectilePiercing,
                     }).ToList();

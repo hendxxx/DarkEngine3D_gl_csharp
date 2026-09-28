@@ -470,6 +470,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ── Projectile + impact sprites (animated sheet quads, fireballs/hits).
             Projectile2DSystem.Render(camera);
 
+            // ── Global weather overlay (ground fog band + ambient tint wash) —
+            // on top of every world element so fog/sunset tint the whole scene.
+            Effect2DSystem.RenderWeatherOverlay(camera);
+
             // ── Equipped-item hotbar above each character's head (phase-1 inventory
             // render): icons crop from tilesets, batched through the same quad pass.
             // A GAMEPLAY display — shown whenever the scene draws a live session
@@ -486,6 +490,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 }
                 if (batchOpen) Effect2DSystem.EndBatch();
             }
+
+            // ── Weather fog FRONT layer (user: fog paling depan) — translucent cloud
+            // atmosphere over the world, drawn after every world sprite/particle so
+            // tiles/player/particles sit BEHIND it (still visible through the alpha).
+            // Editor gizmos below stay on top of the fog (design tools must stay crisp).
+            Effect2DSystem.RenderFogFront(camera);
 
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally

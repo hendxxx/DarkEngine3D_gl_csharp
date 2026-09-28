@@ -255,7 +255,112 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
 
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
-return BrushProbe.Fails;
+WeatherProbe.Run();
+return BrushProbe.Fails + WeatherProbe.Fails;
+
+/// <summary>WEATHER PER-PIXEL suite — pins the tileset outline contract through
+/// Effect2DSystem's private helpers via reflection: a synthetic 8×2 tileset with a
+/// WEDGE tile (triangle: opaque at the bottom, rising left edge) must produce a
+/// per-column profile that descends left→right, and a fully-transparent tile must
+/// report 1.0 (fall-through) everywhere. The runtime tilemap math (GroundYAtAny)
+/// is grid-exact with this same profile, so passing here = tents splash on their
+/// slopes in the editor.</summary>
+static class WeatherProbe
+{
+    public static int Fails;
+    static void Check(string name, bool ok, string detail)
+    {
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")}  {name}  {detail}");
+        if (!ok) Fails++;
+    }
+
+    public static void Run()
+    {
+        Console.WriteLine("\n── WEATHER PER-PIXEL (tileset outline) ──");
+        // Synthetic RGBA tileset: 8×2 tiles, 16 px each (128×32). Tile 1 = wedge
+        // (triangle pointing up-right), tile 0 = fully transparent.
+        const int TW = 16;
+        const int SW = TW * 8, SH = TW * 2;
+        var px = new byte[SW * SH * 4];
+        // Tile 1 occupies (16..31, 0..15). Wedge: opaque where x >= (col−tileX0)+...
+        // Build: opaque pixel when (localX >= (15 − localY*?)) — simple ascending
+        // wedge: opaque if localX >= 15 − localY (diagonal hypotenuse from top-right).
+        for (int ly = 0; ly < TW; ly++)
+            for (int lx = 0; lx < TW; lx++)
+            {
+                int gx = 16 + lx, gy = ly; // tile row 0
+                bool opaque = lx >= (TW - 1) - ly; // triangle rising to the right
+                int i = (gy * SW + gx) * 4;
+                px[i] = opaque ? (byte)200 : (byte)0;
+                px[i + 1] = opaque ? (byte)200 : (byte)0;
+                px[i + 2] = opaque ? (byte)200 : (byte)0;
+                px[i + 3] = opaque ? (byte)255 : (byte)0;
+            }
+        // Tile 0 (first 16×16) stays all-transparent.
+        string tga = Path.Combine(Path.GetTempPath(), "weather_tileset.tga");
+        using (var bw = new BinaryWriter(File.Create(tga)))
+        {
+            bw.Write(new byte[] { 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0 }); // RLE not used; type 10 w/ 0 pixels written fails — use type 2 (uncompressed BGR)
+            // (type 10 needs RLE packets; simplest correct: type 2 uncompressed RGBA)
+        }
+        // Write PNG instead via raw bytes is complex — use TGA type 2 (32-bit BGRA).
+        using (var bw = new BinaryWriter(File.Create(tga)))
+        {
+            bw.Write(new byte[] { 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            bw.Write((short)SW); bw.Write((short)SH);
+            bw.Write((byte)32); bw.Write((byte)8); // 32bpp
+            for (int y = SH - 1; y >= 0; y--)      // TGA bottom-up row order
+                for (int x = 0; x < SW; x++)
+                {
+                    int i = (y * SW + x) * 4;
+                    // NOTE: our profile code reads the DECODED RGBA (StbImage returns
+                    // top-row-first in image order, NOT TGA file order) — StbImageSharp
+                    // flips bottom-up TGAs internally, so decoded row 0 = file row last.
+                    bw.Write(px[i + 2]); bw.Write(px[i + 1]); bw.Write(px[i]); bw.Write(px[i + 3]); // BGRA
+                }
+        }
+
+        var sys = typeof(DarkEngine3D_gl_csharp.Engine.Visual.Effect2DSystem);
+        var mi = sys.GetMethod("GetTileTopProfile", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Check("GetTileTopProfile accessible", mi != null, mi == null ? "reflection miss" : "ok");
+        if (mi == null) return;
+
+        // 1) Transparent tile (0) → every column 1.0 (fall-through).
+        var prof0 = (float[]?)mi.Invoke(null, new object[] { tga, 0, 8, 2 });
+        Check("Transparent tile → all 1.0", prof0 != null && prof0.All(v => v >= 1f),
+            prof0 == null ? "null" : $"min {prof0.Min():F2}");
+
+        // 2) Wedge tile (1): column profile must RISE left→right (frac = surface depth
+        //    from tile top; column c is first-opaque at ly = 15−c → frac = (15−c)/16).
+        //    So frac DECREASES with c (apex at right) — fail if any frac INCREASES.
+        var prof1 = (float[]?)mi.Invoke(null, new object[] { tga, 1, 8, 2 });
+        bool rises = prof1 != null && prof1.Length == TW;
+        if (rises)
+            for (int c = 1; c < TW && rises; c++)
+                if (prof1![c] > prof1[c - 1] + 0.001f) rises = false;
+        Check("Wedge profile rises left→right", rises,
+            prof1 == null ? "null" : $"c0={prof1[0]:F2} c15={prof1[^1]:F2}");
+        Check("Wedge left column bottom-only", prof1 != null && prof1[0] > 0.9f,
+            prof1 == null ? "null" : $"c0={prof1[0]:F2} (single bottom pixel)"
+        );
+        Check("Wedge right column at top", prof1 != null && prof1[^1] <= 0.001f,
+            prof1 == null ? "null" : $"c15={prof1[^1]:F3}");
+
+        // 3) TGA row-order sanity: decode a known pixel via GetSheetPixels — the
+        //    wedge hypotenuse must exist where expected (guard against flipped rows).
+        var miPix = sys.GetMethod("GetSheetPixels", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var pix = ((byte[]? Data, int W, int H)?)miPix?.Invoke(null, new object[] { tga });
+        bool wedgeFound = false;
+        if (pix is { Item1: not null } p)
+        {
+            // Decoded (top-row-first) pixel at tile-1 local (15, 0) must be opaque
+            // (wedge apex at top-right): gx = 16+15, gy = 0.
+            int i = (0 * p.W + 16 + 15) * 4;
+            wedgeFound = p.Data![i + 3] >= 128;
+        }
+        Check("Row order: wedge apex opaque at decoded top", wedgeFound, "apex alpha");
+    }
+}
 
 /// <summary>Second suite (called from the single top-level program): raycast
 /// precision — rays aimed at known world points must land exactly there.</summary>

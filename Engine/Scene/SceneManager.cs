@@ -551,6 +551,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     if ((bridge?.ShowDebugGrid ?? true) && !(bridge?.IsPreviewMode ?? false))
                         RenderEditorGrid();
 
+                    // ── Editor-mode weather: spawn + integrate rain/snow while the user
+                    // DESIGNS weather (Effects panel). The gameplay tick only runs in
+                    // preview/in-game, so in edit mode nothing ever spawned → panel read
+                    // "Partikel aktif: 0" and rain/snow never appeared. Cheap no-op when
+                    // every layer is off; the fog/tint overlay already renders here.
+                    if (bridge is { IsPreviewMode: false, InGameActive: false })
+                        Visual.Effect2DSystem.TickEditorWeather(_editorCamera, dt,
+                            bridge.ActiveTilemap, bridge.EditorObjectManager);
+
                     // ── CSM shadow pass + render editor 3D objects (only when the editor
                     // actually has objects — EditorObjectManager may be null when no editor
                     // scene with an object manager is loaded yet) ──
