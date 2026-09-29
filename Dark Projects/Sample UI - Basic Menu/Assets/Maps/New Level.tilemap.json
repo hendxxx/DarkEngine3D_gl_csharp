@@ -131,12 +131,14 @@
             "Type": "Camera Shake",
             "Param": "2",
             "Param2": "1",
+            "Param3": "",
             "Delay": 0
           },
           {
             "Type": "Modify Stat",
             "Param": "HP",
             "Param2": "-10",
+            "Param3": "",
             "Delay": 0
           }
         ],
@@ -166,6 +168,7 @@
             "Type": "Save Checkpoint",
             "Param": "",
             "Param2": "",
+            "Param3": "",
             "Delay": 0
           }
         ],
@@ -195,6 +198,7 @@
             "Type": "Portal",
             "Param": "Trigger 5",
             "Param2": "",
+            "Param3": "",
             "Delay": 0
           }
         ],
@@ -224,6 +228,7 @@
             "Type": "Start Dialogue",
             "Param": "village_intro",
             "Param2": "0",
+            "Param3": "",
             "Delay": 0
           }
         ],
@@ -253,6 +258,7 @@
             "Type": "Portal",
             "Param": "Trigger 3",
             "Param2": "",
+            "Param3": "",
             "Delay": 0
           }
         ],

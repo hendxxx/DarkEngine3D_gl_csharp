@@ -1,0 +1,28 @@
+{
+  "Items": [
+    {
+      "Id": "Potion",
+      "Name": "Potion",
+      "IconSheet": "#1 - Transparent Icons",
+      "IconCols": 16,
+      "IconRows": 20,
+      "IconCol": 0,
+      "IconRow": 9,
+      "MaxStack": 99,
+      "EquipSlot": "Accessory",
+      "BonusHealth": 0,
+      "BonusMana": 0,
+      "BonusDefense": 0,
+      "BonusDamage": 0,
+      "EquipSheet": "#1 - Transparent Icons",
+      "EquipClip": "",
+      "EquipWorldHeight": 8,
+      "EquipZOffset": 0.09,
+      "UseFxPreset": "Sparks",
+      "UseEffect": "Heal",
+      "UseAmount": 100,
+      "Price": 0,
+      "Notes": ""
+    }
+  ]
+}
