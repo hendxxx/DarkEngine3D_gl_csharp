@@ -1033,27 +1033,34 @@ public static class Effect2DSystem
                     float tileTop = topWorld - row * cell;
                     bool solid = layer.CollisionTileIds != null && layer.CollisionTileIds.Count > 0
                         && layer.CollisionTileIds.Contains(tile);
-                    if (solid)
-                    {
-                        if (tileTop > best) best = tileTop; // full box surface
-                        found = true;
-                        break;
-                    }
-                    // Decor tile: PER-PIXEL outline from the tileset image (object grid).
+                    // PER-PIXEL outline first (collision tiles too — a solid "tent"
+                    // tile must splash on its SLOPED art, not an invisible box top:
+                    // user "percikan ada di antara sprite bukan box nya").
                     var prof = GetTileTopProfile(map.TilesetImagePath ?? "", tile, cols, rows);
                     if (prof != null && prof.Length > 0)
                     {
                         float fx = (x - col * cell) / cell;
                         int ci = Math.Clamp((int)(fx * prof.Length), 0, prof.Length - 1);
-                        float f = prof[ci];
+                        float f = prof[ci]; // 0 = tile top … 1 = transparent column
                         if (f < 1f)
                         {
-                            float surf = tileTop + (1f - f) * cell; // frac from tile top
+                            // f counts DOWN from the tile top (row 0 = top in the image)
+                            float surf = tileTop - f * cell;
                             if (surf > best) best = surf;
                             found = true;
                             break;
                         }
-                        // transparent column at this x → fall through to deeper rows
+                        // Transparent column at this x → fall through to deeper rows
+                        // (even for collision tiles: opaque art decides, not the box).
+                        continue;
+                    }
+                    // No pixel data (tileset not loaded / bad path) → collision tiles
+                    // fall back to the full box; decor tiles fall through.
+                    if (solid)
+                    {
+                        if (tileTop > best) best = tileTop; // full box surface
+                        found = true;
+                        break;
                     }
                 }
                 if (found) break; // this map's highest surface for the column is done
