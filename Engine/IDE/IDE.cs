@@ -41,6 +41,7 @@ public class IDE : IDisposable
     private readonly SpriteEditorPanel _spriteEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
     private readonly DialogueEditorPanel _dialogueEditor = null!;
+    private readonly ItemEditorPanel _itemEditor = null!;
     /// <summary>Intensity handed from the Camera Shake trigger action to BeginShake
     /// (the runtime fires duration and intensity as two separate callbacks).</summary>
     private float _pendingShakeIntensity = 1f;
@@ -316,6 +317,8 @@ public class IDE : IDisposable
             // Auto-load sprite sheets + Map Editor grid/palette prefs
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
             _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
+            // Item catalog belongs to the project (Assets/Items/items.json).
+            Visual.InventorySystem.LoadCatalog();
             // Re-apply per-project ortho zoom limits. The IDE constructor applied
             // these BEFORE any project was open (exe-fallback settings), so without
             // this reload the project's settings.json range (e.g. 25–50 for pixel-art)
@@ -374,6 +377,7 @@ public class IDE : IDisposable
             // Weather/particles belong to the project session — clear on close.
             Visual.Effect2DSystem.ResetWeather();
             Visual.InventorySystem.ResetSession();
+            Visual.InventorySystem.ClearCatalog();
         }
     }
 
@@ -769,6 +773,10 @@ public class IDE : IDisposable
             _spriteEditor = new SpriteEditorPanel(Bridge);
             _mapEditor = new MapEditorPanel(Bridge);
             _dialogueEditor = new DialogueEditorPanel(Bridge);
+            _itemEditor = new ItemEditorPanel(Bridge);
+            // Bake the inventory HUD's font atlas once, outside any frame (see
+            // InventoryHud.Prewarm — mid-frame bakes render text as empty boxes).
+            Visual.InventoryHud.Prewarm();
             _ideSettings = new IDESettingsPanel(Bridge);
 
             // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
@@ -1319,6 +1327,7 @@ public class IDE : IDisposable
                 _mapEditor.ShowInMenu();
                 _effectsPanel.ShowInMenu();
                 _dialogueEditor.ShowInMenu();
+                _itemEditor.ShowInMenu();
                 ImGui.Separator();
                 _ideSettings.ShowInMenu();
 
@@ -1413,6 +1422,7 @@ public class IDE : IDisposable
                 _mapEditor.Render();
                 _effectsPanel.Render();
                 _dialogueEditor.Render();
+                _itemEditor.Render();
                 _ideSettings.Render();
             }
         }
@@ -2246,6 +2256,10 @@ public class IDE : IDisposable
                 p => new Vector2(dImgMin.X + p.X / texW * dImgSize.X, dImgMin.Y + p.Y / texH * dImgSize.Y),
                 dialogueFont);
         }
+
+        // ── Inventory UI (in-game F8 session) ──
+        // Rendered INSIDE the scene by GameScene's HUD pass (MainMenu-style batch);
+        // nothing to draw here anymore.
 
         // ── Render transition overlay (if any) while ImGui frame is active ──
         try

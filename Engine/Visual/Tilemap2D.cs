@@ -508,6 +508,38 @@ public class TilemapTriggerArea
     public float OnStayIntervalSeconds { get; set; }
     /// <summary>Fires once the moment the player leaves the area.</summary>
     public bool OnExit { get; set; }
+    // ── Interact-key mode ("tekan E untuk buka chest") ──
+    /// <summary>TRUE = OnEnter hanya meng-ARM zona (badge tombol muncul seperti
+    /// portal); trigger baru benar-benar FIRE saat player DI DALAM area menekan
+    /// InteractKey (default E). Pasangan wajib: OnEnter harus aktif. Membuat chest
+    /// / NPC-style interaction tanpa auto-fire saat menembus areanya.</summary>
+    public bool RequireInteractKey { get; set; }
+    /// <summary>Tombol interact (nama ImGuiKey, contoh "E") saat RequireInteractKey
+    /// aktif. Default "E" — diprobe lewat PortalKeyProbe (edge, bukan hold).</summary>
+    public string InteractKey { get; set; } = "E";
+    // ── Item-key lock (kondisi awal: butuh item kunci di inventory) ──
+    /// <summary>"" = tidak terkunci. Selain itu = item id yang HARUS dimiliki player
+    /// (InventorySystem.Count > 0) sebelum trigger ini boleh Fire — chest terkunci.
+    /// Saat terkunci, semua fire (auto enter maupun tekan tombol) DITOLAK dan pesan
+    /// RequireItemMessage di-flash ke HUD.</summary>
+    public string RequireItemId { get; set; } = "";
+    /// <summary>Pesan flash HUD saat trigger ditolak karena tidak punya item kunci
+    /// ("Locked — key required!" default). Kosong = hanya log console.</summary>
+    public string RequireItemMessage { get; set; } = "Locked — key required!";
+    // ── Simple state guard (chest pattern: open once, then skip the remaining actions) ──
+    /// <summary>"Skip If Done" semantics: a Change Sprite action sets RuntimeApplied
+    /// = true after its swap; while true, Fire() SKIPS every action AFTER the first
+    /// Change Sprite in the list (the item drop never runs again). The sprite swap
+    /// itself is idempotent — re-firing re-plays nothing.</summary>
+    public bool SkipWhenDone { get; set; } = true;
+    /// <summary>Runtime-only: this trigger's Change Sprite swap has happened ("chest
+    /// is open"). Not serialized — a fresh session starts closed.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RuntimeApplied { get; set; }
+    /// <summary>Runtime-only: name of the object this trigger last swapped (the
+    /// revert case re-targets the same object). Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string RuntimeTargetName { get; set; } = "";
     /// <summary>Gate OnEnter/OnStay: only fires when the player is moving INTO the area
     /// (useful for right-exit doors so backtracking never retriggers).</summary>
     public bool RequireMovingRight { get; set; }
@@ -532,6 +564,10 @@ public class TilemapTriggerArea
     /// Not serialized.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool RuntimeHidden { get; set; }
+    /// <summary>Runtime-only: interact-key mode armed (player entered, waiting for
+    /// the key press). Cleared on exit / reset. Not serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool RuntimeInteractArmed { get; set; }
 
     // ── Portal behavior (used when a Portal / Portal One Way action is attached) ──
     /// <summary>True = the portal triggers as soon as the player touches the area
@@ -578,6 +614,9 @@ public class TilemapTriggerArea
             Name = Name, IsEnabled = IsEnabled,
             LeftPx = LeftPx, TopPx = TopPx, WidthPx = WidthPx, HeightPx = HeightPx,
             OnEnter = OnEnter, OnStayIntervalSeconds = OnStayIntervalSeconds, OnExit = OnExit,
+            RequireInteractKey = RequireInteractKey, InteractKey = InteractKey,
+            RequireItemId = RequireItemId, RequireItemMessage = RequireItemMessage,
+            SkipWhenDone = SkipWhenDone,
             RequireMovingRight = RequireMovingRight,
             RuntimeHidden = RuntimeHidden,
             PortalAutoEnter = PortalAutoEnter, PortalEnterKey = PortalEnterKey,
@@ -601,12 +640,16 @@ public class TilemapTriggerAction
     public string Param { get; set; } = "";
     /// <summary>Generic secondary parameter (volume, item amount…).</summary>
     public string Param2 { get; set; } = "";
+    /// <summary>Generic third parameter — Give Item delivery mode: empty/"Direct" =
+    /// straight into the inventory, "Drop" = world loot drop with magnet vacuum.
+    /// Change Sprite mode: "Swap" (default) = set the object's base sprite state,
+    /// "Revert" = restore the art the object had before the swap.</summary>
+    public string Param3 { get; set; } = "";
     /// <summary>Delay in seconds before the action executes after the trigger fires.</summary>
     public float Delay { get; set; }
 
     public TilemapTriggerAction Clone() => new()
-    { Type = Type, Param = Param, Param2 = Param2, Delay = Delay };
-}
+    { Type = Type, Param = Param, Param2 = Param2, Param3 = Param3, Delay = Delay };}
 
 /// <summary>Catalog of trigger action types the engine understands. String-based so
 /// the editor dropdown and the runtime dispatcher always agree.</summary>
@@ -627,6 +670,11 @@ public static class TriggerActionTypes
     public const string CameraShake = "Camera Shake";
     public const string UnlockDoor = "Unlock Door";
     public const string GiveItem = "Give Item";
+    /// <summary>Swap the TARGET object's base sprite (sheet+clip) — chest closed →
+    /// open, door, lever. Param = object name (empty = nearest Player2D), Param2 =
+    /// "Sheet|Clip", Param3 = "Swap" (default) or "Revert". State lives on the
+    /// object (TilemapTriggerArea fields below) and feeds the simple skip guard.</summary>
+    public const string ChangeSprite = "Change Sprite";
     public const string ModifyStat = "Modify Stat";
     public const string SpawnProjectile = "Spawn Projectile";
     public const string Rain = "Rain";
@@ -645,7 +693,7 @@ public static class TriggerActionTypes
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
         SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
         GiveItem, ModifyStat, SpawnProjectile, Rain, SetWind, ActivateQuest, CompleteQuest, RunScript, EnablePortal,
-        DisablePortal, Portal, PortalOneWay
+        DisablePortal, Portal, PortalOneWay, ChangeSprite
     ];
 
     /// <summary>True when the action type actually executes something today. Types
@@ -656,7 +704,7 @@ public static class TriggerActionTypes
         SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
             or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay
             or EnablePortal or DisablePortal or ModifyStat or Rain or SetWind
-            or SpawnEffect or GiveItem or SpawnProjectile => true,
+            or SpawnEffect or GiveItem or SpawnProjectile or ChangeSprite => true,
         _ => false
     };
 }

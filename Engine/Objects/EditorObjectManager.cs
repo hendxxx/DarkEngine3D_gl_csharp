@@ -443,23 +443,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
             DrawGlbReferences(camera, light, csm);
 
-            // ── Player2D animated sprites (own shader pass, world-space quad) ──
-            // Sorted by Player2DRenderLayer ascending so the player shares the same layer
-            // system as NPC/Sprite2D: higher layers draw LATER (on top). Each step also
-            // nudges the quad 0.01 units toward the camera inside DrawPlayer2D.
-            foreach (var obj in _objects.OrderBy(o => o.Player2DRenderLayer))
+            // ── 2D sprites: Player2D + Sprite2D in ONE layer-sorted pass ──
+            // Digabung dari dua pass terpisah (semua player dulu, lalu semua sprite):
+            // urutan painter ANTAR-PASS mengabaikan layer — chest layer -1 yang harusnya
+            // di belakang player (layer 0) ikut pass sprite dan MENUTUPI player. Satu
+            // pass terurut RenderLayer membuat layer -1 benar-benar di belakang.
+            // Tie di layer sama: Player2D dulu, sprite dekor di atasnya (perilaku lama).
+            foreach (var obj in _objects
+                .Where(o => o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D })
+                .OrderBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? o.Player2DRenderLayer : o.Sprite2DRenderLayer)
+                .ThenBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? 0 : 1))
             {
-                if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D })
+                if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
                     obj.DrawPlayer2D(camera);
-            }
-
-            // ── Sprite2D decorative animated sprites (same pass, no controller) ──
-            // Sorted by Render Layer ascending: higher layers draw LATER (on top of
-            // lower ones). Draw order is the primary control; DrawSprite2D also nudges
-            // each layer 0.01 units toward the camera so the order survives depth test.
-            foreach (var obj in _objects.OrderBy(o => o.Sprite2DRenderLayer))
-            {
-                if (obj is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Sprite2D })
+                else
                     obj.DrawSprite2D(camera);
             }
 
@@ -489,6 +486,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                         obj.Position.X, obj.Position.Y, obj.Player2DHeight, 0f);
                 }
                 if (batchOpen) Effect2DSystem.EndBatch();
+            }
+
+            // ── World loot drops (magnet vacuum pickups): animated item-icon quads
+            // through the same shared batch. No icons → no batch, zero cost.
+            if (InventorySystem.Drops.Count > 0)
+            {
+                Effect2DSystem.BeginBatch(camera);
+                InventorySystem.RenderLootDrops(camera);
+                Effect2DSystem.EndBatch();
             }
 
             // ── Weather fog FRONT layer (user: fog paling depan) — translucent cloud

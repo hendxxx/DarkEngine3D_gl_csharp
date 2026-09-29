@@ -442,6 +442,23 @@ public unsafe class EditorObject
     public int Player2DRenderLayer { get; set; }
     /// <summary>Runtime playback clock (transient — not serialized).</summary>
     public float Sprite2DAnimTime { get; set; }
+
+    // ── Runtime base-sprite override (trigger "Change Sprite" state, e.g. chest) ──
+    /// <summary>True while the base sprite (what TryGetPlayer2DClip resolves in the
+    /// neutral state) is overridden by a Change Sprite TRIGGER action. Transient —
+    /// a fresh session re-creates the objects, so the chest starts closed again.</summary>
+    [JsonIgnore] public bool Sprite2DStateOverrideActive { get; set; }
+    /// <summary>Overridden base sheet name (Sprite Editor registry). Transient.</summary>
+    [JsonIgnore] public string Sprite2DStateOverrideSheet { get; set; } = "";
+    /// <summary>Overridden base clip name. Transient.</summary>
+    [JsonIgnore] public string Sprite2DStateOverrideClip { get; set; } = "";
+    /// <summary>Original base sheet the override swapped FROM (revert target). Transient.</summary>
+    [JsonIgnore] public string Sprite2DStateOverridePrevSheet { get; set; } = "";
+    /// <summary>Original base clip the override swapped FROM. Transient.</summary>
+    [JsonIgnore] public string Sprite2DStateOverridePrevClip { get; set; } = "";
+    /// <summary>Trigger name that produced the current override (the simple "if already
+    /// open, skip" guard checks THIS trigger against it). Transient.</summary>
+    [JsonIgnore] public string Sprite2DStateOverrideSource { get; set; } = "";
     /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
     /// multiple times per rendered frame; the clock must advance once (transient).</summary>
     private int _sprite2dLastClockFrame = -1;
@@ -3915,7 +3932,55 @@ public unsafe class EditorObject
     public bool TryGetPlayer2DClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
     {
         sheet = null; clip = null;
+        // "Change Sprite" state override first: while a chest/lever action has swapped
+        // the base sprite, the neutral state resolves to the swapped sheet+clip.
+        if (Sprite2DStateOverrideActive
+            && IDEBridge.TryGetSpriteClip(Sprite2DStateOverrideSheet, Sprite2DStateOverrideClip, out sheet, out clip)
+            && sheet != null && clip != null)
+            return true;
         return IDEBridge.TryGetSpriteClip(Player2DSpriteSheet, Player2DAnimationClip, out sheet, out clip) && sheet != null && clip != null;
+    }
+
+    /// <summary>Trigger-driven "Change Sprite": swap the object's BASE sheet+clip (a
+    /// chest closed → open, door, lever). Called by the Change Sprite trigger action.
+    /// ID-EMPOTENT: re-applying the SAME swap (same source trigger + same art) does
+    /// nothing — the open animation does not restart when the player re-enters the
+    /// zone. The previous art is remembered (PrevSheet/PrevClip) for a later revert.
+    /// Player2D and Sprite2D share this — both render through TryGetPlayer2DClip.
+    /// Returns true when the object is now in the overridden ("open") state.</summary>
+    public bool SetSpriteStateOverride(string sheet, string clip, string sourceName)
+    {
+        string effSheet = string.IsNullOrEmpty(sheet) ? Player2DSpriteSheet : sheet;
+        if (Sprite2DStateOverrideActive
+            && Sprite2DStateOverrideSource == sourceName
+            && Sprite2DStateOverrideSheet == effSheet
+            && Sprite2DStateOverrideClip == clip)
+            return true; // already in this exact state — keep the anim clock running
+        if (!Sprite2DStateOverrideActive)
+        {
+            Sprite2DStateOverridePrevSheet = Player2DSpriteSheet;
+            Sprite2DStateOverridePrevClip = Player2DAnimationClip;
+        }
+        Sprite2DStateOverrideSheet = effSheet;
+        Sprite2DStateOverrideClip = clip;
+        Sprite2DStateOverrideSource = sourceName;
+        Sprite2DStateOverrideActive = true;
+        // Different art → restart the sprite clock so the swap plays from frame 0
+        // (a chest-open animation must not start mid-way).
+        Sprite2DAnimTime = 0f;
+        return true;
+    }
+
+    /// <summary>Drop the Change Sprite override and restore the original base sheet+
+    /// clip (revert triggers / session resets).</summary>
+    public void ClearSpriteStateOverride()
+    {
+        if (!Sprite2DStateOverrideActive) return;
+        Sprite2DStateOverrideActive = false;
+        Sprite2DStateOverrideSheet = "";
+        Sprite2DStateOverrideClip = "";
+        Sprite2DStateOverrideSource = "";
+        Sprite2DAnimTime = 0f;
     }
 
     /// <summary>Console-log which animation the player is actually playing — fires ONLY

@@ -684,6 +684,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     var bridge = _ide.Bridge;
 
+                    // ── Inventory HUD (preview, no-scene path): the 2D sidescroller
+                    // preview runs editor objects WITHOUT a GameScene, so GameScene's
+                    // HUD pass never fires here. Draw the inventory (hotbar + [I] panel)
+                    // into a shared HUD and flush it into the SHARED FBO right before it
+                    // resolves — the viewport texture then contains it, exactly like
+                    // GameScene's own flush path. Session-gated inside (edit mode: no-op). ──
+                    if (bridge.InGameActive || bridge.IsPreviewMode)
+                    {
+                        InventoryHud.Prewarm();
+                        if (InventoryHud.SharedHud is { } invHud)
+                        {
+                            InventoryHud.Render(invHud, dt);
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                            invHud.Flush();
+                        }
+                    }
+
                     // Resolve the shared MSAA FBO into its single-sample texture so the
                     // Viewport panel (and any scene that rendered into the shared FBO)
                     // samples an antialiased, up-to-date frame.

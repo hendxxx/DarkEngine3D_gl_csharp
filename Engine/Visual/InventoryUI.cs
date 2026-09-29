@@ -1,0 +1,520 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
+using DarkEngine3D_gl_csharp.Engine.Libs;
+
+namespace DarkEngine3D_gl_csharp.Engine.Visual;
+
+/// <summary>
+/// In-game inventory UI — rendered through the HUD BATCH PIPELINE (same as the
+/// MainMenu UI: DrawBox/DrawText/DrawImage → Flush), so it lives INSIDE the scene
+/// viewport texture, not an ImGui window.
+///
+/// Visual style follows the cozy pixel-art reference: warm PARCHMENT panels with
+/// WOODEN brown frames, an "Inventory" title banner, a 2×3 paperdoll column with a
+/// name plate on the left, a 6×6 item grid on the right, and gamepad-style hint
+/// chips ([I] Close, right-click hints).
+///
+/// Input goes through GLFW directly (Keyboard/Mouse) with per-frame edge tracking —
+/// NO ImGui dependency, so it works identically in GameScene HUD passes and the
+/// editor's no-scene preview path (both end in hud.Flush()).
+/// </summary>
+public static class InventoryHud
+{
+    public static bool PanelOpen { get; private set; }
+
+    /// <summary>Shared HUD instance for call sites that have no scene HUD (the
+    /// editor's no-scene preview path). Constructed OUTSIDE the frame via Prewarm()
+    /// so the font atlas bakes with clean GL state (mid-frame bakes produce the
+    /// "boxes but no glyphs" bug the dialogue team already hit here).</summary>
+    public static HUD? SharedHud { get; private set; }
+
+    private static int _titleFont;   // 26px — "Inventory" banner
+    private static int _labelFont;   // 16px — slot labels, chips
+    private static bool _fontsReady;
+
+    /// <summary>Bake the shared HUD (font atlas + big/label font slots) at a
+    /// controlled time — call once after the GL context exists (IDE constructor).</summary>
+    public static void Prewarm()
+    {
+        if (SharedHud != null) return;
+        try
+        {
+            SharedHud = new HUD("Artifacts\\fonts\\Worldstar.ttf", 13f);
+            _titleFont = SharedHud.GetOrCreateFontSlot("Artifacts\\fonts\\Worldstar.ttf", 26f);
+            _labelFont = SharedHud.GetOrCreateFontSlot("Artifacts\\fonts\\Worldstar.ttf", 16f);
+            _fontsReady = true;
+        }
+        catch (Exception ex) { Console.WriteLine($"[InventoryHud] Prewarm failed: {ex.Message}"); }
+    }
+
+    // Fancy fonts exist only on the shared HUD (other HUDs would need a mid-frame
+    // bake — the empty-glyph bug); they fall back to slot 0.
+    private static int TitleFont(HUD hud) => hud == SharedHud && _fontsReady ? _titleFont : 0;
+    private static int LabelFont(HUD hud) => hud == SharedHud && _fontsReady ? _labelFont : 0;
+
+    /// <summary>Window-px → scene-px mapper for DOCKED preview (the viewport shows a
+    /// letterboxed scene texture; clicks must map through its inverse). Null/absent
+    /// = identity (F8 fullscreen and real GameScene runs). Set per-frame by the
+    /// ViewportPanel preview.</summary>
+    public static Func<float, float, (float X, float Y)>? WindowToScene { get; set; }
+
+    // ── Palette (cozy parchment + wood, from the reference) ──
+    private static readonly Vector3 Parchment = new(0.855f, 0.775f, 0.610f); // panel bg
+    private static readonly Vector3 ParchmentDim = new(0.745f, 0.650f, 0.495f); // slot cells
+    private static readonly Vector3 ParchmentHover = new(0.910f, 0.845f, 0.700f);
+    private static readonly Vector3 WoodDark = new(0.360f, 0.225f, 0.120f);   // frame / banner
+    private static readonly Vector3 WoodMid = new(0.520f, 0.345f, 0.195f);    // slot borders
+    private static readonly Vector3 Cream = new(0.975f, 0.940f, 0.845f);      // light text
+    private static readonly Vector3 InkBrown = new(0.280f, 0.175f, 0.095f);   // dark text
+    private static readonly Vector3 InkSoft = new(0.475f, 0.360f, 0.240f);    // dim text
+    private static readonly Vector3 HighlightGold = new(0.960f, 0.760f, 0.180f);
+    private static readonly Vector3 PlateDark = new(0.185f, 0.120f, 0.070f);  // name plate
+
+    // ── Layout (scene pixel space, scales with window height) ──
+    private static float Slot => Math.Clamp(Glfw.WindowHeight * 0.075f, 50f, 72f);
+    private static float Gap => Slot * 0.16f;
+    private const int GridCols = 6, GridRows = 6;   // 36 slots shown 6×6 (like the ref)
+    private const int DollCols = 2, DollRows = 3;   // 6 paperdoll slots 2×3
+
+    // ── Input edge state (per physical press) ──
+    private static bool _iWasDown, _escWasDown;
+    private static readonly bool[] _numWasDown = new bool[9];
+    private static bool _leftWasDown, _rightWasDown;
+
+    // Hover state for tooltips (scene-px rect of the last hovered slot this frame).
+    private static string _tooltip = "";
+
+    // ── Transient feedback message (bottom-center above the hotbar) ──
+    private static string _flash = "";
+    private static float _flashTime;
+    private static float _dt = 1f / 60f;
+
+    private static void Flash(string msg) { _flash = msg; _flashTime = 2.2f; }
+
+    /// <summary>Show the bottom-center feedback message from OUTSIDE the HUD (loot
+    /// vacuum pickups, external systems). Same visual as internal flashes.</summary>
+    public static void PushFlash(string msg)
+    {
+        if (string.IsNullOrEmpty(msg)) return;
+        Flash(msg);
+    }
+
+    /// <summary>Update input + draw everything. Call ONCE per frame between the HUD
+    /// command queueing start and hud.Flush() (self-gates on the session flag — edit
+    /// mode draws nothing).</summary>
+    public static void Render(HUD hud, float dt)
+    {
+        if (hud == null || !Player2DStats.SessionActive)
+        {
+            PanelOpen = false;
+            ResetEdges();
+            return;
+        }
+        _dt = MathF.Max(0.0001f, dt);
+        bool dialogueOwnsKeys = DialogueSystem.IsConversationActive;
+
+        // ══════════ INPUT (GLFW, physical edge) ══════════
+        nint window = Glfw.GetWindow();
+        if (!dialogueOwnsKeys)
+        {
+            bool iDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_I);
+            if (iDown && !_iWasDown) PanelOpen = !PanelOpen;
+            _iWasDown = iDown;
+
+            if (PanelOpen)
+            {
+                bool escDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+                if (escDown && !_escWasDown) PanelOpen = false;
+                _escWasDown = escDown;
+            }
+
+            // Hotbar quick-use 1..9 (only when the panel is closed so number keys
+            // don't double-fire with grid right-click in the same frame).
+            if (!PanelOpen)
+            {
+                for (int i = 0; i < 9; i++)
+                {
+                    bool down = Keyboard.IsKeyDown(window, Const.GLFW_KEY_1 + i);
+                    if (down && !_numWasDown[i])
+                    {
+                        string r = InventorySystem.UseSlot(i);
+                        if (r.Length > 0) Flash(r);
+                    }
+                    _numWasDown[i] = down;
+                }
+            }
+        }
+        else
+        {
+            _iWasDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_I);
+            ResetEdges();
+        }
+
+        // ══════════ LAYOUT + MOUSE ══════════
+        Mouse.GetCursorPosition(out double mxRaw, out double myRaw);
+        float mx = (float)mxRaw, my = (float)myRaw;
+        // Docked preview: map through the viewport's letterbox inverse when provided.
+        if (WindowToScene != null)
+            (mx, my) = WindowToScene(mx, my);
+        bool leftDown = Mouse.IsButtonDown(0);
+        bool rightDown = Mouse.IsButtonDown(1); // GLFW: 0=left, 1=right
+        bool leftPressed = leftDown && !_leftWasDown;
+        bool rightPressed = rightDown && !_rightWasDown;
+        _leftWasDown = leftDown;
+        _rightWasDown = rightDown;
+        _tooltip = "";
+
+        DrawHotbar(hud, mx, my, leftPressed, rightPressed);
+        if (PanelOpen) DrawPanel(hud, mx, my, leftPressed, rightPressed);
+        DrawTooltip(hud, mx, my);
+        DrawFlash(hud);
+    }
+
+    private static void ResetEdges()
+    {
+        _escWasDown = false;
+        for (int i = 0; i < 9; i++) _numWasDown[i] = false;
+        _leftWasDown = false;
+        _rightWasDown = false;
+    }
+
+    // ═══════════════════════ Style primitives ═══════════════════════
+
+    /// <summary>HUD boxes composite at a fixed ~0.6 alpha, so stacking the same rect
+    /// N times approaches opacity — panels read as solid parchment over the world.</summary>
+    private static void FillSolid(HUD hud, float x, float y, float w, float h, Vector3 color, int layers = 3)
+    {
+        for (int i = 0; i < layers; i++) hud.DrawBox(x, y, w, h, color);
+    }
+
+    /// <summary>Wooden frame: thick dark outer border + thin mid-brown inner line
+    /// (the double-frame look of the reference panels).</summary>
+    private static void WoodFrame(HUD hud, float x, float y, float w, float h)
+    {
+        float t = MathF.Max(3f, Slot * 0.075f);
+        // Outer dark frame.
+        hud.DrawBox(x, y, w, t, WoodDark);
+        hud.DrawBox(x, y + h - t, w, t, WoodDark);
+        hud.DrawBox(x, y + t, t, h - t * 2f, WoodDark);
+        hud.DrawBox(x + w - t, y + t, t, h - t * 2f, WoodDark);
+        // Inner accent line.
+        float t2 = MathF.Max(1.5f, t * 0.4f);
+        float i2 = t * 1.4f;
+        hud.DrawBox(x + i2, y + i2, w - i2 * 2f, t2, WoodMid);
+        hud.DrawBox(x + i2, y + h - i2 - t2, w - i2 * 2f, t2, WoodMid);
+        hud.DrawBox(x + i2, y + i2 + t2, t2, h - i2 * 2f - t2 * 2f, WoodMid);
+        hud.DrawBox(x + w - i2 - t2, y + i2 + t2, t2, h - i2 * 2f - t2 * 2f, WoodMid);
+    }
+
+    /// <summary>Gamepad-style hint chip: dark rounded-ish square + cream letter(s).</summary>
+    private static void HintChip(HUD hud, float x, float y, float size, string label, int fontSlot)
+    {
+        FillSolid(hud, x, y, size, size, WoodDark, 2);
+        float tw = hud.GetTextExtents(label, fontSlot).Width;
+        float th = hud.GetTextExtents(label, fontSlot).Height;
+        hud.DrawText(label, x + (size - tw) * 0.5f, y + (size - th) * 0.5f, Cream, null, 0f, fontSlot);
+    }
+
+    // ═══════════════════════ Slot drawing ═══════════════════════
+
+    /// <summary>One inventory slot: inset parchment cell + cropped icon + count badge.
+    /// Returns true when the mouse hovers it this frame.</summary>
+    private static bool DrawSlot(HUD hud, float x, float y, float size,
+        InventorySystem.ItemDef? def, int count, bool highlighted, bool dragging)
+    {
+        var mouse = Mouse.GetPosition();
+        bool hover = mouse.X >= x && mouse.X < x + size && mouse.Y >= y && mouse.Y < y + size;
+
+        hud.DrawBox(x, y, size, size, dragging ? ParchmentHover : hover ? ParchmentHover : ParchmentDim);
+        var border = (highlighted || dragging) ? HighlightGold : WoodMid;
+        float t = MathF.Max(1.5f, size * 0.035f);
+        hud.DrawBox(x, y, size, t, border);
+        hud.DrawBox(x, y + size - t, size, t, border);
+        hud.DrawBox(x, y + t, t, size - t * 2f, border);
+        hud.DrawBox(x + size - t, y + t, t, size - t * 2f, border);
+
+        if (def != null)
+        {
+            uint tex = InventorySystem.GetIconTexture(def);
+            if (tex != 0)
+            {
+                // GetIconUV returns IMAGE-space v (vTop < vBottom, row 0 = top);
+                // HUD textures share that orientation → pass through directly.
+                var (u0, vTop, u1, vBottom) = InventorySystem.GetIconUV(def);
+                float pad = size * 0.12f;
+                hud.DrawImageUV(x + pad, y + pad, size - pad * 2f, size - pad * 2f,
+                    tex, u0, vTop, u1, vBottom);
+            }
+            else
+            {
+                // Sheet not registered — grey placeholder block.
+                hud.DrawBox(x + size * 0.25f, y + size * 0.25f, size * 0.5f, size * 0.5f,
+                    new Vector3(0.45f, 0.45f, 0.5f));
+            }
+            // Count badge (bottom-right, dark chip + cream text).
+            if (count > 1)
+            {
+                string text = count > 999 ? "999+" : count.ToString();
+                float textW = hud.GetTextExtents(text).Width;
+                float textH = hud.MeasureTextHeight(text);
+                float cx = x + size - textW - 6f, cy = y + size - textH - 4f;
+                FillSolid(hud, cx - 4f, cy - 2f, textW + 8f, textH + 4f, PlateDark, 2);
+                hud.DrawText(text, cx, cy, Cream);
+            }
+        }
+        return hover;
+    }
+
+    // ═══════════════════════ Panel (Inventory window) ═══════════════════════
+
+    private static void DrawPanel(HUD hud, float mx, float my, bool leftPressed, bool rightPressed)
+    {
+        float slot = Slot, gap = Gap, pad = slot * 0.45f;
+        float bannerH = slot * 0.85f;
+
+        float gridW = GridCols * slot + (GridCols - 1) * gap;
+        float dollW = DollCols * slot + (DollCols - 1) * gap;
+        float gridH = GridRows * slot + (GridRows - 1) * gap;
+        float nameH = slot * 0.55f;
+        float labelH = hud.GetTextExtents("Head", LabelFont(hud)).Height + 4f;
+        // Each doll row = cell + gap + label UNDER it; the plate sits one gap lower.
+        float dollH = DollRows * (slot + gap + labelH) + gap + nameH;
+        float bodyH = MathF.Max(gridH, dollH);
+
+        float panelW = pad * 2 + dollW + pad + gridW;
+        float panelH = pad + bannerH + pad * 0.6f + bodyH + pad;
+
+        float px = (Glfw.WindowWidth - panelW) * 0.5f;
+        float py = (Glfw.WindowHeight - panelH) * 0.5f;
+
+        // Parchment panel + wooden frame.
+        FillSolid(hud, px, py, panelW, panelH, Parchment, 3);
+        WoodFrame(hud, px, py, panelW, panelH);
+
+        // ── Title banner: dark wood strip with "Inventory" + close chip + gold ──
+        float bx = px + pad, by = py + pad, bw = panelW - pad * 2f;
+        FillSolid(hud, bx, by, bw, bannerH, WoodDark, 3);
+        string title = "Inventory";
+        var titleExt = hud.GetTextExtents(title, TitleFont(hud));
+        hud.DrawText(title, bx + pad * 0.7f, by + (bannerH - titleExt.Height) * 0.5f, Cream, null, 0f, TitleFont(hud));
+
+        float chip = bannerH * 0.62f;
+        HintChip(hud, bx + bw - chip - pad * 0.6f, by + (bannerH - chip) * 0.5f, chip, "I", LabelFont(hud));
+        string gold = $"◈ {InventorySystem.Gold}";
+        float goldW = hud.GetTextExtents(gold, LabelFont(hud)).Width;
+        hud.DrawText(gold, bx + bw - chip - pad * 1.2f - goldW, by + (bannerH - hud.GetTextExtents(gold, LabelFont(hud)).Height) * 0.5f,
+            HighlightGold, null, 0f, LabelFont(hud));
+
+        float bodyY = by + bannerH + pad * 0.6f;
+
+        // ── Left: paperdoll (2×3) + name plate ──
+        float dx = px + pad;
+        float dy = bodyY;
+        string[] labels = InventorySystem.EquipSlots;
+        for (int r = 0; r < DollRows; r++)
+        {
+            for (int c = 0; c < DollCols; c++)
+            {
+                int di = r * DollCols + c;
+                if (di >= labels.Length) break;
+                string slotName = labels[di];
+                string id = InventorySystem.PlayerEquipment.Get(slotName);
+                var def = string.IsNullOrEmpty(id) ? null : InventorySystem.Find(id);
+                float x = dx + c * (slot + gap);
+                bool hover = DrawSlot(hud, x, dy, slot, def, def != null ? 1 : 0,
+                    highlighted: false, dragging: false);
+                // Label under the cell.
+                var labExt = hud.GetTextExtents(slotName, LabelFont(hud));
+                hud.DrawText(slotName, x + (slot - labExt.Width) * 0.5f, dy + slot + 2f, InkSoft, null, 0f, LabelFont(hud));
+
+                if (hover)
+                {
+                    if (def != null)
+                    {
+                        _tooltip = BuildTooltip(def, 1, slotName);
+                        if (leftPressed)
+                        {
+                            if (InventorySystem.UnequipToGrid(slotName)) Flash($"{slotName} unequipped");
+                            else Flash("Inventory full!");
+                        }
+                    }
+                    else
+                    {
+                        _tooltip = $"{slotName}\nRight-click a grid item to equip";
+                    }
+                }
+            }
+            dy += slot + gap + labelH;
+        }
+
+        // Name plate under the doll (like the reference's dark "Name" strip).
+        float plateY = dy - gap + 2f;
+        FillSolid(hud, dx, plateY, dollW, nameH, PlateDark, 3);
+        string name = "Player";
+        var nameExt = hud.GetTextExtents(name, LabelFont(hud));
+        hud.DrawText(name, dx + (dollW - nameExt.Width) * 0.5f, plateY + (nameH - nameExt.Height) * 0.5f,
+            Cream, null, 0f, LabelFont(hud));
+
+        // ── Right: 6×6 grid ──
+        float gx = px + pad + dollW + pad;
+        float gy = bodyY;
+        int drag = InventorySystem.DragSlot;
+        for (int i = 0; i < InventorySystem.GridSize; i++)
+        {
+            int row = i / GridCols, col = i % GridCols;
+            ref var slotData = ref InventorySystem.Grid[i];
+            var def = slotData.IsEmpty ? null : InventorySystem.Find(slotData.ItemId);
+            float x = gx + col * (slot + gap);
+            float y = gy + row * (slot + gap);
+            bool hover = DrawSlot(hud, x, y, slot, def, slotData.IsEmpty ? 0 : slotData.Count,
+                highlighted: drag >= 0 && i != drag && def != null, dragging: i == drag);
+
+            if (hover)
+            {
+                if (def != null) _tooltip = BuildTooltip(def, slotData.Count, null);
+                if (leftPressed)
+                {
+                    if (drag < 0)
+                    {
+                        if (!slotData.IsEmpty)
+                            InventorySystem.DragSlot = i; // pick up
+                    }
+                    else if (drag != i)
+                    {
+                        InventorySystem.MoveSlot(drag, i); // drop: merge or swap
+                        InventorySystem.DragSlot = -1;
+                    }
+                    else
+                        InventorySystem.DragSlot = -1; // click itself = cancel
+                }
+                if (rightPressed && def != null && drag < 0)
+                {
+                    string r = InventorySystem.UseSlot(i);
+                    if (r.Length > 0) Flash(r);
+                }
+            }
+        }
+
+        // Drag status line under the grid.
+        if (drag >= 0)
+        {
+            string dragText = "Click another slot to drop · itself to cancel";
+            var dExt = hud.GetTextExtents(dragText, LabelFont(hud));
+            hud.DrawText(dragText, gx + (gridW - dExt.Width) * 0.5f,
+                gy + gridH + 4f, InkBrown, null, 0f, LabelFont(hud));
+        }
+    }
+
+    private static string BuildTooltip(InventorySystem.ItemDef def, int count, string? equipSlot)
+    {
+        var lines = new List<string>
+        {
+            def.Name + (count > 1 ? $" ×{count}" : "")
+        };
+        if (!string.IsNullOrEmpty(def.EquipSlot))
+        {
+            lines.Add($"Equippable → {def.EquipSlot}");
+            if (def.BonusHealth != 0) lines.Add($"  +{def.BonusHealth:0} HP");
+            if (def.BonusMana != 0) lines.Add($"  +{def.BonusMana:0} MP");
+            if (def.BonusDefense != 0) lines.Add($"  +{def.BonusDefense:0} DEF");
+            if (def.BonusDamage != 0) lines.Add($"  +{def.BonusDamage:0} ATK");
+        }
+        if (!string.IsNullOrEmpty(def.UseEffect)) lines.Add($"Use: {def.UseEffect} {def.UseAmount:0}");
+        if (def.Price > 0) lines.Add($"Price: {def.Price} gold");
+        if (!string.IsNullOrEmpty(def.Notes)) lines.Add(def.Notes);
+        lines.Add(equipSlot != null ? "Click = unequip"
+            : !string.IsNullOrEmpty(def.EquipSlot) ? "Right-click = equip"
+            : "Right-click = use");
+        return string.Join('\n', lines);
+    }
+
+    /// <summary>Parchment tooltip near the mouse (multi-line, wooden edge).</summary>
+    private static void DrawTooltip(HUD hud, float mx, float my)
+    {
+        if (_tooltip.Length == 0) return;
+        int labelFont = LabelFont(hud);
+        var lines = _tooltip.Split('\n');
+        float w = 0f, lineH = 0f;
+        foreach (var l in lines)
+        {
+            w = MathF.Max(w, hud.GetTextExtents(l, labelFont).Width);
+            lineH = MathF.Max(lineH, hud.GetTextExtents(l, labelFont).Height);
+        }
+        float padX = 10f, padY = 7f, lineStep = lineH + 3f;
+        float boxW = w + padX * 2f, boxH = lines.Length * lineStep + padY * 2f;
+        float bx = MathF.Min(mx + 14f, Glfw.WindowWidth - boxW - 4f);
+        float by = MathF.Min(my + 16f, Glfw.WindowHeight - boxH - 4f);
+        FillSolid(hud, bx, by, boxW, boxH, Parchment, 3);
+        // Thin wooden edge (single 2px lines — frame helper would be too chunky here).
+        float t = 2f;
+        hud.DrawBox(bx, by, boxW, t, WoodDark);
+        hud.DrawBox(bx, by + boxH - t, boxW, t, WoodDark);
+        hud.DrawBox(bx, by + t, t, boxH - t * 2f, WoodDark);
+        hud.DrawBox(bx + boxW - t, by + t, t, boxH - t * 2f, WoodDark);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var col = i == 0 ? InkBrown : InkSoft;
+            hud.DrawText(lines[i], bx + padX, by + padY + i * lineStep, col, null, 0f, labelFont);
+        }
+    }
+
+    // ═══════════════════════ Hotbar ═══════════════════════
+
+    private static void DrawHotbar(HUD hud, float mx, float my, bool leftPressed, bool rightPressed)
+    {
+        float slot = Slot, gap = Gap;
+        float chip = slot * 0.5f;
+        float w = 9 * (slot + gap) + chip + 26f;
+        float x0 = (Glfw.WindowWidth - w) * 0.5f;
+        float y0 = Glfw.WindowHeight - slot - 16f;
+
+        for (int i = 0; i < 9; i++)
+        {
+            ref var slotData = ref InventorySystem.Grid[i];
+            var def = slotData.IsEmpty ? null : InventorySystem.Find(slotData.ItemId);
+            float x = x0 + i * (slot + gap);
+            bool hover = DrawSlot(hud, x, y0, slot, def, slotData.IsEmpty ? 0 : slotData.Count,
+                highlighted: false, dragging: false);
+
+            // Slot number chip (top-left, tiny dark square + cream digit).
+            float numChip = slot * 0.30f;
+            FillSolid(hud, x + 3f, y0 + 3f, numChip, numChip, PlateDark, 2);
+            string num = (i + 1).ToString();
+            var nExt = hud.GetTextExtents(num, LabelFont(hud));
+            hud.DrawText(num, x + 3f + (numChip - nExt.Width) * 0.5f, y0 + 3f + (numChip - nExt.Height) * 0.5f,
+                Cream, null, 0f, LabelFont(hud));
+
+            if (hover && def != null)
+            {
+                _tooltip = BuildTooltip(def, slotData.Count, null);
+                if (leftPressed)
+                {
+                    string r = InventorySystem.UseSlot(i);
+                    if (r.Length > 0) Flash(r);
+                }
+            }
+        }
+
+        // Gold + [I] hint chips at the right end of the strip.
+        float hx = x0 + 9 * (slot + gap) + 6f;
+        string gold = $"◈ {InventorySystem.Gold}";
+        var gExt = hud.GetTextExtents(gold, LabelFont(hud));
+        hud.DrawText(gold, hx + (chip - gExt.Width) * 0.5f, y0 + chip * 0.35f, HighlightGold, null, 0f, LabelFont(hud));
+        HintChip(hud, hx, y0 + slot - chip - 2f, chip, "I", LabelFont(hud));
+    }
+
+    // ═══════════════════════ Flash message ═══════════════════════
+
+    private static void DrawFlash(HUD hud)
+    {
+        if (_flashTime <= 0f || _flash.Length == 0) return;
+        _flashTime -= _dt;
+        float a = Math.Clamp(_flashTime / 0.6f, 0f, 1f);
+        // HUD text has no per-call alpha — dim the color toward the background instead.
+        var col = Vector3.Lerp(new Vector3(0.05f, 0.05f, 0.08f), Cream, a);
+        float w = hud.GetTextExtents(_flash).Width;
+        hud.DrawText(_flash, (Glfw.WindowWidth - w) * 0.5f, Glfw.WindowHeight - Slot - 44f, col);
+    }
+}

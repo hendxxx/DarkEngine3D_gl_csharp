@@ -33,6 +33,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public List<string> DialogueFlags { get; set; } = [];
         public List<string> DialogueVariables { get; set; } = [];
 
+        // Inventory (phase 2): grid entries "index|itemId|count", equipment entries
+        // "slotName|itemId", gold counter. Restored on load.
+        public List<string> InventoryGrid { get; set; } = [];
+        public List<string> InventoryEquipment { get; set; } = [];
+        public int InventoryGold { get; set; }
+
         // Metadata
         public string SaveTime { get; set; } = "";
     }

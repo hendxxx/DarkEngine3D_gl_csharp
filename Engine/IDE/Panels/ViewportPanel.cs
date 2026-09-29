@@ -3318,6 +3318,19 @@ ImGui.SameLine();
                 RenderDropdownPopup(drawList, viewportMouseScreen, cachedLeftClicked, _previewMode);
             }
 
+            // ── Inventory HUD click mapping (preview): the HUD rendered INSIDE the
+            // scene texture (SceneManager no-scene pass → shared FBO), but the mouse is
+            // in window space — publish the letterbox inverse so slot hit-tests map
+            // window → scene pixels. Cleared outside preview so F8/true scenes use 1:1.
+            InventoryHud.WindowToScene = (_bridge.IsPreviewMode || _bridge.InGameActive) && _imageSize.X > 1f
+                ? (wx, wy) =>
+                {
+                    float u = (wx - _imageMin.X) / MathF.Max(1f, _imageSize.X);
+                    float v = (wy - _imageMin.Y) / MathF.Max(1f, _imageSize.Y);
+                    return (u * _texW, v * _texH);
+                }
+                : null;
+
             // ── Dialogue overlay (preview / in-game, no-scene path) ──
             // Drawn through the ImGui draw list — the SAME proven text path as the UI
             // element preview above (labels, bars, badges), which renders text correctly

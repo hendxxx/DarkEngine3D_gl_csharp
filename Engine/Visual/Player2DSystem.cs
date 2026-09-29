@@ -637,12 +637,22 @@ public static class Player2DSystem
         // ── Projectiles: integrate + collide + expire (render in the manager 2D pass).
         Projectile2DSystem.Tick(manager, TriggerEventSystem.EnumerateSceneMaps(manager, activeMap), dt);
 
-        // ── Particle effects: advance emitters + rain + integrate (render happens in
-        // EditorObjectManager's 2D pass). Preview/in-game only, like physics above.
-        Effect2DSystem.Tick(manager, activeMap, bridge?.Camera, dt);
+        // ── Inventory feet anchor: use/equip FX bursts and future loot pickups spawn
+        // at the MAIN player's feet (first visible Player2D).
+        foreach (var o in manager.Objects)
+        {
+            if (o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Player2D })
+            {
+                InventorySystem.PlayerFeetX = o.Position.X;
+                InventorySystem.PlayerFeetY = o.Position.Y;
+                break;
+            }
+        }
 
-        // ── Projectiles: integrate + collide + expire (render in the manager 2D pass).
-        Projectile2DSystem.Tick(manager, TriggerEventSystem.EnumerateSceneMaps(manager, activeMap), dt);
+        // ── World loot vacuum: drops pop, sit on the ground, and accelerate into the
+        // player once inside the magnet radius (auto-collect + FX + flash). Runs AFTER
+        // the feet anchor refresh so the pull targets the live position.
+        InventorySystem.TickDrops(manager, activeMap, dt);
 
         // Keep the trigger runtime's start-point fallback + teleport handler fresh.
         // Load Checkpoint without a saved checkpoint teleports to this fallback

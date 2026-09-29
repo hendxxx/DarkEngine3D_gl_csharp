@@ -1325,6 +1325,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             DialogueSystem.ShowPrompts = isPreviewMode;
             DialogueSystem.Tick(_deltaTime, _hud, _camera, _sceneManager.Bridge?.EditorObjectManager);
 
+            // ── Inventory UI (hotbar + [I] panel) — HUD batch pipeline, like the
+            // MainMenu UI: draws into the same queue that Flush() composites over the
+            // scene, so it appears INSIDE the viewport texture (not an ImGui window).
+            // Session-gated inside; input via GLFW with physical-edge detection.
+            InventoryHud.Render(_hud, _deltaTime);
+
             //  HUD debug overlay — hidden in preview/in-game mode for a clean view.
             // Visibility also honors the "Show In-Game Stats" preference (IDE Settings
             // → Gameplay / Bridge.ShowInGameStats) so the F8 stats panel and this HUD
@@ -1571,6 +1577,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             if (_objectManager == null || _objectManager.PlayerAgent == null) return;
 
+            // Inventory snapshot (grid + paperdoll + gold) — must be captured BEFORE
+            // the initializer (tuple deconstruction is not allowed inside one).
+            var (invGrid, invEquip, invGold) = InventorySystem.CaptureState();
+
             var data = new SaveData
             {
                 PlayerX = _objectManager.PlayerAgent.Position.X,
@@ -1588,6 +1598,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 DialogueCompleted = DialogueSystem.CaptureState().completed,
                 DialogueFlags = DialogueSystem.CaptureState().flags,
                 DialogueVariables = DialogueSystem.CaptureState().vars,
+
+                // Inventory (grid + paperdoll + gold — restored on load).
+                InventoryGrid = invGrid,
+                InventoryEquipment = invEquip,
+                InventoryGold = invGold,
 
                 SaveTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
@@ -1650,6 +1665,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Restore dialogue progress (completed conversations, flags, variables).
             DialogueSystem.RestoreState(data.DialogueCompleted, data.DialogueFlags, data.DialogueVariables);
+
+            // Restore inventory (grid + paperdoll + gold; stat bonuses re-applied).
+            InventorySystem.RestoreState(data.InventoryGrid, data.InventoryEquipment, data.InventoryGold);
 
             _saveNotification = $"Game loaded from Slot {slotIndex + 1}!";
             _saveNotificationTimer = 3f;

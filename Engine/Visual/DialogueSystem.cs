@@ -260,7 +260,8 @@ public static unsafe class DialogueSystem
             case "flag":
                 return HasFlag(parts.ElementAtOrDefault(1) ?? "");
             case "item":
-                return Variables.GetValueOrDefault($"item_{parts.ElementAtOrDefault(1)}", 0f) > 0f;
+                // Inventory phase 2: read the REAL grid count (legacy bag included).
+                return InventorySystem.Count(parts.ElementAtOrDefault(1) ?? "") > 0;
             case "quest":
                 string q = parts.ElementAtOrDefault(1) ?? "";
                 return HasFlag($"quest_{q}_active") || HasFlag($"quest_{q}_done");
@@ -900,6 +901,25 @@ public static unsafe class DialogueSystem
         float TextH(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).Y;
         void Text(string s, Vector2 pos, uint col) => dl.AddText(f, fs, pos, col, s);
 
+        // Key badge ("[E]") above portals + interact-key zones: dark plate + amber
+        // border + key label, world-anchored via Project → sceneToScreen.
+        void DrawKeyBadge(ImDrawListPtr dl2, Func<Vector2, Vector2> s2s,
+            Func<Vector3, int, int, Vector2> proj, int vw, int vh, float z,
+            float worldX, float worldY, string keyLabel,
+            Func<string, float> w_fn, Func<string, float> h_fn)
+        {
+            var top = proj(new Vector3(worldX, worldY, z), vw, vh);
+            var scrP = s2s(new Vector2(top.X, top.Y));
+            string label = $"[{keyLabel}]";
+            float lw = w_fn(label), lh = h_fn(label);
+            float padX = 6f, padY = 4f;
+            dl2.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX - 1f, scrP.Y - lh - padY * 2 - 1f),
+                new Vector2(scrP.X + lw / 2 + padX + 1f, scrP.Y + 1f), Rgba(new Vector3(1f, 0.85f, 0.25f), 0.85f));
+            dl2.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX, scrP.Y - lh - padY * 2),
+                new Vector2(scrP.X + lw / 2 + padX, scrP.Y), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.85f));
+            Text(label, new Vector2(scrP.X - lw / 2, scrP.Y - lh - padY), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+        }
+
         var defTheme = DialogueLibrary.GetTheme("Default");
 
         // ── Bubbles ──
@@ -980,21 +1000,34 @@ public static unsafe class DialogueSystem
                     float cellB = map.TileSize * Tilemap2D.WorldScale;
                     float visHPx = area.PortalVisualHeightPx > 0f ? area.PortalVisualHeightPx : area.HeightPx;
                     float cy = map.Height * cellB - (area.TopPx + visHPx) * Tilemap2D.WorldScale;
-                    var top = Project(new Vector3(
-                        (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
-                        cy + 0.45f, player.Position.Z), w, h);
-                    var scrP = sceneToScreen(new Vector2(top.X, top.Y));
-
                     string key = area.PortalEnterKey.Trim().ToUpperInvariant();
                     if (key.Length == 0) key = "E";
-                    string label = $"[{key}]";
-                    float lw = TextW(label), lh = TextH(label);
-                    float padX = 6f, padY = 4f;
-                    dl.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX - 1f, scrP.Y - lh - padY * 2 - 1f),
-                        new Vector2(scrP.X + lw / 2 + padX + 1f, scrP.Y + 1f), Rgba(new Vector3(1f, 0.85f, 0.25f), 0.85f));
-                    dl.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX, scrP.Y - lh - padY * 2),
-                        new Vector2(scrP.X + lw / 2 + padX, scrP.Y), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.85f));
-                    Text(label, new Vector2(scrP.X - lw / 2, scrP.Y - lh - padY), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+                    DrawKeyBadge(dl, sceneToScreen, Project, w, h, player.Position.Z,
+                        (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
+                        cy + 0.45f, key, TextW, TextH);
+                }
+            }
+        }
+
+        // ── Interact-KEY ZONE badge ("[E]" above a chest/lever trigger) — same plate        // as the portal badge, fed by the armed RequireInteractKey zones.
+        if (ShowPrompts && Active == null && manager != null && camera != null)
+        {
+            var player = manager.Objects.FirstOrDefault(o =>
+                o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D });
+            if (player != null)
+            {
+                foreach (var (area, map) in TriggerEventSystem.InteractKeyZones(manager))
+                {
+                    if (!area.RuntimeInteractArmed) continue; // player not inside → no badge
+                    if (string.IsNullOrWhiteSpace(area.InteractKey)) continue;
+
+                    float cellB = map.TileSize * Tilemap2D.WorldScale;
+                    float cy = map.Height * cellB - (area.TopPx + area.HeightPx) * Tilemap2D.WorldScale;
+                    string key = area.InteractKey.Trim().ToUpperInvariant();
+                    if (key.Length == 0) key = "E";
+                    DrawKeyBadge(dl, sceneToScreen, Project, w, h, player.Position.Z,
+                        (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
+                        cy + 0.45f, key, TextW, TextH);
                 }
             }
         }

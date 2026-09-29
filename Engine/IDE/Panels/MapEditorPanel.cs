@@ -1650,6 +1650,47 @@ public class MapEditorPanel
         bool reqRight = trig.RequireMovingRight;
         if (ImGui.Checkbox("Only when moving right (door gate)", ref reqRight)) trig.RequireMovingRight = reqRight;
 
+        bool skipDone = trig.SkipWhenDone;
+        if (ImGui.Checkbox("Skip When Done (chest pattern)", ref skipDone)) trig.SkipWhenDone = skipDone;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Setelah action 'Change Sprite' trigger ini terjalankan, SEMUA action SETELAHNYA di-skip\n\n(Chest: buka + drop item hanya SEKALI — masuk lagi tidak drop item lagi.\nAction SEBELUM Change Sprite tetap jalan setiap fire.)");
+
+        bool needKey = trig.RequireInteractKey;
+        if (ImGui.Checkbox("Perlu tekan tombol (interact)", ref needKey)) trig.RequireInteractKey = needKey;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("ON: masuk area hanya meng-ARM trigger (badge [E] muncul seperti portal);\ntrigger FIRE saat pemain di dalam area menekan tombolnya. Cocok untuk chest:\njalan menembus area TIDAK otomatis membuka. On Enter harus tetap dicentang.");
+        if (trig.RequireInteractKey)
+        {
+            string keyBuf = trig.InteractKey;
+            ImGui.SetNextItemWidth(70);
+            if (ImGui.InputText("Tombol##ikey", ref keyBuf, 16))
+                trig.InteractKey = keyBuf.Trim();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Nama ImGuiKey (default: E). Hanya tombol pertama yang dipakai runtime.");
+            ImGui.SameLine();
+            ImGui.TextDisabled("(default: E)");
+        }
+
+        // ── Item-key lock (kondisi awal): chest terkunci sampai player punya itemnya ──
+        string reqItem = trig.RequireItemId;
+        if (ImGui.InputText("Butuh Item (kunci)##reqitem", ref reqItem, 64))
+            trig.RequireItemId = reqItem.Trim();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Item ID yang HARUS ada di inventory sebelum trigger boleh jalan\n(chest terkunci). Kosong = tidak terkunci. Contoh: 'key_gold'.");
+        var reqDef = Visual.InventorySystem.Find(trig.RequireItemId);
+        if (!string.IsNullOrWhiteSpace(trig.RequireItemId))
+        {
+            if (reqDef != null)
+                ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {reqDef.Name} required");
+            else
+                ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"? '{trig.RequireItemId}' belum terdaftar (Item Editor)");
+            string reqMsg = trig.RequireItemMessage;
+            if (ImGui.InputText("Pesan Terkunci##reqmsg", ref reqMsg, 96))
+                trig.RequireItemMessage = reqMsg;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Pesan flash HUD saat player mencoba buka tanpa kunci.\nKosongkan untuk tanpa pesan (hanya log console).");
+        }
+
         ImGui.SeparatorText($"Actions ({trig.Actions.Count})");
         for (int a = 0; a < trig.Actions.Count; a++)
         {
@@ -1757,13 +1798,76 @@ public class MapEditorPanel
                     break;
                 }
                 case TriggerActionTypes.GiveItem:
-                    if (ImGui.InputText("Item ID", ref p1, 64)) act.Param = p1;
-                    if (ImGui.InputText("Amount", ref p2, 32)) act.Param2 = p2;
-                    ImGui.TextDisabled("Item harus terdaftar di InventorySystem.Items\n(fase 2: editor item catalog + grid UI).");
+                {
+                    if (ImGui.InputText("Item ID##giveitem", ref p1, 64)) act.Param = p1;
+                    if (ImGui.InputText("Amount##giveamt", ref p2, 32)) act.Param2 = p2;
+                    // Delivery mode: Direct = langsung masuk inventory; Drop = spawn
+                    // world loot yang tersedot magnet ke player (animasi vacuum).
+                    bool asDrop = (act.Param3 ?? "").Trim().Equals("Drop", StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Checkbox("Drop (Magnet)##givedrop", ref asDrop))
+                        act.Param3 = asDrop ? "Drop" : "";
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Drop: item muncul di dunia di dekat player lalu tersedot otomatis\ndengan animasi magnet (pickup klasik). Direct: langsung masuk inventory.");
+                    var def = Visual.InventorySystem.Find(p1.Trim());
+                    if (def != null)
+                        ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {def.Name} (max stack {def.MaxStack})");
+                    else
+                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor.");
                     break;
+                }
+                case TriggerActionTypes.ChangeSprite:
+                {
+                    if (ImGui.InputText("Object Name##csobj", ref p1, 64)) act.Param = p1;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Nama objek di Hierarchy (Sprite2D/Player2D) yang spritenya diganti.\nKosong = objek terdekat dari trigger (chest di dalam area trigger-nya).");
+                    // List objek yang tersedia supaya tidak salah ketik nama.
+                    if (_bridge.EditorObjectManager != null)
+                    {
+                        foreach (var o in _bridge.EditorObjectManager.Objects)
+                        {
+                            if (o is not { IsVisible: true } ||
+                                (o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Sprite2D
+                                 && o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Player2D)) continue;
+                            ImGui.SameLine();
+                            if (ImGui.SmallButton($"{o.Name}##cs{a}"))
+                                act.Param = o.Name;
+                        }
+                    }
+                    if (ImGui.InputText("New Sheet|Clip##csart", ref p2, 160)) act.Param2 = p2;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Format 'Sheet|Clip' — nama di Sprite Editor. Contoh: 'chest|open'.\nIni mengganti BASE sprite objek (chest tertutup → terbuka), bukan sekadar\nmemutar animasi: art-nya MENEMPEL sampai action 'Revert' dijalankan.");
+                    var (csSheetName, csClipName) = MapEditorTriggerHelpers.SplitPipe(act.Param2);
+                    if (!string.IsNullOrWhiteSpace(csSheetName))
+                    {
+                        var csClips = IDEBridge.GetClipNames(csSheetName.Trim());
+                        if (csClips.Count > 0)
+                        {
+                            ImGui.SetNextItemWidth(170);
+                            if (ImGui.BeginCombo("Pick Clip##cspick", string.IsNullOrWhiteSpace(csClipName) ? "<pick clip>" : csClipName))
+                            {
+                                foreach (var cn in csClips)
+                                    if (ImGui.Selectable(cn, cn == csClipName))
+                                        act.Param2 = $"{csSheetName.Trim()}|{cn}";
+                                ImGui.EndCombo();
+                            }
+                        }
+                        else
+                            ImGui.TextDisabled($"Sheet '{csSheetName.Trim()}' tidak ada / belum punya clip (cek Sprite Editor).");
+                    }
+                    // Mode: Swap (default) / Revert.
+                    bool csRevert = (act.Param3 ?? "").Trim().Equals("Revert", StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Checkbox("Revert (kembalikan sprite awal)##csrev", ref csRevert))
+                        act.Param3 = csRevert ? "Revert" : "";
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Off = Swap: ganti base sprite ke Sheet|Clip (chest tertutup → terbuka).\nOn = Revert: kembalikan art yang objek punya SEBELUM di-swap (tutup chest lagi).");
+                    ImGui.TextDisabled("Chest: OnEnter + [Change Sprite Swap] → [Give Item Drop].\nCentang 'Skip When Done' supaya masuk kedua kali tidak drop item lagi.");
+                    break;
+                }
                 default:
                     if (ImGui.InputText("Param", ref p1, 256)) act.Param = p1;
                     if (ImGui.InputText("Param 2", ref p2, 256)) act.Param2 = p2;
+                    string p3 = act.Param3;
+                    if (ImGui.InputText("Param 3", ref p3, 256)) act.Param3 = p3;
                     break;
             }
 
@@ -2831,4 +2935,16 @@ public class ParallaxLayerData
     public int RepeatY { get; set; }
     public float LeftPx { get; set; }
     public float TopPx { get; set; }
+}
+
+/// <summary>Helper utilities for trigger action parameter parsing.</summary>
+internal static partial class MapEditorTriggerHelpers
+{
+    /// <summary>Split "Sheet|Clip" into its two trimmed parts (missing part = "").</summary>
+    public static (string Left, string Right) SplitPipe(string? raw)
+    {
+        var parts = (raw ?? "").Split('|');
+        return (parts.Length > 0 ? parts[0].Trim() : "",
+                parts.Length > 1 ? parts[1].Trim() : "");
+    }
 }

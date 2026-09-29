@@ -195,12 +195,19 @@ public static class TriggerEventSystem
                       && pMaxY > worldBottom && pMinY < worldTop;
             }
 
+            // Interact-key mode: the key EDGE while the player stands INSIDE — probed
+            // per trigger so each zone can bind its own key (default E).
+            bool interactPressed = trigger.RequireInteractKey && inside
+                ? (PortalKeyProbe?.Invoke(string.IsNullOrWhiteSpace(trigger.InteractKey) ? "E" : trigger.InteractKey) ?? false)
+                : false;
+
             bool fired = false;
 
             if (wasInside && !inside)
             {
                 // ── On Exit ──
                 trigger.RuntimePlayerInside = false;
+                trigger.RuntimeInteractArmed = false;
                 if (trigger.IsEnabled && trigger.OnExit && trigger.RuntimeCooldown <= 0f)
                 {
                     Fire(trigger, "OnExit");
@@ -236,8 +243,18 @@ public static class TriggerEventSystem
                         bool gateOk = !trigger.RequireMovingRight || playerVelX > 0.1f;
                         if (gateOk)
                         {
-                            Fire(trigger, "OnEnter");
-                            fired = true;
+                            if (trigger.RequireInteractKey)
+                            {
+                                // Interact-key mode: OnEnter only ARMS the zone — the
+                                // actual fire happens below on the key press (chest /
+                                // NPC-style interaction, no auto-fire on walk-through).
+                                trigger.RuntimeInteractArmed = true;
+                            }
+                            else
+                            {
+                                Fire(trigger, "OnEnter");
+                                fired = true;
+                            }
                         }
                     }
                 }
@@ -268,6 +285,17 @@ public static class TriggerEventSystem
                 }
             }
 
+            // ── Interact-key fire: armed (player inside) + key EDGE → execute the
+            // action list. Independent of the portal machinery (RuntimeApplied guard
+            // still applies: an open chest does not re-fire its post-swap actions).
+            if (interactPressed && trigger.RuntimeInteractArmed
+                && trigger.IsEnabled && trigger.RuntimeCooldown <= 0f)
+            {
+                trigger.RuntimeInteractArmed = false;
+                Fire(trigger, $"Interact ({trigger.InteractKey})");
+                fired = true;
+            }
+
             // ── Portal state machine: button-mode fire + animation clock advance ──
             TickPortalState(trigger, inside, enterKeyPressed, dt);
 
@@ -291,6 +319,9 @@ public static class TriggerEventSystem
             t.RuntimePortalPhase = "idle";
             t.RuntimePortalClock = 0f;
             t.RuntimePortalWasInside = false;
+            t.RuntimeApplied = false; // chest guard: fresh session starts closed
+            t.RuntimeTargetName = "";
+            t.RuntimeInteractArmed = false; // interact-key zones re-arm on next entry
         }
     }
 
@@ -414,12 +445,49 @@ public static class TriggerEventSystem
 
     }
 
+    /// <summary>Execute one trigger's action list with the SIMPLE SKIP GUARD: the
+    /// first Change Sprite action is always applied (idempotent), and while the
+    /// trigger's "open" state stands (SkipWhenDone = true), every action AFTER it is
+    /// skipped — the chest pattern: an open chest plays no open-anim again and does
+    /// NOT drop its item a second time. Delayed actions keep queuing normally (the
+    /// guard re-checks at execution time, after the delay elapses).</summary>
     private static void Fire(TilemapTriggerArea trigger, string condition)
     {
+        // ── Item-key lock (kondisi AWAL): player must carry the required item or
+        // NOTHING happens — every fire path (auto-enter, interact key, stay) is
+        // rejected here before any action runs. The chest stays closed and the
+        // "locked" flash tells the player why.
+        if (!string.IsNullOrWhiteSpace(trigger.RequireItemId))
+        {
+            string needId = trigger.RequireItemId.Trim();
+            if (InventorySystem.Count(needId) <= 0)
+            {
+                if (!string.IsNullOrWhiteSpace(trigger.RequireItemMessage))
+                    InventoryHud.PushFlash(trigger.RequireItemMessage);
+                Console.WriteLine($"[Trigger] '{trigger.Name}' → BLOCKED by item lock: '{needId}' not in inventory");
+                return;
+            }
+        }
         Console.WriteLine($"[Trigger] '{trigger.Name}' fired ({condition}) — {trigger.Actions.Count} action(s)");
+        bool skipping = trigger.SkipWhenDone && trigger.RuntimeApplied;
         foreach (var action in trigger.Actions)
         {
             if (action == null) continue;
+            if (action.Type == TriggerActionTypes.ChangeSprite)
+            {
+                // Apply unconditionally (the swap itself is idempotent), then arm the
+                // guard so the remaining actions of THIS fire are skipped.
+                ExecuteAction(action, trigger.Name, trigger);
+                trigger.RuntimeApplied = true;
+                skipping = trigger.SkipWhenDone; // first fire: keep executing this list
+                continue;
+            }
+            if (skipping)
+            {
+                Console.WriteLine($"[Trigger] '{trigger.Name}' → skipped '{action.Type}' (state already applied)");
+                continue;
+                // Actions BEFORE the first Change Sprite always run (dialogue, sound…).
+            }
             if (action.Delay > 0f)
             {
                 // Delayed actions queue onto the runtime state; executed by TickDelayed.
@@ -935,10 +1003,47 @@ public static class TriggerEventSystem
                 break;
             }
 
+            case TriggerActionTypes.ChangeSprite:
+            {
+                // Sprite state swap (chest closed → open): Param = object NAME (empty =
+                // nearest Player2D), Param2 = "Sheet|Clip" (Sprite Editor registry),
+                // Param3 = "Swap" (default) / "Revert". The state lives ON the object;
+                // the trigger's RuntimeApplied flag (set by Fire) gates the skip guard.
+                string objName = (action.Param ?? "").Trim();
+                string swapRaw = (action.Param2 ?? "").Trim();
+                bool revert = (action.Param3 ?? "").Trim().Equals("Revert", StringComparison.OrdinalIgnoreCase);
+                var target = FindTriggerTarget(LastEditorObjectManager, objName, trigger);
+                if (target == null)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite FAILED: object '{objName}' not found (use the Hierarchy object name, empty = nearest player)");
+                    break;
+                }
+                if (revert)
+                {
+                    target.ClearSpriteStateOverride();
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite REVERT on '{target.Name}'");
+                    break;
+                }
+                var parts = swapRaw.Split('|');
+                string swSheet = parts.Length > 0 ? parts[0].Trim() : "";
+                string swClip = parts.Length > 1 ? parts[1].Trim() : "";
+                if (swSheet.Length == 0 || swClip.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite FAILED: Param2 must be 'Sheet|Clip' (Sprite Editor names)");
+                    break;
+                }
+                target.SetSpriteStateOverride(swSheet, swClip, triggerName);
+                if (trigger != null) trigger.RuntimeTargetName = target.Name;
+                Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite '{target.Name}' → '{swSheet}|{swClip}'");
+                break;
+            }
+
             case TriggerActionTypes.GiveItem:
             {
-                // Inventory phase 1: Param = item id (Inventory.AddItem), Param2 = amount
-                // (default 1). Equips nothing — just deposits into the player's inventory.
+                // Inventory phase 1: Param = item id, Param2 = amount (default 1),
+                // Param3 = delivery mode: empty/"Direct" → straight into the inventory
+                // (legacy), "Drop" → spawn a world loot drop that magnet-vacuums into
+                // the player (chest smash / enemy drop feel). Equips nothing.
                 string itemId = (action.Param ?? "").Trim();
                 if (itemId.Length == 0)
                 {
@@ -949,8 +1054,21 @@ public static class TriggerEventSystem
                 if (!string.IsNullOrWhiteSpace(action.Param2))
                     int.TryParse(action.Param2.Trim(), out amount);
                 if (amount <= 0) amount = 1;
+                string mode = (action.Param3 ?? "").Trim();
+                if (mode.Equals("Drop", StringComparison.OrdinalIgnoreCase))
+                {
+                    // World drop at the player's feet: the magnet tick (Player2DSystem
+                    // → InventorySystem.TickDrops) pulls it in with the vacuum animation.
+                    InventorySystem.SpawnDrop(itemId, amount,
+                        InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 0.6f);
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Give Item '{itemId}' ×{amount} → world drop (magnet pickup)");
+                    break;
+                }
                 int added = InventorySystem.AddItem(itemId, amount);
                 Console.WriteLine($"[Trigger] '{triggerName}' → Give Item '{itemId}' ×{amount} → added {added}");
+                if (added > 0)
+                    Effect2DSystem.SpawnBurst("Sparks",
+                        new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
                 break;
             }
 
@@ -962,6 +1080,50 @@ public static class TriggerEventSystem
                 break;
             }
         }
+    }
+
+    /// <summary>Resolve a Change Sprite target object: exact visible match by NAME
+    /// first (Hierarchy name), otherwise the NEAREST visible Player2D/Sprite2D to the
+    /// firing trigger's center (chest art usually sits inside its trigger volume).</summary>
+    private static DarkEngine3D_gl_csharp.Engine.Objects.EditorObject? FindTriggerTarget(
+        DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? mgr, string objName,
+        TilemapTriggerArea? trigger)
+    {
+        if (mgr == null) return null;
+        if (objName.Length > 0)
+        {
+            foreach (var o in mgr.Objects)
+                if (o is { IsVisible: true } && string.Equals(o.Name, objName, StringComparison.OrdinalIgnoreCase))
+                    return o;
+            return null;
+        }
+        // Nearest swap-capable object to the trigger center (world units).
+        float cx = 0f, cy = 0f; bool hasCenter = false;
+        if (trigger != null && _activeMap != null)
+        {
+            float cell = _activeMap.TileSize * Tilemap2D.WorldScale;
+            cx = (trigger.LeftPx + trigger.WidthPx * 0.5f) * Tilemap2D.WorldScale;
+            cy = _activeMap.Height * cell - (trigger.TopPx + trigger.HeightPx * 0.5f) * Tilemap2D.WorldScale;
+            hasCenter = true;
+        }
+        DarkEngine3D_gl_csharp.Engine.Objects.EditorObject? best = null;
+        float bestDist = float.MaxValue;
+        foreach (var o in mgr.Objects)
+        {
+            if (o is not { IsVisible: true } ||
+                (o.PrimitiveType != DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Player2D
+                 && o.PrimitiveType != DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Sprite2D))
+                continue;
+            float d = hasCenter
+                ? (o.Position.X - cx) * (o.Position.X - cx) + (o.Position.Y - cy) * (o.Position.Y - cy)
+                : 0f; // no center known: take the first candidate (player-first order below)
+            // Prefer Player2D on distance ties (the legacy "change the player" case).
+            if (o.PrimitiveType == DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Player2D)
+                d -= 0.01f;
+            if (best == null || d < bestDist) { best = o; bestDist = d; }
+            if (!hasCenter) break;
+        }
+        return best;
     }
 
     /// <summary>Last known player position, refreshed each Update so action handlers
@@ -1009,12 +1171,18 @@ public static class TriggerEventSystem
         CheckpointPosition = null;
         Player2DStats.ResetToDefaults(); // fresh session → default HP/MP/Level/EXP/Fitness
         DialogueSystem.ResetSession();   // fresh session → no flags/vars/progress/bubbles
-        InventorySystem.ResetSession();  // fresh session → empty player bag
+        InventorySystem.ResetSession();  // fresh session → empty grid/bag/gold
+        InventorySystem.SnapshotBaseStats(); // base maxima BEFORE equipment bonuses
         // Fresh session → clear weather + particles (rain/wind don't leak between runs).
         Effect2DSystem.RainEnabled = false;
         Effect2DSystem.WindX = 0f;
         Effect2DSystem.Clear();
         Projectile2DSystem.Clear();   // fresh session → no leftover projectiles / enemy HP
+        InventorySystem.ClearDrops(); // fresh session → no leftover world loot
+        // Fresh session → chest/lever sprite overrides reset (new session = closed).
+        if (LastEditorObjectManager != null)
+            foreach (var o in LastEditorObjectManager.Objects)
+                o?.ClearSpriteStateOverride();
     }
 
     /// <summary>Find the first visible Player2D object in the editor scene (used to
@@ -1071,6 +1239,28 @@ public static class TriggerEventSystem
                 bool hasPortal = t.Actions.Any(a => a != null &&
                     (a.Type == TriggerActionTypes.Portal || a.Type == TriggerActionTypes.PortalOneWay));
                 if (!hasPortal) continue;
+                yield return (t, map);
+            }
+        }
+    }
+
+    /// <summary>Every ARMED interact-key zone (player inside, waiting for the key
+    /// press) — the "[E]" badge renderers iterate this so the hint shows above the    /// zone during gameplay. Interact-key mode is the chest/NPC-style trigger.</summary>
+    public static IEnumerable<(TilemapTriggerArea Area, Tilemap2D Map)> InteractKeyZones(
+        DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? manager)
+    {
+        if (manager == null) yield break;
+        var maps = manager.Objects
+            .Where(o => o is { IsVisible: true, PrimitiveType: DarkEngine3D_gl_csharp.Engine.Objects.EditorPrimitiveType.Map2D })
+            .Select(o => o.Map2dTilemap)
+            .OfType<Tilemap2D>()
+            .Distinct();
+        foreach (var map in maps)
+        {
+            foreach (var t in map.TriggerAreas)
+            {
+                if (t == null || !t.IsEnabled || t.RuntimeHidden) continue;
+                if (!t.RequireInteractKey || !t.RuntimeInteractArmed) continue;
                 yield return (t, map);
             }
         }

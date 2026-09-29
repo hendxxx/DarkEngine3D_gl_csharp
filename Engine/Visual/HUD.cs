@@ -96,6 +96,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Queued image draw commands. Flushed by Flush().</summary>
         private readonly List<(float x, float y, float w, float h, uint texId, float rotation)> _imageQueue = [];
 
+        /// <summary>Queued SUB-RECT image commands (icon crops). Flushed by Flush().</summary>
+        private readonly List<(float x, float y, float w, float h, uint texId, float u0, float v0, float u1, float v1)> _imageUvQueue = [];
+
         // ════════════════════════════════════════════
         //  CONSTRUCTOR
         // ════════════════════════════════════════════
@@ -374,6 +377,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _imageQueue.Add((x, y, w, h, finalTex, rotation));
         }
 
+        /// <summary>Queue an image draw with a SUB-RECT of the texture. UVs in
+        /// HUD texture space: v grows DOWNWARD (v=0 = TOP row of the image — HUD
+        /// textures upload top-row-first), so uvV0 = top edge, uvV1 = bottom edge of
+        /// the crop. This is how inventory icons crop a cell out of a sheet.</summary>
+        public void DrawImageUV(float x, float y, float w, float h, uint textureId,
+            float uvU0, float uvV0, float uvU1, float uvV1)
+        {
+            if (textureId == 0) return;
+            _imageUvQueue.Add((x, y, w, h, textureId, uvU0, uvV0, uvU1, uvV1));
+        }
+
         // ════════════════════════════════════════════
         //  FLUSH — render all queued batches
         // ════════════════════════════════════════════
@@ -550,6 +564,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 }
             }
 
+            // ── 4. SUB-RECT IMAGES: one draw per icon (uvOffset shifts the quad's UVs
+            // into the sheet cell — grouping by uv would defeat the point, but icon
+            // counts per frame are small, tens at most). ──
+            if (_imageUvQueue.Count > 0)
+            {
+                var whiteColor = new Vector3(1, 1, 1);
+                foreach (var (ix, iy, iw, ih, texId, u0, v0, u1, v1) in _imageUvQueue)
+                {
+                    float x0 = (ix / w) * 2.0f - 1.0f;
+                    float y0 = 1.0f - (iy / h) * 2.0f;
+                    float x1 = ((ix + iw) / w) * 2.0f - 1.0f;
+                    float y1 = 1.0f - ((iy + ih) / h) * 2.0f;
+
+                    // IMAGE-mode corner UVs (0/1) OFFSET into the sub-rect.
+                    var verts = new List<float>(24)
+                    {
+                        x0, y0, u0, v0,
+                        x1, y1, u1, v1,
+                        x0, y1, u0, v1,
+                        x0, y0, u0, v0,
+                        x1, y0, u1, v0,
+                        x1, y1, u1, v1,
+                    };
+                    UploadAndDraw(verts, whiteColor, new Vector3(2, 0, 0), texId, stride, 0f);
+                }
+            }
+
             // Restore standard 3D rendering state: cull back faces, CCW winding order.
             // Note: using explicit GL calls ensures a clean restore regardless of any
             // prior state corruption (e.g., from other subsystems).
@@ -563,6 +604,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _boxQueue.Clear();
             _textQueue.Clear();
             _imageQueue.Clear();
+            _imageUvQueue.Clear();
         }
 
         /// <summary>Upload vertex data and issue a single draw call.</summary>
@@ -867,7 +909,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public int FontSlotCount => _fontSlots.Count;
 
         /// <summary>Total queued items (boxes+text+images) — diagnostics.</summary>
-        public int QueuedItemCount => _boxQueue.Count + _textQueue.Count + _imageQueue.Count;
+        public int QueuedItemCount => _boxQueue.Count + _textQueue.Count + _imageQueue.Count + _imageUvQueue.Count;
 
         /// <summary>The (font,size) pair this HUD was CONSTRUCTED with → always slot 0.
         /// Slot 0 is baked by the constructor before the render loop (clean GL state) and
