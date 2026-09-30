@@ -255,6 +255,16 @@ public unsafe class EditorObject
     /// the text "!" indicator — quest marks, alert icons, any exclamation art.
     /// Empty = the default text "!" bubble is drawn. Persisted with the NPC binding.</summary>
     public string NpcAlertImagePath { get; set; } = "";
+    /// <summary>Display name drawn above the NPC's [E] interaction badge. Empty = the
+    /// object's Hierarchy name is shown. Persisted with the NPC binding.</summary>
+    public string NpcDisplayName { get; set; } = "";
+    /// <summary>Interaction badge text size in screen px. 0 = engine default (15).
+    /// Also scales the alert image (×2, so the 15px default matches the old 30px icon).
+    /// Persisted with the NPC binding.</summary>
+    public float NpcBadgeSize { get; set; } = 0f;
+    /// <summary>Badge lift: how far above the head anchor the [E] badge floats, in
+    /// world units. 0 = engine default (0.5). Persisted with the NPC binding.</summary>
+    public float NpcBadgeLift { get; set; } = 0f;
 
     // ── Player2D: sprite animation + capsule collider ──
     /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>

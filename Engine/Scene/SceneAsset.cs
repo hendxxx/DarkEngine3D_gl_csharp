@@ -209,6 +209,13 @@ public class EditorObjectData
     /// <summary>Optional alert/exclamation image drawn above the NPC instead of the
     /// text "!" bubble. Empty = default text marker. Persisted per object.</summary>
     public string NpcAlertImagePath { get; set; } = "";
+    /// <summary>Display name above the NPC's [E] badge (empty = Hierarchy name).</summary>
+    public string NpcDisplayName { get; set; } = "";
+    /// <summary>Badge text size in screen px (0 = engine default 15; also scales the
+    /// alert image ×2). Persisted per object.</summary>
+    public float NpcBadgeSize { get; set; } = 0f;
+    /// <summary>Badge lift above the head anchor in world units (0 = default 0.5).</summary>
+    public float NpcBadgeLift { get; set; } = 0f;
 
     // ── Player2D (animated sprite + capsule collider) ──
     public string Player2DSpriteSheet { get; set; } = "";

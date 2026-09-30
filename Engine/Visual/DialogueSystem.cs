@@ -400,6 +400,12 @@ public static unsafe class DialogueSystem
         return obj.Player2DHeight + 0.25f;
     }
 
+    // ── NPC interaction badge defaults (per-NPC overrides: NpcBadgeSize/NpcBadgeLift) ──
+    /// <summary>Badge text size in screen px when the NPC doesn't override it.</summary>
+    internal const float DefaultNpcBadgeSize = 15f;
+    /// <summary>Badge lift above the head anchor (world units) when the NPC doesn't override it.</summary>
+    internal const float DefaultNpcBadgeLift = 0.5f;
+
     // ════════════════════════════════════════════
     //  INPUT + NPC INTERACTION (call from update)
     // ════════════════════════════════════════════
@@ -692,11 +698,19 @@ public static unsafe class DialogueSystem
     private static void DrawInteractPrompt(HUD hud, EditorObject npc, int w, int h)
     {
         var theme = DialogueLibrary.GetTheme("Default");
+        float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift;
         var sp = Project(new Vector3(npc.Position.X,
-            npc.Position.Y + BubbleHeadHeight(npc) + 0.5f, npc.Position.Z), w, h);
+            npc.Position.Y + BubbleHeadHeight(npc) + lift, npc.Position.Z), w, h);
         string label = "[E] Talk";
         int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
         var ext = hud.GetTextExtents(label);
+        // Display name line above the key badge (per-NPC, empty = Hierarchy name).
+        // HUD text has no per-size atlas (extra sizes land on the primary bake), so the
+        // badge keeps its default size here — the ImGui overlay scales with NpcBadgeSize.
+        string disp = string.IsNullOrWhiteSpace(npc.NpcDisplayName) ? npc.Name : npc.NpcDisplayName;
+        var nameExt = hud.GetTextExtents(disp, slot);
+        hud.DrawText(disp, sp.X - nameExt.Width * 0.5f, sp.Y - 2f - nameExt.Height,
+            new Vector3(1f, 1f, 1f), new Vector3(0f, 0f, 0f), 1.2f);
         hud.DrawText(label, sp.X - ext.Width * 0.5f, sp.Y, new Vector3(1f, 0.95f, 0.6f),
             new Vector3(0f, 0f, 0f), 1.5f);
     }
@@ -707,8 +721,10 @@ public static unsafe class DialogueSystem
     private static void DrawNpcIndicator(HUD hud, EditorObject npc, DialogueThemeData theme, int w, int h)
     {
         float bob = MathF.Sin(_time * 3f + npc.Position.X * 0.7f) * 3f;
+        // Indicator anchors just below the [E] badge anchor (same lift − 0.05).
+        float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift - 0.05f : 0.45f;
         var sp = Project(new Vector3(npc.Position.X,
-            npc.Position.Y + BubbleHeadHeight(npc) + 0.45f, npc.Position.Z), w, h);
+            npc.Position.Y + BubbleHeadHeight(npc) + lift, npc.Position.Z), w, h);
 
         // Custom alert IMAGE (dragged from the Asset Browser in the Inspector) replaces
         // the text "!" bubble entirely — quest marks, alert icons, any exclamation art.
@@ -717,7 +733,9 @@ public static unsafe class DialogueSystem
             uint tex = GetTexture(npc.NpcAlertImagePath);
             if (tex != 0)
             {
-                const float size = 30f;
+                // Alert image scales with the badge size (×2 — the 15px default matches
+                // the historical 30px icon).
+                float size = (npc.NpcBadgeSize > 0f ? npc.NpcBadgeSize : DefaultNpcBadgeSize) * 2f;
                 float ix = sp.X - size * 0.5f;
                 float iy = sp.Y - size + bob; // bottom-center anchored above the head
                 hud.DrawImage(ix, iy, size, size, tex);
@@ -950,24 +968,40 @@ public static unsafe class DialogueSystem
         float TextW(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).X;
         float TextH(string s) => f.CalcTextSizeA(fs, float.MaxValue, 0f, s).Y;
         void Text(string s, Vector2 pos, uint col) => dl.AddText(f, fs, pos, col, s);
+        // Size-parameterized variants — the NPC badge scales per-NPC (NpcBadgeSize) while
+        // portal/trigger-zone badges keep the base font size.
+        float TextWS(string s, float size) => f.CalcTextSizeA(size, float.MaxValue, 0f, s).X;
+        float TextHS(string s, float size) => f.CalcTextSizeA(size, float.MaxValue, 0f, s).Y;
+        void TextS(string s, Vector2 pos, uint col, float size) => dl.AddText(f, size, pos, col, s);
 
         // Key badge ("[E]") above portals + interact-key zones: dark plate + amber
-        // border + key label, world-anchored via Project → sceneToScreen.
+        // border + key label, world-anchored via Project → sceneToScreen. badgeFs ≤ 0 =
+        // the base font size; dispName (optional) draws a white name line above the plate.
         void DrawKeyBadge(ImDrawListPtr dl2, Func<Vector2, Vector2> s2s,
             Func<Vector3, int, int, Vector2> proj, int vw, int vh, float z,
             float worldX, float worldY, string keyLabel,
-            Func<string, float> w_fn, Func<string, float> h_fn)
+            Func<string, float, float> w_fn, Func<string, float, float> h_fn,
+            float badgeFs = 0f, string dispName = null)
         {
             var top = proj(new Vector3(worldX, worldY, z), vw, vh);
             var scrP = s2s(new Vector2(top.X, top.Y));
+            float textFs = badgeFs > 0f ? badgeFs : fs;
             string label = $"[{keyLabel}]";
-            float lw = w_fn(label), lh = h_fn(label);
+            float lw = TextWS(label, textFs), lh = TextHS(label, textFs);
             float padX = 6f, padY = 4f;
             dl2.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX - 1f, scrP.Y - lh - padY * 2 - 1f),
                 new Vector2(scrP.X + lw / 2 + padX + 1f, scrP.Y + 1f), Rgba(new Vector3(1f, 0.85f, 0.25f), 0.85f));
             dl2.AddRectFilled(new Vector2(scrP.X - lw / 2 - padX, scrP.Y - lh - padY * 2),
                 new Vector2(scrP.X + lw / 2 + padX, scrP.Y), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.85f));
-            Text(label, new Vector2(scrP.X - lw / 2, scrP.Y - lh - padY), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+            TextS(label, new Vector2(scrP.X - lw / 2, scrP.Y - lh - padY), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f), textFs);
+            // Name line above the badge (white, same size as the key label).
+            if (!string.IsNullOrWhiteSpace(dispName))
+            {
+                float nw = TextWS(dispName, textFs), nh = TextHS(dispName, textFs);
+                dl2.AddRectFilled(new Vector2(scrP.X - nw / 2 - padX, scrP.Y - lh - padY * 2 - nh - 2f),
+                    new Vector2(scrP.X + nw / 2 + padX, scrP.Y - lh - padY * 2 - 2f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.6f));
+                TextS(dispName, new Vector2(scrP.X - nw / 2, scrP.Y - lh - padY * 2 - nh - 2f), Rgba(new Vector3(1f, 1f, 1f), 0.95f), textFs);
+            }
         }
 
         var defTheme = DialogueLibrary.GetTheme("Default");
@@ -1054,7 +1088,7 @@ public static unsafe class DialogueSystem
                     if (key.Length == 0) key = "E";
                     DrawKeyBadge(dl, sceneToScreen, Project, w, h, player.Position.Z,
                         (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
-                        cy + 0.45f, key, TextW, TextH);
+                        cy + 0.45f, key, (s, _) => TextW(s), (s, _) => TextH(s));
                 }
             }
         }
@@ -1077,7 +1111,7 @@ public static unsafe class DialogueSystem
                     if (key.Length == 0) key = "E";
                     DrawKeyBadge(dl, sceneToScreen, Project, w, h, player.Position.Z,
                         (area.LeftPx + area.WidthPx * 0.5f) * Tilemap2D.WorldScale,
-                        cy + 0.45f, key, TextW, TextH);
+                        cy + 0.45f, key, (s, _) => TextW(s), (s, _) => TextH(s));
                 }
             }
         }
@@ -1091,7 +1125,9 @@ public static unsafe class DialogueSystem
                 if (Active != null || obj == InteractableNpc) continue;
 
                 float bob = MathF.Sin(_time * 3f + obj.Position.X * 0.7f) * 3f;
-                var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BubbleHeadHeight(obj) + 0.45f, obj.Position.Z), w, h);
+                // Same lift as the HUD indicator (NpcBadgeLift − 0.05).
+                float oLift = obj.NpcBadgeLift > 0f ? obj.NpcBadgeLift - 0.05f : 0.45f;
+                var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BubbleHeadHeight(obj) + oLift, obj.Position.Z), w, h);
                 var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
 
                 // Custom alert IMAGE (Inspector drag-drop) replaces the text "!" bubble.
@@ -1100,7 +1136,7 @@ public static unsafe class DialogueSystem
                     uint alertTex = GetTexture(obj.NpcAlertImagePath);
                     if (alertTex != 0)
                     {
-                        const float size = 30f;
+                        float size = (obj.NpcBadgeSize > 0f ? obj.NpcBadgeSize : DefaultNpcBadgeSize) * 2f;
                         var amin = sceneToScreen(new Vector2(head.X - size * 0.5f, head.Y + bob - size));
                         var amax = sceneToScreen(new Vector2(head.X + size * 0.5f, head.Y + bob));
                         // sceneToScreen is pixel-space → DON'T scene-scale again here.
@@ -1122,15 +1158,36 @@ public static unsafe class DialogueSystem
 
             if (Active == null && InteractableNpc != null)
             {
+                float iLift = InteractableNpc.NpcBadgeLift > 0f ? InteractableNpc.NpcBadgeLift : DefaultNpcBadgeLift;
                 var head = Project(new Vector3(InteractableNpc.Position.X,
-                    InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + 0.5f, InteractableNpc.Position.Z), w, h);
+                    InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + iLift, InteractableNpc.Position.Z), w, h);
                 var scr = sceneToScreen(head);
-                string label = "[E] Talk";
-                float lw = TextW(label);
-                // Dark plate behind the prompt so it reads over any background.
-                dl.AddRectFilled(new Vector2(scr.X - lw / 2 - 5f, scr.Y - 2f),
-                    new Vector2(scr.X + lw / 2 + 5f, scr.Y + TextH(label) + 2f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.75f));
-                Text(label, new Vector2(scr.X - lw / 2, scr.Y), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+                float badgeFs = InteractableNpc.NpcBadgeSize > 0f ? InteractableNpc.NpcBadgeSize : 0f;
+                string disp = string.IsNullOrWhiteSpace(InteractableNpc.NpcDisplayName)
+                    ? InteractableNpc.Name : InteractableNpc.NpcDisplayName;
+                if (badgeFs > 0f)
+                {
+                    // Per-NPC size: reuse the key-badge plate (name line included) with
+                    // the viewport's own scene→screen mapping.
+                    DrawKeyBadge(dl, sceneToScreen, Project, w, h, InteractableNpc.Position.Z,
+                        InteractableNpc.Position.X,
+                        InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + iLift,
+                        "E", (s, sz) => TextWS(s, sz), (s, sz) => TextHS(s, sz), badgeFs, disp);
+                }
+                else
+                {
+                    // Default look — [E] plate + white name line above it.
+                    string label = "[E] Talk";
+                    float lw = TextW(label);
+                    float lh = TextH(label);
+                    dl.AddRectFilled(new Vector2(scr.X - lw / 2 - 5f, scr.Y - 2f),
+                        new Vector2(scr.X + lw / 2 + 5f, scr.Y + lh + 2f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.75f));
+                    Text(label, new Vector2(scr.X - lw / 2, scr.Y), Rgba(new Vector3(1f, 0.95f, 0.6f), 1f));
+                    float nw = TextW(disp), nh = TextH(disp);
+                    dl.AddRectFilled(new Vector2(scr.X - nw / 2 - 5f, scr.Y - nh - 6f),
+                        new Vector2(scr.X + nw / 2 + 5f, scr.Y - 3f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.6f));
+                    Text(disp, new Vector2(scr.X - nw / 2, scr.Y - nh - 6f), Rgba(new Vector3(1f, 1f, 1f), 0.95f));
+                }
             }
         }
 

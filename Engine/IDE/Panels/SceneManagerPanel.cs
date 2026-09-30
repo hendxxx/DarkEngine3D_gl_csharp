@@ -948,6 +948,9 @@ public class SceneManagerPanel
                         Player2DAnimationClip = obj.Player2DAnimationClip,
                         NpcDialogueId = obj.NpcDialogueId,
                         NpcAlertImagePath = PathHelpers.MakeRelative(obj.NpcAlertImagePath),
+                        NpcDisplayName = obj.NpcDisplayName,
+                        NpcBadgeSize = obj.NpcBadgeSize,
+                        NpcBadgeLift = obj.NpcBadgeLift,
                         Player2DHeight = obj.Player2DHeight,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
@@ -1558,6 +1561,9 @@ public class SceneManagerPanel
                         obj.Player2DAnimationClip = objData.Player2DAnimationClip;
                         obj.NpcDialogueId = objData.NpcDialogueId;
                         obj.NpcAlertImagePath = PathHelpers.Resolve(objData.NpcAlertImagePath);
+                        obj.NpcDisplayName = objData.NpcDisplayName;
+                        obj.NpcBadgeSize = objData.NpcBadgeSize;
+                        obj.NpcBadgeLift = objData.NpcBadgeLift;
                         // Legacy WalkSheet/WalkClip (removed fields) migrate into the Walk
                         // action so old .ing files keep their moving animation after load.
                         if (!string.IsNullOrEmpty(objData.Player2DWalkClip))

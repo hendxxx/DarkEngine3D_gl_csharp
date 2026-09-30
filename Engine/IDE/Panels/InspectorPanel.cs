@@ -2877,6 +2877,25 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Image drawn above the NPC instead of the text '!' bubble.\nDrag from the Asset Browser. Empty = default '!'.");
 
+        // ── Badge display: name above the [E] badge + its size/lift ──
+        string dispName = editorObj.NpcDisplayName;
+        if (ImGui.InputText("Display Name", ref dispName, 64))
+            editorObj.NpcDisplayName = dispName.Trim();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Nama yang digambar DI ATAS badge [E] interaksi.\nKosong = pakai nama objek di Hierarchy.");
+
+        float badgeSize = editorObj.NpcBadgeSize > 0f ? editorObj.NpcBadgeSize : Visual.DialogueSystem.DefaultNpcBadgeSize;
+        if (ImGui.DragFloat("Badge Size (px)", ref badgeSize, 0.5f, 8f, 64f, "%.0f"))
+            editorObj.NpcBadgeSize = MathF.Max(8f, badgeSize);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Ukuran teks badge [E] + nama NPC dalam piksel layar (default 15).\nJuga men-scale gambar Alert Image (2× nilai ini).");
+
+        float badgeLift = editorObj.NpcBadgeLift > 0f ? editorObj.NpcBadgeLift : Visual.DialogueSystem.DefaultNpcBadgeLift;
+        if (ImGui.DragFloat("Badge Lift", ref badgeLift, 0.05f, 0.1f, 5f, "%.2f"))
+            editorObj.NpcBadgeLift = MathF.Max(0.1f, badgeLift);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Seberapa TINGGI badge melayang di atas kepala NPC (unit dunia, default 0.5).\nNaikkan kalau badge menutupi topi/rambut, turunkan kalau melayang terlalu jauh.");
+
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
             Visual.DialogueSystem.StartConversation(editorObj.NpcDialogueId, editorObj);

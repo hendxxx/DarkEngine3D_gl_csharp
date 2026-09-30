@@ -409,6 +409,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Player2DAnimationClip = objData.Player2DAnimationClip;
                 obj.NpcDialogueId = objData.NpcDialogueId;
                 obj.NpcAlertImagePath = PathHelpers.Resolve(objData.NpcAlertImagePath);
+                obj.NpcDisplayName = objData.NpcDisplayName;
+                obj.NpcBadgeSize = objData.NpcBadgeSize;
+                obj.NpcBadgeLift = objData.NpcBadgeLift;
 
                 // ── Animation actions ──
                 // Restore the user-authored actions (Idle/Walk/Run/Jump/Attack/...). Without
