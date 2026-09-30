@@ -2891,10 +2891,10 @@ public class InspectorPanel
             ImGui.SetTooltip("Ukuran teks badge [E] + nama NPC dalam piksel layar (default 15).\nJuga men-scale gambar Alert Image (2× nilai ini).");
 
         float badgeLift = editorObj.NpcBadgeLift > 0f ? editorObj.NpcBadgeLift : Visual.DialogueSystem.DefaultNpcBadgeLift;
-        if (ImGui.DragFloat("Badge Lift", ref badgeLift, 0.05f, 0.1f, 5f, "%.2f"))
-            editorObj.NpcBadgeLift = MathF.Max(0.1f, badgeLift);
+        if (ImGui.DragFloat("Badge Lift", ref badgeLift, 0.01f, 0f, 3f, "%.2f"))
+            editorObj.NpcBadgeLift = MathF.Max(0f, badgeLift);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Seberapa TINGGI badge melayang di atas kepala NPC (unit dunia, default 0.5).\nNaikkan kalau badge menutupi topi/rambut, turunkan kalau melayang terlalu jauh.");
+            ImGui.SetTooltip("Seberapa TINGGI badge melayang di atas kepala NPC (unit dunia, default 0.15 — nempel di atas kepala).\n0 = pakai default. Naikkan kalau badge menutupi topi/rambut.");
 
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))

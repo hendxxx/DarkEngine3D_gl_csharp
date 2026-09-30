@@ -400,11 +400,23 @@ public static unsafe class DialogueSystem
         return obj.Player2DHeight + 0.25f;
     }
 
+    /// <summary>Visual head top WITHOUT the bubble margins — badges/alerts anchor here
+    /// so they hug the sprite. BubbleHeadHeight keeps its +0.15/+0.25 margin for speech
+    /// bubbles; using it for badges floated them 0.65–0.75 world units above the visual
+    /// head ("defaultnya masih terlalu jauh").</summary>
+    private static float BadgeHeadHeight(EditorObject obj)
+    {
+        if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
+            return obj.Player2DCapsuleOffsetY + obj.Player2DCapsuleHeight + 0.05f;
+        return obj.Player2DHeight + 0.05f;
+    }
+
     // ── NPC interaction badge defaults (per-NPC overrides: NpcBadgeSize/NpcBadgeLift) ──
     /// <summary>Badge text size in screen px when the NPC doesn't override it.</summary>
     internal const float DefaultNpcBadgeSize = 15f;
-    /// <summary>Badge lift above the head anchor (world units) when the NPC doesn't override it.</summary>
-    internal const float DefaultNpcBadgeLift = 0.5f;
+    /// <summary>Badge lift above the VISUAL head top (BadgeHeadHeight) when the NPC
+    /// doesn't override it. 0.15 ≈ a snug badge right above the head.</summary>
+    internal const float DefaultNpcBadgeLift = 0.15f;
 
     // ════════════════════════════════════════════
     //  INPUT + NPC INTERACTION (call from update)
@@ -700,7 +712,7 @@ public static unsafe class DialogueSystem
         var theme = DialogueLibrary.GetTheme("Default");
         float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift;
         var sp = Project(new Vector3(npc.Position.X,
-            npc.Position.Y + BubbleHeadHeight(npc) + lift, npc.Position.Z), w, h);
+            npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
         string label = "[E] Talk";
         int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
         var ext = hud.GetTextExtents(label);
@@ -722,9 +734,9 @@ public static unsafe class DialogueSystem
     {
         float bob = MathF.Sin(_time * 3f + npc.Position.X * 0.7f) * 3f;
         // Indicator anchors just below the [E] badge anchor (same lift − 0.05).
-        float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift - 0.05f : 0.45f;
+        float lift = (npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift) - 0.05f;
         var sp = Project(new Vector3(npc.Position.X,
-            npc.Position.Y + BubbleHeadHeight(npc) + lift, npc.Position.Z), w, h);
+            npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
 
         // Custom alert IMAGE (dragged from the Asset Browser in the Inspector) replaces
         // the text "!" bubble entirely — quest marks, alert icons, any exclamation art.
@@ -1125,9 +1137,9 @@ public static unsafe class DialogueSystem
                 if (Active != null || obj == InteractableNpc) continue;
 
                 float bob = MathF.Sin(_time * 3f + obj.Position.X * 0.7f) * 3f;
-                // Same lift as the HUD indicator (NpcBadgeLift − 0.05).
-                float oLift = obj.NpcBadgeLift > 0f ? obj.NpcBadgeLift - 0.05f : 0.45f;
-                var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BubbleHeadHeight(obj) + oLift, obj.Position.Z), w, h);
+                // Same lift as the HUD indicator (NpcBadgeLift − 0.05), visual-head anchor.
+                float oLift = (obj.NpcBadgeLift > 0f ? obj.NpcBadgeLift : DefaultNpcBadgeLift) - 0.05f;
+                var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BadgeHeadHeight(obj) + oLift, obj.Position.Z), w, h);
                 var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
 
                 // Custom alert IMAGE (Inspector drag-drop) replaces the text "!" bubble.
@@ -1160,7 +1172,7 @@ public static unsafe class DialogueSystem
             {
                 float iLift = InteractableNpc.NpcBadgeLift > 0f ? InteractableNpc.NpcBadgeLift : DefaultNpcBadgeLift;
                 var head = Project(new Vector3(InteractableNpc.Position.X,
-                    InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + iLift, InteractableNpc.Position.Z), w, h);
+                    InteractableNpc.Position.Y + BadgeHeadHeight(InteractableNpc) + iLift, InteractableNpc.Position.Z), w, h);
                 var scr = sceneToScreen(head);
                 float badgeFs = InteractableNpc.NpcBadgeSize > 0f ? InteractableNpc.NpcBadgeSize : 0f;
                 string disp = string.IsNullOrWhiteSpace(InteractableNpc.NpcDisplayName)
@@ -1171,7 +1183,7 @@ public static unsafe class DialogueSystem
                     // the viewport's own scene→screen mapping.
                     DrawKeyBadge(dl, sceneToScreen, Project, w, h, InteractableNpc.Position.Z,
                         InteractableNpc.Position.X,
-                        InteractableNpc.Position.Y + BubbleHeadHeight(InteractableNpc) + iLift,
+                        InteractableNpc.Position.Y + BadgeHeadHeight(InteractableNpc) + iLift,
                         "E", (s, sz) => TextWS(s, sz), (s, sz) => TextHS(s, sz), badgeFs, disp);
                 }
                 else
