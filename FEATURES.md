@@ -394,7 +394,7 @@ Each layer in `TerrainLayerList`:
 
 ### 3.5 Save/Load Behavior
 
-- **Save All / Ctrl+S / F8**: Saves to current file; if no file active → opens Save As dialog
+- **Save All / Ctrl+S / F8**: Saves to current file; if no file active → opens Save As dialog. Also persists ALL per-project catalogs: items (`Assets/Items/items.json`), shops (`Assets/Shops/shops.json`), quests (`Assets/Quests/quests.json`), dialogues (`Assets/Dialogue/dialogues.json`) — not gated on scenes existing anymore
 - **New Scene**: Clears active file (does NOT overwrite game.ing)
 - **Save As**: Opens file dialog, saves JSON + thumbnail PNG
 - **Load**: Reads .ing JSON, reconstructs all objects, loads textures
@@ -442,8 +442,9 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 1. **New Project** (File > New Project): Pick folder → enter name → creates structure + copies fonts
 2. **Open Project** (File > Open Project): Browse for `.projing` file → auto-loads `game.ing`
 3. **Recent Projects**: File > Recent Projects submenu (persisted globally)
-4. **Save All** (Ctrl+S): Saves scenes + updates `.projing` (LastSaved + scene inventory)
-5. **Close Project**: File > Close Project (resets all editor state: scenes, selection, hierarchy, editor objects)
+4. **Save All** (Ctrl+S): Saves scenes + updates `.projing` (LastSaved + scene inventory) + ALL catalogs (item/shop/quest/dialogue)
+5. **Close Project**: File > Close Project persists everything first (scenes + sheets + catalogs) then resets all editor state: scenes, selection, hierarchy, editor objects, Shop/Item Editor selection (via `OnProjectChanged`), Shadow preset cache
+6. **Switching projects** (Recent Projects / Open Project): the outgoing project is persisted FIRST (`PersistEditorData`) — no data loss when switching without Close Project
 
 ### 3.6.4 Path Resolution
 

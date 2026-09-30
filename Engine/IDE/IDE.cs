@@ -324,6 +324,10 @@ public class IDE : IDisposable
             Visual.ShopSystem.LoadCatalog();
             // Quest display catalog belongs to the project (Assets/Quests/quests.json).
             Visual.QuestSystem.LoadCatalog();
+            // Panels re-sync their selection/dirty state to the freshly loaded catalogs
+            // (stale indices from the previous project pointed at the wrong entries).
+            _itemEditor?.OnProjectChanged();
+            _shopEditor?.OnProjectChanged();
             // Re-apply per-project ortho zoom limits. The IDE constructor applied
             // these BEFORE any project was open (exe-fallback settings), so without
             // this reload the project's settings.json range (e.g. 25–50 for pixel-art)
@@ -385,6 +389,13 @@ public class IDE : IDisposable
             Visual.InventorySystem.ClearCatalog();
             Visual.ShopSystem.ClearCatalog();
             Visual.QuestSystem.ClearCatalog();
+            // Panels drop their selection/dirty state (their catalogs just cleared).
+            _itemEditor?.OnProjectChanged();
+            _shopEditor?.OnProjectChanged();
+            // Shadow presets load from the project root — drop the cached list so the
+            // next panel open re-reads the ACTIVE location (stale cache leaked presets
+            // from the previous project into this one).
+            _shadowPanel?.OnProjectChanged();
         }
     }
 
@@ -605,19 +616,49 @@ public class IDE : IDisposable
         return false;
     }
 
+    /// <summary>Persist all per-project catalogs (item/shop/quest/dialogue).
+    /// Guarded on IsProjectLoaded: the item catalog's Save writes to the exe-fallback
+    /// path when no project is open (unlike shop/quest which no-op) — with no project
+    /// there is nothing meaningful to save anyway.</summary>
+    private void SaveCatalogs()
+    {
+        if (!Engine.Project.ProjectManager.IsProjectLoaded) return;
+        try
+        {
+            Visual.InventorySystem.SaveCatalog(); // items → Assets/Items/items.json
+            Visual.ShopSystem.Save();              // shops → Assets/Shops/shops.json
+            Visual.QuestSystem.Save();             // quests → Assets/Quests/quests.json
+            DialogueLibrary.Save();                // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IDE] SaveCatalogs failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Full save used by Ctrl+S and pre-close persistence: scenes + sheets +
+    /// map + ALL catalogs (item/shop/quest/dialogue). Historically Ctrl+S skipped the
+    /// catalogs, so Shop/Item Editor edits were lost unless the user remembered the
+    /// panel's own Save button before closing the project.</summary>
+    private void SaveAllData()
+    {
+        _spriteEditor?.SaveAllSheets();
+        _mapEditor?.SaveMap();
+        _sceneManagerPanel?.SaveAllScenes();
+        SaveCatalogs();
+    }
+
     /// <summary>Persist all current editor data before the project is closed or the app
     /// exits: sprite sheets + animation clips (Assets/Sprites), the active level's map
-    /// file (Assets/Maps) and the editor scenes (.ing, which also carries the level).
+    /// file (Assets/Maps), the editor scenes (.ing, which also carries the level) and
+    /// ALL catalogs (items/shops/quests/dialogues).
     /// Ran BEFORE ProjectManager clears the project root.</summary>
     private void PersistEditorData()
     {
         if (!Engine.Project.ProjectManager.IsProjectLoaded) return;
         try
         {
-            _spriteEditor?.SaveAllSheets();
-            _mapEditor?.SaveMap();
-            _sceneManagerPanel?.SaveAllScenes();
-            DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
+            SaveAllData();
         }
         catch (Exception ex)
         {
@@ -1034,14 +1075,17 @@ public class IDE : IDisposable
                             bool opened = ImGui.MenuItem(projName);
                             if (ImGui.IsItemHovered())
                                 ImGui.SetTooltip(projPath);
-                            if (opened)
+                        if (opened)
+                        {
+                            // Persist the OUTGOING project first (switch without Close
+                            // Project would otherwise drop unsaved catalogs/scenes).
+                            PersistEditorData();
+                            if (Engine.Project.ProjectManager.OpenProject(projPath))
                             {
-                                if (Engine.Project.ProjectManager.OpenProject(projPath))
-                                {
-                                    RecentProjectsManager.AddRecentProject(projPath);
-                                    Console.WriteLine($"[IDE] Opened recent project: {projPath}");
-                                }
+                                RecentProjectsManager.AddRecentProject(projPath);
+                                Console.WriteLine($"[IDE] Opened recent project: {projPath}");
                             }
+                        }
                         }
                         ImGui.Separator();
                         if (ImGui.MenuItem("Clear Recent Projects"))
@@ -1106,16 +1150,11 @@ public class IDE : IDisposable
                 ImGui.Separator();
 
                 // Save (Save All) — scenes (.ing incl. level) + sprite sheets/anim data
-                bool hasEditorScenes = Bridge.EditorScenes.Count > 0;
-                ImGui.BeginDisabled(!hasEditorScenes);
+                // + ALL catalogs (items/shops/quests/dialogues). No longer gated on editor
+                // scenes existing: a fresh project authoring its shop/item catalog (before
+                // any scene exists) still needs a working Save.
                 if (ImGui.MenuItem("Save", "Ctrl+S"))
-                {
-                    _spriteEditor?.SaveAllSheets();
-                    _mapEditor?.SaveMap();
-                    _sceneManagerPanel.SaveAllScenes();
-                    DialogueLibrary.Save(); // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
-                }
-                ImGui.EndDisabled();
+                    SaveAllData();
 
                 // Save As...
                 if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
@@ -1618,6 +1657,8 @@ public class IDE : IDisposable
         if (_projingFileDialog.IsConfirmed && _projingFileDialog.SelectedPath != null)
         {
             string projingPath = _projingFileDialog.SelectedPath;
+            // Persist the OUTGOING project first (switch without Close Project).
+            PersistEditorData();
             if (Engine.Project.ProjectManager.OpenProject(projingPath))
             {
                 Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(Path.GetDirectoryName(projingPath)!));

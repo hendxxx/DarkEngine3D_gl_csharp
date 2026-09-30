@@ -30,6 +30,18 @@ public class ItemEditorPanel
 
     public ItemEditorPanel(IDEBridge bridge) => _bridge = bridge;
 
+    /// <summary>Re-sync panel state to the freshly loaded/cleared catalog (project open
+    /// or close): select the first item and clear the dirty flag. Stale indices from the
+    /// previous project pointed at the wrong entry (or out of range).</summary>
+    public void OnProjectChanged()
+    {
+        _selectedIndex = InventorySystem.Items.Count > 0 ? 0 : -1;
+        _dirty = false;
+        _newItemId = "";
+        _pickerSheet = "";
+        _pickerHoverCell = -1;
+    }
+
     public void ShowInMenu()
     {
         if (ImGui.MenuItem("Item Editor"))

@@ -24,6 +24,16 @@ public class ShopEditorPanel
 
     public ShopEditorPanel(IDEBridge bridge) => _bridge = bridge;
 
+    /// <summary>Re-sync panel state to the freshly loaded/cleared catalog (project open
+    /// or close): select the first shop and clear the dirty flag. Stale indices from the
+    /// previous project pointed at the wrong shop (or out of range).</summary>
+    public void OnProjectChanged()
+    {
+        _selectedIndex = ShopSystem.Shops.Count > 0 ? 0 : -1;
+        _dirty = false;
+        _newShopId = "";
+    }
+
     public void ShowInMenu()
     {
         if (ImGui.MenuItem("Shop Editor"))
@@ -147,6 +157,8 @@ public class ShopEditorPanel
             ShopSystem.Save();
             _dirty = false;
         }
+        ImGui.SameLine();
+        ImGui.TextDisabled("(juga tersimpan oleh Ctrl+S / Close Project / Exit)");
         ImGui.End();
     }
 }

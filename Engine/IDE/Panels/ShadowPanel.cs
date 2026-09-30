@@ -42,7 +42,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private int _filterMode = Keyboard.GetIsHardShadow();
         private bool _linear = ShadowSettings.LinearShadowMap;
 
-        // ── Named presets (persisted to shadow_presets.json next to the executable) ──
+        // ── Named presets (persisted to shadow_presets.json — project root when a
+        // project is open, else next to the executable; cache cleared in OnProjectChanged) ──
         private List<ShadowPresetData>? _presets;
         private int _selectedPreset;
         private string _presetName = "";
@@ -63,6 +64,11 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         /// the bridge is used for the CSM on/off toggle (same ShowShadows flag as the
         /// viewport toolbar "☀ Shadow" button).</summary>
         public ShadowPanel(IDEBridge bridge) => _bridge = bridge;
+
+        /// <summary>Drop the preset cache on project open/close — shadow_presets.json
+        /// loads from the PROJECT root when a project is open, so a list cached from the
+        /// previous location leaks the old project's presets into the new one.</summary>
+        public void OnProjectChanged() => _presets = null;
 
         public void ShowInMenu() => ImGui.MenuItem("Shadow Settings", null, ref _visible);
 
