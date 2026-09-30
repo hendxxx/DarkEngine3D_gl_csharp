@@ -36,7 +36,14 @@ public class DialogueChoice
     public List<TilemapTriggerAction> Actions { get; set; } = new();
 
     public DialogueChoice Clone() => new()
-    { Text = Text, NextNodeId = NextNodeId, Conditions = new List<string>(Conditions) };
+    {
+        Text = Text, NextNodeId = NextNodeId,
+        Conditions = new List<string>(Conditions),
+        // Actions were previously DROPPED — duplicating a choice silently lost its
+        // Give Item / Change Sprite / Complete Quest wiring (each action itself is
+        // cloned by TilemapTriggerAction.Clone). Deep-copy each entry.
+        Actions = Actions.Select(a => a.Clone()).ToList(),
+    };
 }
 
 /// <summary>One page ("line") of a conversation. Nodes chain through NextNodeId /

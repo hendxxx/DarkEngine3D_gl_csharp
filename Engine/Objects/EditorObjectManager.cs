@@ -93,6 +93,33 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return removed;
         }
 
+        /// <summary>Unlist an object WITHOUT disposing it — the instance (and its GPU
+        /// handles) must survive so a later undo can re-insert the SAME object. Paired
+        /// with <see cref="InsertAt"/>; regular Delete keeps using <see cref="Remove"/>.</summary>
+        public void RemoveKeepAlive(EditorObject obj)
+        {
+            if (SelectedObject == obj)
+            {
+                SelectedObject = null;
+                OnObjectSelected?.Invoke(null);
+            }
+            _objects.Remove(obj);
+            OnObjectRemoved?.Invoke(obj);
+        }
+
+        /// <summary>Re-insert a previously removed object WITHOUT disposing or recreating
+        /// it (Delete-undo support: the instance and its GPU handles must survive). Pass
+        /// index -1 to append. Caller is responsible for not re-inserting duplicates.</summary>
+        public void InsertAt(EditorObject obj, int index)
+        {
+            index = Math.Clamp(index, 0, _objects.Count);
+            _objects.Insert(index, obj);
+        }
+
+        /// <summary>Index of an object in the manager list (-1 when absent) — captured
+        /// before a Delete so the undo can restore it to the same position.</summary>
+        public int IndexOf(EditorObject obj) => _objects.IndexOf(obj);
+
         /// <summary>Move an editor object from one index to another (for drag-drop reorder).</summary>
         public void MoveObject(int fromIndex, int toIndex)
         {
@@ -349,8 +376,72 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 SplatSlopeLayer = source.SplatSlopeLayer,
                 SplatSlopeThreshold = source.SplatSlopeThreshold,
                 SplatSlopeFade = source.SplatSlopeFade,
-
+                // ── Everything the .ing save persists MUST travel with the duplicate:
+                // a clone used to lose the whole 2D/NPC block (sprite art, actions,
+                // camera follow, render layers…) and only healed after a save+reload.
+                Player2DSpriteSheet = source.Player2DSpriteSheet,
+                Player2DAnimationClip = source.Player2DAnimationClip,
+                Player2DHeight = source.Player2DHeight,
+                Player2DCapsuleRadius = source.Player2DCapsuleRadius,
+                Player2DCapsuleHeight = source.Player2DCapsuleHeight,
+                Player2DCapsuleOffsetX = source.Player2DCapsuleOffsetX,
+                Player2DCapsuleOffsetY = source.Player2DCapsuleOffsetY,
+                Player2DShowCapsule = source.Player2DShowCapsule,
+                Player2DGravity = source.Player2DGravity,
+                Player2DMoveSpeed = source.Player2DMoveSpeed,
+                Player2DRunSpeed = source.Player2DRunSpeed,
+                Player2DJumpForce = source.Player2DJumpForce,
+                Player2DGravityScale = source.Player2DGravityScale,
+                Player2DAcceleration = source.Player2DAcceleration,
+                Player2DDeceleration = source.Player2DDeceleration,
+                Player2DAirControl = source.Player2DAirControl,
+                Player2DCoyoteTime = source.Player2DCoyoteTime,
+                Player2DJumpBuffer = source.Player2DJumpBuffer,
+                Player2DJumpCutMultiplier = source.Player2DJumpCutMultiplier,
+                Player2DFacingRight = source.Player2DFacingRight,
+                Player2DRenderLayer = source.Player2DRenderLayer,
+                NpcDialogueId = source.NpcDialogueId,
+                NpcAlertImagePath = source.NpcAlertImagePath,
+                NpcDisplayName = source.NpcDisplayName,
+                NpcBadgeSize = source.NpcBadgeSize,
+                NpcBadgeLift = source.NpcBadgeLift,
+                Sprite2DLoop = source.Sprite2DLoop,
+                Sprite2DSpeed = source.Sprite2DSpeed,
+                Sprite2DStartOffset = source.Sprite2DStartOffset,
+                Sprite2DFacingRight = source.Sprite2DFacingRight,
+                Sprite2DRenderLayer = source.Sprite2DRenderLayer,
+                Sprite2DGlow = source.Sprite2DGlow,
+                Player2DGlow = source.Player2DGlow,
+                Sprite2DGlowColor = source.Sprite2DGlowColor,
+                Player2DGlowColor = source.Player2DGlowColor,
+                Sprite2DGlowFlicker = source.Sprite2DGlowFlicker,
+                Player2DGlowFlicker = source.Player2DGlowFlicker,
+                CameraFollowSpeed = source.CameraFollowSpeed,
+                CameraDeadZoneWidth = source.CameraDeadZoneWidth,
+                CameraDeadZoneHeight = source.CameraDeadZoneHeight,
+                CameraVerticalThreshold = source.CameraVerticalThreshold,
+                CameraReturnSpeed = source.CameraReturnSpeed,
+                CameraLookAhead = source.CameraLookAhead,
+                CameraViewOffset = source.CameraViewOffset,
+                Effect2DPreset = source.Effect2DPreset,
+                Effect2DEmitRate = source.Effect2DEmitRate,
+                Effect2DWindFactor = source.Effect2DWindFactor,
+                Effect2DOffsetY = source.Effect2DOffsetY,
+                Effect2DEnabled = source.Effect2DEnabled,
+                Map2dShowGrid = source.Map2dShowGrid,
+                Map2dShowTriggers = source.Map2dShowTriggers,
+                Map2dGridColor = source.Map2dGridColor,
             };
+            // Animation actions (deep-copied — shared instances would mirror edits),
+            // equipment bindings and the tilemap payload (deep data clone; the GPU
+            // texture rebuilds lazily on first draw).
+            foreach (var a in source.Actions) clone.Actions.Add(a.Clone());
+            clone.Equipment.Slots.Clear();
+            foreach (var kv in source.Equipment.Slots) clone.Equipment.Slots[kv.Key] = kv.Value;
+            if (source.Map2dTilemap != null)
+                clone.Map2dTilemap = Tilemap2D.FromData(source.Map2dTilemap.ToData());
+            clone.Map2dParallaxLayers = source.Map2dParallaxLayers == null ? null
+                : source.Map2dParallaxLayers.Select(p => p.Clone()).ToList();
             for (int l = 1; l <= 3; l++)
             {
                 for (int m = 0; m < 6; m++)

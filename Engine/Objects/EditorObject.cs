@@ -20,6 +20,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects;
 /// </summary>
 public class Player2DAction
 {
+    /// <summary>Deep copy — every serialized field (including the projectile block).
+    /// Used by EditorObject duplicate so action properties survive Ctrl+D.</summary>
+    public Player2DAction Clone() => new()
+    {
+        Name = Name, SpriteSheet = SpriteSheet, Clip = Clip,
+        Loop = Loop, StopOnFrameEnd = StopOnFrameEnd,
+        Priority = Priority, KeyBinding = KeyBinding, KeyTrigger = KeyTrigger,
+        FxPreset = FxPreset, FxFollow = FxFollow, FxScale = FxScale,
+        ProjectileEnabled = ProjectileEnabled,
+        ProjectileSheet = ProjectileSheet, ProjectileClip = ProjectileClip,
+        ProjectileSpeed = ProjectileSpeed, ProjectileMaxDistance = ProjectileMaxDistance,
+        ProjectileGravity = ProjectileGravity, ProjectileVelY = ProjectileVelY,
+        ProjectileWorldHeight = ProjectileWorldHeight,
+        ProjectileOffsetX = ProjectileOffsetX, ProjectileOffsetY = ProjectileOffsetY,
+        ProjectileDamageHP = ProjectileDamageHP, ProjectileDamageMP = ProjectileDamageMP,
+        ProjectileHitSheet = ProjectileHitSheet, ProjectileHitClip = ProjectileHitClip,
+        ProjectileHitScale = ProjectileHitScale,
+        ProjectileHitFx = ProjectileHitFx, ProjectileHitFxScale = ProjectileHitFxScale,
+        ProjectileRotateToVelocity = ProjectileRotateToVelocity,
+        ProjectilePiercing = ProjectilePiercing,
+    };
+
     public string Name { get; set; } = "";
     /// <summary>Sprite sheet name from the Sprite Editor registry ("" = player's sheet).</summary>
     public string SpriteSheet { get; set; } = "";
@@ -227,6 +249,20 @@ public class MapParallaxRenderLayer
     /// <summary>Top offset in pixels pushing the quad's top edge DOWN from the grid's top
     /// edge (0 = flush with grid top; negative = extend above the grid).</summary>
     public float TopPx;
+
+    /// <summary>Deep copy of every authored field (TextureId EXCLUDED — the clone
+    /// rebuilds its own GPU texture lazily from ImagePath; sharing a GL id would let
+    /// one delete kill the other's art). Used by EditorObject duplicate.</summary>
+    public MapParallaxRenderLayer Clone() => new()
+    {
+        Name = Name, ImagePath = ImagePath, IsVisible = IsVisible,
+        ZPosition = ZPosition, Alpha = Alpha, TileHorizontal = TileHorizontal,
+        ScrollFactor = ScrollFactor,
+        ImageWidth = ImageWidth, ImageHeight = ImageHeight,
+        WidthPx = WidthPx, HeightPx = HeightPx,
+        RepeatX = RepeatX, RepeatY = RepeatY,
+        LeftPx = LeftPx, TopPx = TopPx,
+    };
 }
 
 public unsafe class EditorObject

@@ -352,6 +352,16 @@ public class IDEBridge
     /// <summary>Tile paint/erase undo-redo (wired to MapEditorPanel.UndoTilePaint/Redo).</summary>
     public Action? MapUndo { get; set; }
     public Action? MapRedo { get; set; }
+    /// <summary>Undo-history plumbing for 3D/2D editor-object Add / Delete / Duplicate.
+    /// HierarchyPanel owns the shared history; the panels that mutate the object list
+    /// call Record* through these (kept null-safe at every call site).</summary>
+    public Action<EditorObject>? RecordEditorObjectAdded { get; set; }
+    public Action<EditorObject>? RecordEditorObjectDeleted { get; set; }
+    public Action<EditorObject, EditorObject>? RecordEditorObjectDuplicated { get; set; }
+    /// <summary>Trigger-area undo (create = Index -1 / delete = captured index) —
+    /// HierarchyPanel owns the shared history; MapEditor/Viewport record through these.</summary>
+    public Action<TilemapTriggerArea, int>? RecordTriggerAdded { get; set; }
+    public Action<TilemapTriggerArea>? RecordTriggerDeleted { get; set; }
 
     // ── Map Editor grid settings (synced to ViewportPanel) ──
 

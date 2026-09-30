@@ -82,7 +82,7 @@ public class HierarchyPanel
     /// <summary>Recorded action for undo/redo.</summary>
     private struct UndoRedoAction
     {
-        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange, SkySunChange }
+        public enum ActionType { Add, Delete, Rename, Move, Transform, ColorChange, EditorTransform, EditorTransformGroup, EditorPivotChange, SkySunChange, EditorAdd, EditorDelete, EditorDuplicate, TriggerAdd, TriggerDelete }
         public ActionType Type;
 
         // For Add / Delete / Move: the element involved
@@ -126,6 +126,18 @@ public class HierarchyPanel
         public float? OldPitch, NewPitch, OldYaw, NewYaw;
         public EditorObject? LightObj;
         public Vector3? OldLightDir, NewLightDir;
+
+        // For EditorAdd / EditorDelete / EditorDuplicate (3D/2D editor objects): the
+        // LIVE instance is kept (deletion only unlists it — Dispose would kill its GPU
+        // handles and make a later redo impossible) plus its manager index at delete
+        // time so undo re-inserts at the same position.
+        public EditorObject? EditorObjAdded;
+        public int EditorObjIndex;
+
+        // For TriggerAdd / TriggerDelete: the live area instance (delete unlists only —
+        // the same instance re-inserts on undo; the owning map is resolved at execute
+        // time via Bridge.ActiveTilemap/registry so a stale reference never lingers).
+        public TilemapTriggerArea? TriggerArea;
     }
 
     public HierarchyPanel(IDEBridge bridge)
@@ -265,6 +277,31 @@ public class HierarchyPanel
                 NewColor = newColor,
             });
         };
+
+        // Editor-object Add / Delete / Duplicate history — every panel that mutates the
+        // manager's object list records through these (previously NONE of them did, so
+        // a deleted NPC/prefab was gone forever and Ctrl+D could not be undone).
+        _bridge.RecordEditorObjectAdded = obj =>
+            PushUndo(new UndoRedoAction { Type = UndoRedoAction.ActionType.EditorAdd, EditorObjAdded = obj });
+        _bridge.RecordEditorObjectDeleted = obj =>
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.EditorDelete,
+                EditorObjAdded = obj,
+                EditorObjIndex = _bridge.EditorObjectManager?.IndexOf(obj) ?? -1,
+            });
+        _bridge.RecordEditorObjectDuplicated = (source, clone) =>
+            PushUndo(new UndoRedoAction { Type = UndoRedoAction.ActionType.EditorDuplicate, EditorObjAdded = clone });
+        // Trigger-area create/delete — same shared history.
+        _bridge.RecordTriggerAdded = (area, index) =>
+            PushUndo(new UndoRedoAction
+            {
+                Type = UndoRedoAction.ActionType.TriggerAdd,
+                TriggerArea = area,
+                EditorObjIndex = index, // -1 = appended
+            });
+        _bridge.RecordTriggerDeleted = area =>
+            PushUndo(new UndoRedoAction { Type = UndoRedoAction.ActionType.TriggerDelete, TriggerArea = area });
 
     }
 
@@ -1653,6 +1690,7 @@ public class HierarchyPanel
         if (primType == EditorPrimitiveType.Sky)
             editorMgr.EnsureDirectLightForSky(obj);
 
+        _bridge.RecordEditorObjectAdded?.Invoke(obj);
         _bridge.SelectEditorObject(obj);
         _bridge.SelectedUIElement = null;
         _bridge.SelectedUIElements.Clear();
@@ -1800,6 +1838,7 @@ public class HierarchyPanel
 
             var obj = editorMgr.AddPrimitive(primType, spawnPos);
             obj.Name = GetUniqueName(name);
+            _bridge.RecordEditorObjectAdded?.Invoke(obj);
             _bridge.SelectEditorObject(obj);
             _bridge.SelectedUIElement = null;
             _bridge.SelectedUIElements.Clear();
@@ -2060,7 +2099,10 @@ public class HierarchyPanel
         {
             var toDelete = editorObjs.ToArray();
             foreach (var obj in toDelete)
+            {
+                _bridge.RecordEditorObjectDeleted?.Invoke(obj); // before Remove (needs live index)
                 _bridge.EditorObjectManager?.Remove(obj);
+            }
             _bridge.SelectEditorObject(null);
             Console.WriteLine($"[SceneDetail] Deleted {toDelete.Length} 3D object(s)");
             return;
@@ -2222,6 +2264,7 @@ public class HierarchyPanel
                     dup.Position += new Vector3(dupIdx, 0f, 0f);
                     dupIdx++;
                     dups.Add(dup);
+                    _bridge.RecordEditorObjectDuplicated?.Invoke(obj, dup);
                     Console.WriteLine($"[SceneDetail] Duplicated 3D object: '{obj.Name}' → '{dup.Name}'");
                 }
             }
@@ -2326,6 +2369,48 @@ public class HierarchyPanel
     // 
 
     /// <summary>Push an action onto the undo stack and clear the redo stack.</summary>
+    /// <summary>Unlist a trigger area from EVERY registered map (the owning map is
+    /// whichever holds the instance) and clear its selection markers. Live instance is
+    /// kept — the same object re-inserts on the reverse step.</summary>
+    private void RemoveTriggerAreaEverywhere(TilemapTriggerArea area)
+    {
+        bool removed = false;
+        foreach (var map in _bridge.Tilemaps ?? Enumerable.Empty<Engine.Visual.Tilemap2D>())
+            removed |= map.TriggerAreas.Remove(area);
+        if (ReferenceEquals(_bridge.SelectedTrigger, area)) _bridge.SelectedTrigger = null;
+        if (ReferenceEquals(EditorObject.SelectedTriggerForHighlight, area))
+            EditorObject.SelectedTriggerForHighlight = null;
+        if (removed) Console.WriteLine($"[SceneDetail] Trigger undo: removed '{area.Name}'");
+    }
+
+    /// <summary>Re-insert a trigger area into its owning map (the registered map whose
+    /// Name matches the area's recorded map is preferred; falls back to the ACTIVE
+    /// map). index < 0 = append. Falls back to re-adding when the owning map is gone.</summary>
+    private void ReinsertTriggerArea(TilemapTriggerArea area, int index)
+    {
+        // The area itself does not remember its map — resolve by trying the active
+        // map first, then any registered map that is not already holding it.
+        var target = _bridge.ActiveTilemap;
+        if (target == null || target.TriggerAreas.Contains(area))
+        {
+            target = (_bridge.Tilemaps ?? Enumerable.Empty<Engine.Visual.Tilemap2D>())
+                .FirstOrDefault(m => m.TriggerAreas.Contains(area)) ?? target;
+        }
+        if (target == null)
+        {
+            Console.WriteLine("[SceneDetail] Trigger undo: no map to restore into (map closed?)");
+            return;
+        }
+        if (!target.TriggerAreas.Contains(area))
+        {
+            int idx = index < 0 ? target.TriggerAreas.Count : Math.Min(index, target.TriggerAreas.Count);
+            target.TriggerAreas.Insert(idx, area);
+            _bridge.SelectedTrigger = area;
+            EditorObject.SelectedTriggerForHighlight = area;
+            Console.WriteLine($"[SceneDetail] Trigger undo: restored '{area.Name}'");
+        }
+    }
+
     private void PushUndo(UndoRedoAction action)
     {
         _undoStack.Add(action);
@@ -2512,6 +2597,45 @@ public class HierarchyPanel
                 }
                 break;
 
+            case UndoRedoAction.ActionType.EditorAdd:
+            case UndoRedoAction.ActionType.EditorDuplicate:
+                // Unlist the added/duplicated object (kept alive — deletion never
+                // disposes so the same instance can come back on redo).
+                if (action.EditorObjAdded != null)
+                {
+                    var mgrA = _bridge.EditorObjectManager;
+                    if (mgrA != null && mgrA.Objects.Contains(action.EditorObjAdded))
+                    {
+                        mgrA.RemoveKeepAlive(action.EditorObjAdded);
+                        Console.WriteLine($"[SceneDetail] Undo {(action.Type == UndoRedoAction.ActionType.EditorAdd ? "Add" : "Duplicate")}: removed '{action.EditorObjAdded.Name}'");
+                    }
+                    _bridge.SelectEditorObject(null);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorDelete:
+                // Re-insert the deleted object at its original index (live instance —
+                // GPU handles intact, no re-InitGPU needed).
+                if (action.EditorObjAdded != null)
+                {
+                    _bridge.EditorObjectManager?.InsertAt(action.EditorObjAdded, action.EditorObjIndex);
+                    Console.WriteLine($"[SceneDetail] Undo Delete: restored '{action.EditorObjAdded.Name}'");
+                    _bridge.SelectEditorObject(action.EditorObjAdded);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TriggerAdd:
+                // Unlist the created trigger area (undo of drag-create / paste / duplicate).
+                if (action.TriggerArea != null)
+                    RemoveTriggerAreaEverywhere(action.TriggerArea);
+                break;
+
+            case UndoRedoAction.ActionType.TriggerDelete:
+                // Re-insert the deleted trigger area on its owning map.
+                if (action.TriggerArea != null)
+                    ReinsertTriggerArea(action.TriggerArea, action.EditorObjIndex);
+                break;
+
         }
 
         // Push onto redo stack for redo
@@ -2528,6 +2652,43 @@ public class HierarchyPanel
 
         switch (action.Type)
         {
+            case UndoRedoAction.ActionType.EditorAdd:
+            case UndoRedoAction.ActionType.EditorDuplicate:
+                // Bring the added/duplicated object back into the manager.
+                if (action.EditorObjAdded != null)
+                {
+                    _bridge.EditorObjectManager?.InsertAt(action.EditorObjAdded, action.EditorObjIndex);
+                    Console.WriteLine($"[SceneDetail] Redo {(action.Type == UndoRedoAction.ActionType.EditorAdd ? "Add" : "Duplicate")}: restored '{action.EditorObjAdded.Name}'");
+                    _bridge.SelectEditorObject(action.EditorObjAdded);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.EditorDelete:
+                // Delete again (unlist, keep alive for a later undo).
+                if (action.EditorObjAdded != null)
+                {
+                    var mgrD = _bridge.EditorObjectManager;
+                    if (mgrD != null && mgrD.Objects.Contains(action.EditorObjAdded))
+                    {
+                        mgrD.RemoveKeepAlive(action.EditorObjAdded);
+                        Console.WriteLine($"[SceneDetail] Redo Delete: removed '{action.EditorObjAdded.Name}'");
+                    }
+                    _bridge.SelectEditorObject(null);
+                }
+                break;
+
+            case UndoRedoAction.ActionType.TriggerAdd:
+                // Create again (append or at the recorded index).
+                if (action.TriggerArea != null)
+                    ReinsertTriggerArea(action.TriggerArea, action.EditorObjIndex);
+                break;
+
+            case UndoRedoAction.ActionType.TriggerDelete:
+                // Delete again.
+                if (action.TriggerArea != null)
+                    RemoveTriggerAreaEverywhere(action.TriggerArea);
+                break;
+
             case UndoRedoAction.ActionType.Add:
                 // Re-insert the element that was removed
                 if (action.Parent != null && action.Element != null)

@@ -1583,6 +1583,7 @@ public class MapEditorPanel
                 OnEnter = true
             };
             map.TriggerAreas.Add(trig);
+            _bridge.RecordTriggerAdded?.Invoke(trig, -1);
             _bridge.SelectedTrigger = trig;
             EditorObject.SelectedTriggerForHighlight = trig;
             Console.WriteLine($"[MapEditor] Trigger added at ({left:F0},{top:F0}) px — drag it in the viewport with the Trigger tool");
@@ -1620,6 +1621,7 @@ public class MapEditorPanel
         var sel = _bridge.SelectedTrigger;
         if (sel != null && ImGui.Button("Delete Selected Trigger", new Vector2(180, 0)))
         {
+            _bridge.RecordTriggerDeleted?.Invoke(sel); // capture map+index BEFORE removal
             map.TriggerAreas.Remove(sel);
             _bridge.SelectedTrigger = null;
             EditorObject.SelectedTriggerForHighlight = null;

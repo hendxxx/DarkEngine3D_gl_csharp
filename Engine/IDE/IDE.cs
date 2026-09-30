@@ -890,6 +890,7 @@ public class IDE : IDisposable
                 obj.Player2DSpriteSheet = sheetName;
                 obj.Player2DAnimationClip = clipName;
                 obj.IsVisible = true;
+                Bridge.RecordEditorObjectAdded?.Invoke(obj);
                 Bridge.SelectEditorObject(obj);
                 Console.WriteLine($"[IDE] Sprite2D placed: {sheetName}/{clipName} at ({pos.X:F1}, {pos.Y:F1})");
             };

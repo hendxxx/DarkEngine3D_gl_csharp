@@ -2754,6 +2754,7 @@ public unsafe class ViewportPanel
                         OnEnter = true
                     };
                     map.TriggerAreas.Add(trig);
+                    _bridge.RecordTriggerAdded?.Invoke(trig, -1);
                     _triggerDrag = TriggerDragMode.Create;
                     _triggerDragTarget = trig;
                     _triggerDragAnchorWorld = hitOpt.Value;
@@ -2772,6 +2773,7 @@ public unsafe class ViewportPanel
             bool ctrl = ImGui.GetIO().KeyCtrl;
             if (ImGui.IsKeyPressed(ImGuiKey.Delete, false))
             {
+                _bridge.RecordTriggerDeleted?.Invoke(kbSel); // capture state BEFORE removal
                 map.TriggerAreas.Remove(kbSel);
                 _bridge.SelectedTrigger = null;
                 EditorObject.SelectedTriggerForHighlight = null;
@@ -2785,6 +2787,7 @@ public unsafe class ViewportPanel
             else if (ctrl && ImGui.IsKeyPressed(ImGuiKey.X, false))
             {
                 _triggerClipboard = kbSel.Clone();
+                _bridge.RecordTriggerDeleted?.Invoke(kbSel);
                 map.TriggerAreas.Remove(kbSel);
                 _bridge.SelectedTrigger = null;
                 EditorObject.SelectedTriggerForHighlight = null;
@@ -2797,6 +2800,7 @@ public unsafe class ViewportPanel
                 copy.LeftPx += map.TileSize;
                 copy.TopPx += map.TileSize;
                 map.TriggerAreas.Add(copy);
+                _bridge.RecordTriggerAdded?.Invoke(copy, -1);
                 _bridge.SelectedTrigger = copy;
                 EditorObject.SelectedTriggerForHighlight = copy;
             }
@@ -2807,6 +2811,7 @@ public unsafe class ViewportPanel
                 dup.LeftPx += map.TileSize;
                 dup.TopPx += map.TileSize;
                 map.TriggerAreas.Add(dup);
+                _bridge.RecordTriggerAdded?.Invoke(dup, -1);
                 _bridge.SelectedTrigger = dup;
                 EditorObject.SelectedTriggerForHighlight = dup;
                 Console.WriteLine($"[Trigger] Duplicated '{kbSel.Name}'");
@@ -3088,21 +3093,21 @@ if (ImGui.Button("+Box"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Box);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Box, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null) { _bridge.RecordEditorObjectAdded?.Invoke(obj); _bridge.SelectEditorObject(obj); }
                     }
                     ImGui.SameLine();
 if (ImGui.Button("+Sphere"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Sphere);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Sphere, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null) { _bridge.RecordEditorObjectAdded?.Invoke(obj); _bridge.SelectEditorObject(obj); }
                     }
 ImGui.SameLine();
                     if (ImGui.Button("+Plane"))
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Plane);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Plane, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null) { _bridge.RecordEditorObjectAdded?.Invoke(obj); _bridge.SelectEditorObject(obj); }
                     }
 
                     //  Camera / Light / Sky scene elements 
@@ -3111,7 +3116,7 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Camera);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Camera, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null) { _bridge.RecordEditorObjectAdded?.Invoke(obj); _bridge.SelectEditorObject(obj); }
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Camera marker (eye-height spawn, teal)");
@@ -3120,7 +3125,7 @@ ImGui.SameLine();
                     {
                         var pos = IDEBridge.GetGridSpawnPosition(_bridge.Camera, EditorPrimitiveType.Light);
                         var obj = _bridge.EditorObjectManager.AddPrimitive(EditorPrimitiveType.Light, pos);
-                        if (obj != null) _bridge.SelectEditorObject(obj);
+                        if (obj != null) { _bridge.RecordEditorObjectAdded?.Invoke(obj); _bridge.SelectEditorObject(obj); }
                     }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Add a Light marker (overrides editor sun color/direction, yellow)");
@@ -3133,6 +3138,7 @@ ImGui.SameLine();
                         {
                             // Sky automatically drives a DIRECT light  reuse or create one.
                             _bridge.EditorObjectManager.EnsureDirectLightForSky(obj);
+                            _bridge.RecordEditorObjectAdded?.Invoke(obj);
                             _bridge.SelectEditorObject(obj);
                         }
                     }
@@ -3158,6 +3164,7 @@ ImGui.SameLine();
                                     dup.Position += new Vector3(dupIdx, 0f, 0f);
                                     dupIdx++;
                                     dups.Add(dup);
+                                    _bridge.RecordEditorObjectDuplicated?.Invoke(obj, dup);
                                 }
                             }
                             if (dups.Count > 0)
