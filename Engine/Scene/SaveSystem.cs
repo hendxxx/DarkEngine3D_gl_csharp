@@ -39,6 +39,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         public List<string> InventoryEquipment { get; set; } = [];
         public int InventoryGold { get; set; }
 
+        // World journal — what the player already did to the world: trigger bits
+        // "map|trigger|applied|hidden" (chest looted, portal used) and sprite
+        // end-states "objName|sheet|clip|loop|source" (chest stays OPEN). Restored
+        // on load so re-entering a map does not repeat one-shot events.
+        public List<string> WorldTriggerStates { get; set; } = [];
+        public List<string> WorldSpriteStates { get; set; } = [];
+
         // Metadata
         public string SaveTime { get; set; } = "";
     }

@@ -652,6 +652,41 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             return a.X == b.X && a.Y == b.Y && a.Z == b.Z;
         }
 
+        /// <summary>Docked GameScene path: stamp the finished scene frame into the
+        /// CURRENT framebuffer as an OPAQUE backdrop, THEN flush the queued HUD on top.
+        /// The backdrop must NOT go through DrawImage/Flush — Flush draws boxes and
+        /// text FIRST and images LAST, so a queued backdrop image overdraws every box
+        /// and glyph queued before it (the in-game inventory/shop rendered washed-out
+        /// with no text, while the editor preview path — which never queues a backdrop
+        /// — looked correct). Opaque: blend disabled, the texture REPLACES the target.
+        /// Caller must already be bound to the target framebuffer (shared FBO).</summary>
+        public void FlushWithBackdrop(uint backdropTexture)
+        {
+            if (backdropTexture != 0)
+            {
+                GL.UseProgram(shaderProgram);
+                GL.BindVertexArray(vao);
+                GL.BindBuffer(Const.GL_ARRAY_BUFFER, vbo);
+                GL.Disable(Const.GL_DEPTH_TEST);
+                GL.Disable(Const.GL_BLEND); // opaque replace — no queue-order blending
+                OpenGL.EnableFaceCulling(false);
+
+                // Full-screen quad, IMAGE uv mode (uvScale ~2 flags the shader).
+                var verts = new List<float>(24)
+                {
+                    -1f,  1f, 0f, 0f,
+                     1f, -1f, 1f, 1f,
+                    -1f, -1f, 0f, 1f,
+
+                    -1f,  1f, 0f, 0f,
+                     1f,  1f, 1f, 0f,
+                     1f, -1f, 1f, 1f,
+                };
+                UploadAndDraw(verts, new Vector3(1, 1, 1), new Vector3(2, 0, 0), backdropTexture, 4 * sizeof(float), 0f);
+            }
+            Flush(); // queues draw with blending on top of the opaque backdrop
+        }
+
         // ════════════════════════════════════════════
         //  TEXT EXTENTS (multi-font aware)
         // ════════════════════════════════════════════

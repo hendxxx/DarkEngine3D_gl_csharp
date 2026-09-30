@@ -459,6 +459,15 @@ public unsafe class EditorObject
     /// <summary>Trigger name that produced the current override (the simple "if already
     /// open, skip" guard checks THIS trigger against it). Transient.</summary>
     [JsonIgnore] public string Sprite2DStateOverrideSource { get; set; } = "";
+    /// <summary>Change Sprite LOOP override (the action's "Loop Animasi" checkbox):
+    /// Active=false → the object's own Sprite2DLoop decides; Active=true →
+    /// Value wins (Off = play the swap clip ONCE and hold the last frame — a chest
+    /// must not re-open forever). Transient.</summary>
+    [JsonIgnore] public bool Sprite2DLoopOverrideActive { get; set; }
+    [JsonIgnore] public bool Sprite2DLoopOverrideValue { get; set; } = true;
+    /// <summary>Loop flag the sprite clocks actually honor — the Change Sprite
+    /// override (when present) beats the object's own Sprite2DLoop.</summary>
+    public bool Sprite2DEffectiveLoop => Sprite2DLoopOverrideActive ? Sprite2DLoopOverrideValue : Sprite2DLoop;
     /// <summary>Glfw.FrameId when the clock last advanced — DrawSprite2D can run
     /// multiple times per rendered frame; the clock must advance once (transient).</summary>
     private int _sprite2dLastClockFrame = -1;
@@ -3948,13 +3957,14 @@ public unsafe class EditorObject
     /// zone. The previous art is remembered (PrevSheet/PrevClip) for a later revert.
     /// Player2D and Sprite2D share this — both render through TryGetPlayer2DClip.
     /// Returns true when the object is now in the overridden ("open") state.</summary>
-    public bool SetSpriteStateOverride(string sheet, string clip, string sourceName)
+    public bool SetSpriteStateOverride(string sheet, string clip, string sourceName, bool loopAnim = true)
     {
         string effSheet = string.IsNullOrEmpty(sheet) ? Player2DSpriteSheet : sheet;
         if (Sprite2DStateOverrideActive
             && Sprite2DStateOverrideSource == sourceName
             && Sprite2DStateOverrideSheet == effSheet
-            && Sprite2DStateOverrideClip == clip)
+            && Sprite2DStateOverrideClip == clip
+            && (!Sprite2DLoopOverrideActive || Sprite2DLoopOverrideValue == loopAnim))
             return true; // already in this exact state — keep the anim clock running
         if (!Sprite2DStateOverrideActive)
         {
@@ -3965,6 +3975,9 @@ public unsafe class EditorObject
         Sprite2DStateOverrideClip = clip;
         Sprite2DStateOverrideSource = sourceName;
         Sprite2DStateOverrideActive = true;
+        // Loop mode of the swapped art (Off = play once, hold last frame).
+        Sprite2DLoopOverrideActive = true;
+        Sprite2DLoopOverrideValue = loopAnim;
         // Different art → restart the sprite clock so the swap plays from frame 0
         // (a chest-open animation must not start mid-way).
         Sprite2DAnimTime = 0f;
@@ -3980,6 +3993,7 @@ public unsafe class EditorObject
         Sprite2DStateOverrideSheet = "";
         Sprite2DStateOverrideClip = "";
         Sprite2DStateOverrideSource = "";
+        Sprite2DLoopOverrideActive = false; // back to the object's own Sprite2DLoop
         Sprite2DAnimTime = 0f;
     }
 
@@ -4290,7 +4304,7 @@ public unsafe class EditorObject
         }
         else
         {
-            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime, Sprite2DEffectiveLoop);
         }
         // Past-sheet clamp: a frame index beyond the sheet's own frame list/grid would
         // sample UVs OUTSIDE the texture (empty space → the sprite silently VANISHES,
@@ -4493,7 +4507,7 @@ public unsafe class EditorObject
         float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
         float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
         int f = (int)(t / frameDur);
-        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        f = Sprite2DEffectiveLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
         int frameIdx = clip.FrameIndices[f];
 
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
@@ -4639,7 +4653,7 @@ public unsafe class EditorObject
         float frameDur = 1f / MathF.Max(0.01f, clip.FPS * MathF.Max(0.01f, clip.SpeedMultiplier * MathF.Max(0.01f, Sprite2DSpeed)));
         float t = Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset);
         int f = (int)(t / frameDur);
-        f = Sprite2DLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
+        f = Sprite2DEffectiveLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
         int frameIdx = clip.FrameIndices[f];
 
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
@@ -4885,7 +4899,7 @@ public unsafe class EditorObject
         }
         else
         {
-            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime);
+            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime, Sprite2DEffectiveLoop);
         }
 
         if (drawSheet.CustomFrames != null)

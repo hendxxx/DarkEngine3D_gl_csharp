@@ -1333,7 +1333,7 @@ public class DialogueEditorPanel
             ImGui.SetNextItemWidth(140f);
             if (ImGui.InputText("##ccond", ref cond, 256))
                 c.Conditions = cond.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Conditions separated by ';' — e.g. level:5;flag:met_elder;item:potion;gold:100");
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Conditions separated by ';' — e.g. level:5;flag:met_elder;item:potion;item:ember>=3;gold:100;notflag:quest_x_done");
             ImGui.SameLine();
             ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.2f, 0.2f, 1f));
             if (ImGui.SmallButton("x"))
@@ -1404,6 +1404,12 @@ public class DialogueEditorPanel
                 string p = a.Param;
                 ImGui.SetNextItemWidth(110f);
                 if (ImGui.InputText("##p", ref p, 128)) a.Param = p;
+                ImGui.SameLine();
+                string p2 = a.Param2;
+                ImGui.SetNextItemWidth(64f);
+                if (ImGui.InputText("##p2", ref p2, 64)) a.Param2 = p2;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Param 2 — arti tergantung action:\nGive/Remove Item = amount, Start Dialogue = node id,\nModify Stat = delta, Play Sound = volume.");
                 ImGui.SameLine();
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.2f, 0.2f, 1f));
                 if (ImGui.SmallButton("x")) { actions.RemoveAt(i); ImGui.PopStyleColor(); ImGui.PopID(); continue; }

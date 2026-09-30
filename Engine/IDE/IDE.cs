@@ -42,6 +42,7 @@ public class IDE : IDisposable
     private readonly MapEditorPanel _mapEditor = null!;
     private readonly DialogueEditorPanel _dialogueEditor = null!;
     private readonly ItemEditorPanel _itemEditor = null!;
+    private readonly ShopEditorPanel _shopEditor = null!;
     /// <summary>Intensity handed from the Camera Shake trigger action to BeginShake
     /// (the runtime fires duration and intensity as two separate callbacks).</summary>
     private float _pendingShakeIntensity = 1f;
@@ -319,6 +320,10 @@ public class IDE : IDisposable
             _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
             // Item catalog belongs to the project (Assets/Items/items.json).
             Visual.InventorySystem.LoadCatalog();
+            // Shop catalog belongs to the project (Assets/Shops/shops.json).
+            Visual.ShopSystem.LoadCatalog();
+            // Quest display catalog belongs to the project (Assets/Quests/quests.json).
+            Visual.QuestSystem.LoadCatalog();
             // Re-apply per-project ortho zoom limits. The IDE constructor applied
             // these BEFORE any project was open (exe-fallback settings), so without
             // this reload the project's settings.json range (e.g. 25–50 for pixel-art)
@@ -378,6 +383,8 @@ public class IDE : IDisposable
             Visual.Effect2DSystem.ResetWeather();
             Visual.InventorySystem.ResetSession();
             Visual.InventorySystem.ClearCatalog();
+            Visual.ShopSystem.ClearCatalog();
+            Visual.QuestSystem.ClearCatalog();
         }
     }
 
@@ -774,9 +781,11 @@ public class IDE : IDisposable
             _mapEditor = new MapEditorPanel(Bridge);
             _dialogueEditor = new DialogueEditorPanel(Bridge);
             _itemEditor = new ItemEditorPanel(Bridge);
+            _shopEditor = new ShopEditorPanel(Bridge);
             // Bake the inventory HUD's font atlas once, outside any frame (see
             // InventoryHud.Prewarm — mid-frame bakes render text as empty boxes).
             Visual.InventoryHud.Prewarm();
+            Visual.ShopHud.Prewarm();
             _ideSettings = new IDESettingsPanel(Bridge);
 
             // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.
@@ -1328,6 +1337,7 @@ public class IDE : IDisposable
                 _effectsPanel.ShowInMenu();
                 _dialogueEditor.ShowInMenu();
                 _itemEditor.ShowInMenu();
+                _shopEditor.ShowInMenu();
                 ImGui.Separator();
                 _ideSettings.ShowInMenu();
 
@@ -1423,6 +1433,7 @@ public class IDE : IDisposable
                 _effectsPanel.Render();
                 _dialogueEditor.Render();
                 _itemEditor.Render();
+                _shopEditor.Render();
                 _ideSettings.Render();
             }
         }

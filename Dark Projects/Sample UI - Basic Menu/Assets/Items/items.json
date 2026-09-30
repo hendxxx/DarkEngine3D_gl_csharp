@@ -21,8 +21,32 @@
       "UseFxPreset": "Sparks",
       "UseEffect": "Heal",
       "UseAmount": 100,
-      "Price": 0,
+      "Price": 30,
       "Notes": ""
+    },
+    {
+      "Id": "Ember",
+      "Name": "Ember",
+      "IconSheet": "#1 - Transparent Icons",
+      "IconCols": 16,
+      "IconRows": 20,
+      "IconCol": 2,
+      "IconRow": 9,
+      "MaxStack": 99,
+      "EquipSlot": "",
+      "BonusHealth": 0,
+      "BonusMana": 0,
+      "BonusDefense": 0,
+      "BonusDamage": 0,
+      "EquipSheet": "",
+      "EquipClip": "",
+      "EquipWorldHeight": 8,
+      "EquipZOffset": 0.09,
+      "UseFxPreset": "",
+      "UseEffect": "",
+      "UseAmount": 0,
+      "Price": 10,
+      "Notes": "Bahan quest perapian desa"
     }
   ]
 }

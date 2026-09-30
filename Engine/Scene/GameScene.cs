@@ -41,6 +41,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Texture[]? _skyTextures;
         private Skybox? _skybox;
         private HUD? _hud;
+        /// <summary>Inventory/shop shared HUD instance used THIS frame (flushed right
+        /// after the main HUD into the same framebuffer — preview/in-game font parity).</summary>
+        private HUD? _lastInvHud;
         private ObjectManager? _objectManager;
 
         //  Render state (initialized in Enter) 
@@ -476,6 +479,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _skybox = skybox;
             _hud = hud;
             _objectManager = objectManager;
+            // Inventory/shop HUD parity with the editor preview: bake the shared HUD
+            // (Worldstar + 26px title + 16px label slots) OUTSIDE the frame loop — the
+            // in-game _hud is LoadingScene's Ngaco and cannot bake new font slots
+            // mid-frame (empty-glyph atlas bug), so its inventory text never matched
+            // the preview's. Called here (pre-frame) the bake is clean.
+            InventoryHud.Prewarm();
+            ShopHud.Prewarm();
+            QuestHud.Prewarm();
         }
 
         public void Enter()
@@ -661,7 +672,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 //  ESCAPE: toggle pause — UNLESS a dialogue conversation is open, in
                 // which case ESC closes the conversation first (dialogue owns input).
                 bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
-                bool dialogueOwnsEsc = Visual.DialogueSystem.IsConversationActive;
+                bool dialogueOwnsEsc = Visual.DialogueSystem.IsConversationActive || ShopHud.IsOpen;
                 if (escapeDown && !_escapeWasDown && !_confirmingExit && dialogueOwnsEsc)
                 {
                     // Consumed by DialogueSystem.UpdateInteraction (EndConversation).
@@ -1325,11 +1336,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             DialogueSystem.ShowPrompts = isPreviewMode;
             DialogueSystem.Tick(_deltaTime, _hud, _camera, _sceneManager.Bridge?.EditorObjectManager);
 
-            // ── Inventory UI (hotbar + [I] panel) — HUD batch pipeline, like the
-            // MainMenu UI: draws into the same queue that Flush() composites over the
-            // scene, so it appears INSIDE the viewport texture (not an ImGui window).
+            // ── Inventory UI (hotbar + [I] panel) + Shop UI — rendered through the
+            // SHARED HUD (the same instance the editor preview uses) so fonts and style
+            // are IDENTICAL in both modes; its queue is flushed right after the main
+            // HUD into the SAME framebuffer (shared FBO docked, screen fullscreen).
             // Session-gated inside; input via GLFW with physical-edge detection.
-            InventoryHud.Render(_hud, _deltaTime);
+            InventoryHud.Prewarm();
+            ShopHud.Prewarm();
+            QuestHud.Prewarm();
+            HUD? invHud = InventoryHud.SharedHud ?? _hud;
+            InventoryHud.Render(invHud, _deltaTime);
+
+            // ── Shop UI (panel belanja klasik) — opens via the "Open Shop" action and
+            // floats OVER the conversation; while open it owns Esc (dialogue must not
+            // eat it) and freezes player input. Same shared-HUD pipeline. ──
+            ShopHud.Render(invHud, _deltaTime);
+
+            // ── Quest UI: tracker quest aktif (top-left) + panel Quest Log [Q]. ──
+            QuestHud.Render(invHud, _deltaTime);
+            _lastInvHud = invHud;
 
             //  HUD debug overlay — hidden in preview/in-game mode for a clean view.
             // Visibility also honors the "Show In-Game Stats" preference (IDE Settings
@@ -1361,15 +1386,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 hudToSharedFbo = _sceneManager.SharedFBO != 0;
             }
             if (hudToSharedFbo)
-            {
-                // Copy the finished frame into the shared FBO so the HUD overlays it.
-                // While paused the scene FBO still holds the last rendered frame —
-                // composite that (the blurred-to-screen pass stays docked-invisible).
-                _hud.DrawImage(0, 0, Glfw.WindowWidth, Glfw.WindowHeight, _ppStack.SceneColorTex);
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sceneManager.SharedFBO);
-                GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+            if (hudToSharedFbo)
+            {
+                // Stamp the finished scene frame as an OPAQUE backdrop, then flush the
+                // HUD queues on top. The backdrop used to be queued via DrawImage — but
+                // Flush renders boxes+text FIRST and images LAST, so the backdrop
+                // overdraws everything queued before it: the in-game inventory/shop
+                // came out washed-out with no text (the editor preview path never
+                // queues a backdrop and looked correct). While paused the scene FBO
+                // still holds the last rendered frame — composite that.
+                _hud.FlushWithBackdrop(hudToSharedFbo ? _ppStack.SceneColorTex : 0u);
             }
-            _hud.Flush();
+            else
+                _hud.Flush();
+            // ── Inventory/Shop shared HUD: flush into the SAME framebuffer so its
+            // parchment panels + Worldstar text composite over the main HUD exactly
+            // like the editor preview (which draws this same instance last). ──
+            if (_lastInvHud is { } invFlush && !ReferenceEquals(invFlush, _hud))
+            {
+                invFlush.Flush();
+            }
             if (hudToSharedFbo)
             {
                 // The Viewport panel samples the shared resolve texture (same as
@@ -1580,6 +1617,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Inventory snapshot (grid + paperdoll + gold) — must be captured BEFORE
             // the initializer (tuple deconstruction is not allowed inside one).
             var (invGrid, invEquip, invGold) = InventorySystem.CaptureState();
+            // World journal (trigger applied/hidden bits + sprite end-states) — the
+            // loaded save puts every looted chest / used portal / opened door back.
+            var (wTriggers, wSprites) = WorldStateJournal.CaptureState();
 
             var data = new SaveData
             {
@@ -1603,6 +1643,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 InventoryGrid = invGrid,
                 InventoryEquipment = invEquip,
                 InventoryGold = invGold,
+
+                // World journal — looted chests / used portals / swapped sprites.
+                WorldTriggerStates = wTriggers,
+                WorldSpriteStates = wSprites,
 
                 SaveTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
             };
@@ -1668,6 +1712,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // Restore inventory (grid + paperdoll + gold; stat bonuses re-applied).
             InventorySystem.RestoreState(data.InventoryGrid, data.InventoryEquipment, data.InventoryGold);
+
+            // Restore the world journal (chests open, portals used) BEFORE re-applying
+            // the sprite end-states — ResetRuntime re-applies triggers per map. Object
+            // lists live on the Bridge's EditorObjectManager (not the agent manager).
+            WorldStateJournal.RestoreState(data.WorldTriggerStates, data.WorldSpriteStates);
+            var wMgr = _sceneManager.Bridge?.EditorObjectManager;
+            if (wMgr != null)
+            {
+                foreach (var o in wMgr.Objects)
+                    if (o is { PrimitiveType: Objects.EditorPrimitiveType.Map2D, Map2dTilemap: { } om })
+                        TriggerEventSystem.ResetRuntime(om); // journal re-applies flags
+                WorldStateJournal.ApplySprites(wMgr);
+            }
 
             _saveNotification = $"Game loaded from Slot {slotIndex + 1}!";
             _saveNotificationTimer = 3f;

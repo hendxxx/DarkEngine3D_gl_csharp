@@ -1,0 +1,16 @@
+{
+  "Quests": [
+    {
+      "Id": "ember",
+      "Name": "Nyalaikan Perapian Desa",
+      "Description": "Perapian desa hampir padam. Kepala Desa meminta bantuanmu.",
+      "Objectives": [
+        "Buka chest di ujung dungeon (tekan E)",
+        "Kumpulkan 3 Ember",
+        "Laporkan kembali ke Kepala Desa"
+      ],
+      "RewardText": "20 Gold + 1 Potion",
+      "Hidden": false
+    }
+  ]
+}

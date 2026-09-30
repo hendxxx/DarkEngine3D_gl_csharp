@@ -300,7 +300,12 @@ public static class TriggerEventSystem
             TickPortalState(trigger, inside, enterKeyPressed, dt);
 
             if (fired)
+            {
                 trigger.RuntimeCooldown = 0.1f; // tiny guard so one boundary event can't double-fire
+                // Journal the post-fire state so re-entering the map doesn't reset it
+                // (chest already looted stays looted — see WorldStateJournal).
+                WorldStateJournal.RecordTrigger(_activeMap?.Name, trigger.Name, trigger.RuntimeApplied, trigger.RuntimeHidden);
+            }
         }
     }
 
@@ -323,6 +328,9 @@ public static class TriggerEventSystem
             t.RuntimeTargetName = "";
             t.RuntimeInteractArmed = false; // interact-key zones re-arm on next entry
         }
+        // World journal: a map reload must not un-loot a chest / resurrect a used
+        // one-way portal — re-apply whatever the player already did there.
+        WorldStateJournal.ApplyToMap(map);
     }
 
     // ── Portal runtime ──
@@ -833,6 +841,9 @@ public static class TriggerEventSystem
                     trigger.IsEnabled = false;
                     trigger.RuntimePlayerInside = false;
                     trigger.RuntimePortalWasInside = false;
+                    // Journal the vanish (recorded AFTER the fired-block wrote Applied,
+                    // so this supersedes it with Hidden = true).
+                    WorldStateJournal.RecordTrigger(_activeMap?.Name, trigger.Name, trigger.RuntimeApplied, trigger.RuntimeHidden);
                     Console.WriteLine($"[Trigger] '{triggerName}' → one-way portal vanished (returns on session/map reload)");
                 }
 
@@ -888,6 +899,24 @@ public static class TriggerEventSystem
                 if (stat.Length == 0 || deltaStr.Length == 0)
                 {
                     Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat FAILED: set Param (stat name) and Param2 (delta, e.g. -1)");
+                    break;
+                }
+                // Currency: "Gold" tweaks the inventory wallet (quest rewards,
+                // vendor payouts) instead of a body stat.
+                if (stat.Equals("Gold", StringComparison.OrdinalIgnoreCase) ||
+                    stat.Equals("Coin", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(deltaStr, out int goldDelta))
+                    {
+                        Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat Gold FAILED: '{deltaStr}' is not a number");
+                        break;
+                    }
+                    int beforeGold = InventorySystem.Gold;
+                    InventorySystem.Gold = Math.Max(0, beforeGold + goldDelta);
+                    int applied = InventorySystem.Gold - beforeGold;
+                    if (applied != 0)
+                        InventoryHud.PushFlash($"{(applied > 0 ? "+" : "")}{applied} Gold");
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Modify Stat Gold {beforeGold} {(applied >= 0 ? "+" : "−")}{MathF.Abs(applied)} → {InventorySystem.Gold}");
                     break;
                 }
                 // Friendly shorthands → canonical stat names.
@@ -1021,6 +1050,7 @@ public static class TriggerEventSystem
                 if (revert)
                 {
                     target.ClearSpriteStateOverride();
+                    WorldStateJournal.ClearSprite(target.Name); // journal forgets the swap
                     Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite REVERT on '{target.Name}'");
                     break;
                 }
@@ -1032,9 +1062,15 @@ public static class TriggerEventSystem
                     Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite FAILED: Param2 must be 'Sheet|Clip' (Sprite Editor names)");
                     break;
                 }
-                target.SetSpriteStateOverride(swSheet, swClip, triggerName);
+                // Loop mode from the "Loop Animasi" checkbox: ON = keep looping the
+                // swapped clip, OFF = play it once and hold the last frame (chest-open,
+                // levers) so the art does not re-open forever.
+                target.SetSpriteStateOverride(swSheet, swClip, triggerName, action.LoopAnim);
+                // Journal the END-STATE so leaving and returning to the map keeps the
+                // chest open (re-applied after every map reload / save load).
+                WorldStateJournal.RecordSprite(target.Name, swSheet, swClip, action.LoopAnim, triggerName);
                 if (trigger != null) trigger.RuntimeTargetName = target.Name;
-                Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite '{target.Name}' → '{swSheet}|{swClip}'");
+                Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite '{target.Name}' → '{swSheet}|{swClip}' (loop {(action.LoopAnim ? "on" : "off")})");
                 break;
             }
 
@@ -1069,6 +1105,157 @@ public static class TriggerEventSystem
                 if (added > 0)
                     Effect2DSystem.SpawnBurst("Sparks",
                         new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
+                break;
+            }
+            case TriggerActionTypes.RemoveItem:
+            {
+                // Fetch-quest hand-in: take the offered goods back (3 Ember → reward).
+                // Removed even when the count is short — callers gate the branch with
+                // an "item:x>=N" dialogue condition so it only runs when it can pay.
+                string itemId = (action.Param ?? "").Trim();
+                if (itemId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Remove Item FAILED: no item id in Param");
+                    break;
+                }
+                int amount = 1;
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                    int.TryParse(action.Param2.Trim(), out amount);
+                if (amount <= 0) amount = 1;
+                int removed = InventorySystem.RemoveItem(itemId, amount);
+                if (removed > 0)
+                InventoryHud.PushFlash($"-{removed} {(InventorySystem.Find(itemId)?.Name ?? itemId)}");
+                Console.WriteLine($"[Trigger] '{triggerName}' → Remove Item '{itemId}' ×{amount} → removed {removed}");
+                break;
+            }
+            case TriggerActionTypes.BuyItem:
+            {
+                // Shop transaction: Param = item id, Param2 = amount (default 1),
+                // Param3 = "" = priced at ItemDef.Price each; "N" = fixed price override
+                // per item (0 = free). Payment + delivery are ALL-OR-NOTHING: without
+                // enough gold (or a full grid with Direct mode) nothing is paid/taken.
+                string itemId = (action.Param ?? "").Trim();
+                if (itemId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Buy Item FAILED: no item id in Param");
+                    break;
+                }
+                int amount = 1;
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                    int.TryParse(action.Param2.Trim(), out amount);
+                if (amount <= 0) amount = 1;
+                int unitPrice;
+                string priceRaw = (action.Param3 ?? "").Trim();
+                var def = InventorySystem.Find(itemId);
+                if (priceRaw.Length > 0 && int.TryParse(priceRaw, out int fixedPrice))
+                    unitPrice = Math.Max(0, fixedPrice); // "0" = gratis, "N" = harga override
+                else
+                    unitPrice = Math.Max(0, def?.Price ?? 0); // tak terdaftar = gratis (log saja)
+                int total = unitPrice * amount;
+                if (InventorySystem.Gold < total)
+                {
+                    InventoryHud.PushFlash($"Gold kurang! Butuh {total} Gold.");
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Buy Item '{itemId}' ×{amount} FAILED: {InventorySystem.Gold}/{total} gold");
+                    break;
+                }
+                int added = InventorySystem.AddItem(itemId, amount);
+                if (added <= 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Buy Item FAILED: inventory grid penuh (Direct mode)");
+                    break;
+                }
+                int charged = unitPrice * added; // grid penuh sebagian → bayar proporsional
+                InventorySystem.Gold -= charged;
+                if (def != null)
+                    InventoryHud.PushFlash($"-{charged} Gold → +{added} {def.Name}");
+                Effect2DSystem.SpawnBurst("Coin",
+
+                    new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Buy Item '{itemId}' ×{added} @ {unitPrice} → -{charged} gold (sisa {InventorySystem.Gold})");
+                break;
+            }
+            case TriggerActionTypes.SellItem:
+            {
+                // Vendor: Param = item id, Param2 = amount (default 1), Param3 = "" =
+                // payout ItemDef.Price each; "N" = fixed payout override. All-or-nothing
+                // on stock: without the goods nothing is paid out.
+                string itemId = (action.Param ?? "").Trim();
+                if (itemId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item FAILED: no item id in Param");
+                    break;
+                }
+                int amount = 1;
+                if (!string.IsNullOrWhiteSpace(action.Param2))
+                    int.TryParse(action.Param2.Trim(), out amount);
+                if (amount <= 0) amount = 1;
+                int unitPrice;
+                string payoutRaw = (action.Param3 ?? "").Trim();
+                var def = InventorySystem.Find(itemId);
+                if (payoutRaw.Length > 0 && int.TryParse(payoutRaw, out int fixedPayout))
+                    unitPrice = Math.Max(0, fixedPayout);
+                else
+                    unitPrice = Math.Max(0, def?.Price ?? 0);
+                if (InventorySystem.Count(itemId) < amount)
+                
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item FAILED: '{itemId}' ×{amount} tidak tersedia");
+                    break;
+                }
+                int sold = InventorySystem.RemoveItem(itemId, amount);
+                InventorySystem.Gold += unitPrice * sold;
+                if (sold > 0)
+                    InventoryHud.PushFlash($"+{unitPrice * sold} Gold ← -{sold} {(def?.Name ?? itemId)}");
+                Effect2DSystem.SpawnBurst("Coin",
+                    new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
+                Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item '{itemId}' ×{sold} @ {unitPrice} → +{unitPrice * sold} gold (sisa {InventorySystem.Gold})");
+                break;
+            }
+            case TriggerActionTypes.OpenShop:
+            {
+                // Shop panel: Param = shop id (Shop Editor / shops.json). Opens the
+                // classic buy/sell panel (ShopHud) ON TOP of the conversation — the
+                // dialogue keeps running underneath and regains the window on close.
+                string shopId = (action.Param ?? "").Trim();
+                if (shopId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Open Shop FAILED: no shop id in Param");
+                    break;
+                }
+                ShopHud.TryOpen(shopId);
+                break;
+            }
+            case TriggerActionTypes.ActivateQuest:
+            {
+                // Quest bookkeeping via dialogue flags: quest_<id>_active (and _done
+                // cleared so a quest can be re-offered). The dialogue conditions
+                // quest:/questdone: read these same flags — see DialogueSystem.
+                string questId = (action.Param ?? "").Trim();
+                if (questId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Activate Quest FAILED: no quest id in Param");
+                    break;
+                }
+                DialogueSystem.SetFlag($"quest_{questId}_active");
+                DialogueSystem.ClearFlag($"quest_{questId}_done");
+                QuestSystem.OnActivated(questId); // HUD tracker flash + auto-placeholder
+                Console.WriteLine($"[Trigger] '{triggerName}' → Activate Quest '{questId}'");
+                break;
+            }
+            case TriggerActionTypes.CompleteQuest:
+            {
+                // Hand-in endpoint: flips quest_<id>_done — the notflag/questdone
+                // dialogue conditions use it to hide the turn-in option afterwards.
+                string questId = (action.Param ?? "").Trim();
+                if (questId.Length == 0)
+                {
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Complete Quest FAILED: no quest id in Param");
+                    break;
+                }
+                DialogueSystem.SetFlag($"quest_{questId}_done");
+                DialogueSystem.ClearFlag($"quest_{questId}_active");
+                QuestSystem.OnCompleted(questId); // HUD flash "✓ Quest selesai"
+                Console.WriteLine($"[Trigger] '{triggerName}' → Complete Quest '{questId}'");
                 break;
             }
 
@@ -1169,6 +1356,7 @@ public static class TriggerEventSystem
         State.Clear();
         _warned.Clear();
         CheckpointPosition = null;
+        WorldStateJournal.Clear(); // fresh run → the world resets (chest closed again)
         Player2DStats.ResetToDefaults(); // fresh session → default HP/MP/Level/EXP/Fitness
         DialogueSystem.ResetSession();   // fresh session → no flags/vars/progress/bubbles
         InventorySystem.ResetSession();  // fresh session → empty grid/bag/gold

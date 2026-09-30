@@ -245,7 +245,37 @@ public static unsafe class DialogueSystem
     }
 
     /// <summary>Condition mini-language: "level:5", "gold:100", "flag:name",
-    /// "item:potion", "quest:id", "var:name:10". Unknown conditions FAIL closed.</summary>
+    /// "item:potion", "item:ember>=3" (count at least N — quests), "notflag:name",
+    /// "notgold:100" / "notitem:potion" (negated — hide exhausted shop options),
+    /// "quest:id", "questdone:id", "var:name:10". Unknown conditions FAIL closed.</summary>
+    private static bool GoldAtLeast(string? minRaw)
+    {
+        if (!float.TryParse(minRaw, out float minGold)) return false;
+        return MathF.Max(InventorySystem.Gold, GetVariable("gold")) >= minGold;
+    }
+
+    /// <summary>Shared parser for item:/notitem: — "potion" = own ≥1,
+    /// "ember>=3" (or seg2 "3") = own at least N. Negation lives in the caller.</summary>
+    private static bool ItemCountPasses(string? seg1, string? seg2)
+    {
+        string itemId = seg1 ?? "";
+        if (itemId.Length == 0) return false;
+        string? minRaw;
+        int gt = itemId.IndexOf('>');
+        if (gt >= 0)
+        {
+            minRaw = itemId[(gt + 1)..].Trim().TrimStart('='); // ">=3" → "3"
+            itemId = itemId[..gt].Trim();
+        }
+        else
+        {
+            minRaw = seg2;
+        }
+        int minimum = 1;
+        if (!string.IsNullOrWhiteSpace(minRaw))
+            int.TryParse(minRaw, out minimum);
+        return InventorySystem.Count(itemId) >= Math.Max(1, minimum);
+    }
     public static bool ConditionPasses(string condition)
     {
         if (string.IsNullOrWhiteSpace(condition)) return true;
@@ -256,12 +286,26 @@ public static unsafe class DialogueSystem
             case "level":
                 return float.TryParse(parts.ElementAtOrDefault(1), out float lvl) && Player2DStats.Level >= lvl;
             case "gold":
-                return float.TryParse(parts.ElementAtOrDefault(1), out float gold) && GetVariable("gold") >= gold;
+                // Shop/quest gate: read the REAL wallet (InventorySystem.Gold — the
+                // same pool Buy/Sell Item and Modify Stat Gold write). The dialogue
+                // var "gold" stays as a fallback floor for older scripted assets.
+                return GoldAtLeast(parts.ElementAtOrDefault(1));
+            case "notgold":
+                // Negated gold: show the "you can't afford this" branch.
+                return !GoldAtLeast(parts.ElementAtOrDefault(1));
             case "flag":
                 return HasFlag(parts.ElementAtOrDefault(1) ?? "");
             case "item":
                 // Inventory phase 2: read the REAL grid count (legacy bag included).
-                return InventorySystem.Count(parts.ElementAtOrDefault(1) ?? "") > 0;
+                // "item:potion" = own at least 1; "item:ember>=3" (or "item:ember:3")
+                // = own at least N — the fetch-quest gate ("bawa 3 Ember ke NPC").
+                return ItemCountPasses(parts.ElementAtOrDefault(1), parts.ElementAtOrDefault(2));
+            case "notitem":
+                // Negated item count: show the "bring more" vendor branch.
+                return !ItemCountPasses(parts.ElementAtOrDefault(1), parts.ElementAtOrDefault(2));
+            case "notflag":
+                // Inverse of flag: — quests hide their hand-in option once done.
+                return !HasFlag(parts.ElementAtOrDefault(1) ?? "");
             case "quest":
                 string q = parts.ElementAtOrDefault(1) ?? "";
                 return HasFlag($"quest_{q}_active") || HasFlag($"quest_{q}_done");
@@ -388,15 +432,19 @@ public static unsafe class DialogueSystem
         }
 
         // ── Interact key starts the NPC's dialogue ──
-        bool interactDown = ImGui.IsKeyDown(ImGuiKey.E);
+        // (Suppressed while the shop panel is open — E may be a hotkey there and the
+        // conversation underneath must not advance/cancel from shop input.)
+        bool interactDown = ImGui.IsKeyDown(ImGuiKey.E) && !ShopHud.IsOpen;
         bool pressed = interactDown && !_interactWasDown;
         _interactWasDown = interactDown;
         if (pressed && Active == null && InteractableNpc != null)
             StartConversation(InteractableNpc.NpcDialogueId, InteractableNpc);
 
-        // ── Conversation keyboard (outside the pause/save gates — dialogue owns input) ──
+        // ── Conversation keyboard (outside the pause/save gates — dialogue owns input).
+        // While the SHOP panel is open the conversation's keys are suppressed entirely:
+        // Space/Enter/E/digits/Escape belong to the shop until it closes. ──
         var conv = Active;
-        if (conv != null && conv.CloseFade < 0f)
+        if (conv != null && conv.CloseFade < 0f && !ShopHud.IsOpen)
         {
             var st = conv;
             int choiceCount = VisibleChoices(st).Count;
@@ -571,7 +619,9 @@ public static unsafe class DialogueSystem
             DrawInteractPrompt(hud, InteractableNpc, w, h);
 
         // ── Conversation window (state advanced in TickState — draw only) ──
-        if (Active != null)
+        // Hidden while the SHOP panel is open: the shop draws right after this in the
+        // same HUD queue, so the parchment window would peek around the shop panel.
+        if (Active != null && !ShopHud.IsOpen)
             DrawConversation(hud, Active, w, h);
     }
 
@@ -1085,6 +1135,11 @@ public static unsafe class DialogueSystem
         }
 
         // ── Conversation window (bottom-center of the scene image) ──
+        // Suppressed while the SHOP panel is open: the shop renders inside the scene
+        // texture (HUD batch → shared FBO) and would be OVERDRAWN by this ImGui
+        // overlay — the conversation must stay hidden until the panel closes.
+        if (ShopHud.IsOpen)
+            return;
         var st = Active;
         if (st != null)
         {

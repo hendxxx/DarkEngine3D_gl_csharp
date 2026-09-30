@@ -696,6 +696,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         if (InventoryHud.SharedHud is { } invHud)
                         {
                             InventoryHud.Render(invHud, dt);
+                            // Shop panel + quest tracker — same shared HUD + flush path.
+                            ShopHud.Render(invHud, dt);
+                            QuestHud.Render(invHud, dt);
                             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                             invHud.Flush();

@@ -86,6 +86,13 @@ public static class InventoryHud
     // Hover state for tooltips (scene-px rect of the last hovered slot this frame).
     private static string _tooltip = "";
 
+    // Mouse in SCENE-px (mapped through WindowToScene when docked — identity/full-
+    // screen otherwise). ALL slot hit-tests must use THIS, not a raw Mouse.GetPosition():
+    // the raw cursor is in WINDOW px while slots are drawn in TEXTURE px — in the
+    // docked preview those differ (letterbox origin + scale), so the hover highlight
+    // landed one slot to the side of the real cursor (fullscreen happened to match). 
+    private static float _mx, _my;
+
     // ── Transient feedback message (bottom-center above the hotbar) ──
     private static string _flash = "";
     private static float _flashTime;
@@ -101,9 +108,12 @@ public static class InventoryHud
         Flash(msg);
     }
 
-    /// <summary>Update input + draw everything. Call ONCE per frame between the HUD
-    /// command queueing start and hud.Flush() (self-gates on the session flag — edit
-    /// mode draws nothing).</summary>
+    /// <summary>Update input + draw everything. Call ONCE per frame before the HUD
+    /// flush (self-gates on the session flag — edit mode draws nothing).
+    /// NOTE: renders with the session opacity of a REAL overlay — the parchment style
+    /// assumes it draws ON TOP of the scene (like the preview path). The GameScene
+    /// docked path must flush with FlushWithBackdrop so the backdrop stays UNDER the
+    /// queue (a queued backdrop image would overdraw these panels).</summary>
     public static void Render(HUD hud, float dt)
     {
         if (hud == null || !Player2DStats.SessionActive)
@@ -113,7 +123,7 @@ public static class InventoryHud
             return;
         }
         _dt = MathF.Max(0.0001f, dt);
-        bool dialogueOwnsKeys = DialogueSystem.IsConversationActive;
+        bool dialogueOwnsKeys = DialogueSystem.IsConversationActive || ShopHud.IsOpen;
 
         // ══════════ INPUT (GLFW, physical edge) ══════════
         nint window = Glfw.GetWindow();
@@ -158,6 +168,7 @@ public static class InventoryHud
         // Docked preview: map through the viewport's letterbox inverse when provided.
         if (WindowToScene != null)
             (mx, my) = WindowToScene(mx, my);
+        _mx = mx; _my = my; // single source of truth for every hover test this frame
         bool leftDown = Mouse.IsButtonDown(0);
         bool rightDown = Mouse.IsButtonDown(1); // GLFW: 0=left, 1=right
         bool leftPressed = leftDown && !_leftWasDown;
@@ -220,12 +231,12 @@ public static class InventoryHud
     // ═══════════════════════ Slot drawing ═══════════════════════
 
     /// <summary>One inventory slot: inset parchment cell + cropped icon + count badge.
-    /// Returns true when the mouse hovers it this frame.</summary>
+    /// Returns true when the mouse hovers it this frame (hit-test in MAPPED scene-px —
+    /// raw window px breaks the docked preview, see _mx/_my).</summary>
     private static bool DrawSlot(HUD hud, float x, float y, float size,
         InventorySystem.ItemDef? def, int count, bool highlighted, bool dragging)
     {
-        var mouse = Mouse.GetPosition();
-        bool hover = mouse.X >= x && mouse.X < x + size && mouse.Y >= y && mouse.Y < y + size;
+        bool hover = _mx >= x && _mx < x + size && _my >= y && _my < y + size;
 
         hud.DrawBox(x, y, size, size, dragging ? ParchmentHover : hover ? ParchmentHover : ParchmentDim);
         var border = (highlighted || dragging) ? HighlightGold : WoodMid;

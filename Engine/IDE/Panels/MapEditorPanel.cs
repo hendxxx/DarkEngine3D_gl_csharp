@@ -1815,24 +1815,85 @@ public class MapEditorPanel
                         ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor.");
                     break;
                 }
+                case TriggerActionTypes.RemoveItem:
+                {
+                    if (ImGui.InputText("Item ID##rmitem", ref p1, 64)) act.Param = p1;
+                    if (ImGui.InputText("Amount##rmamt", ref p2, 32)) act.Param2 = p2;
+                    var rdef = Visual.InventorySystem.Find(p1.Trim());
+                    if (rdef != null)
+                        ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {rdef.Name} (max stack {rdef.MaxStack})");
+                    else
+                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor.");
+                    ImGui.TextDisabled("Mengambil item dari inventory (hand-in quest). Taruh di cabang dialogue\nyang sudah digate condition 'item:<id>>=N' supaya item hanya dipotong saat cukup.");
+                    break;
+                }
+                case TriggerActionTypes.BuyItem:
+                {
+                    string p3b = act.Param3;
+                    if (ImGui.InputText("Item ID##buyitem", ref p1, 64)) act.Param = p1;
+                    if (ImGui.InputText("Amount##buyamt", ref p2, 32)) act.Param2 = p2;
+                    if (ImGui.InputText("Harga (kosong = Price item)##buyprice", ref p3b, 32)) act.Param3 = p3b;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Harga per item. Kosong = pakai kolom Price di Item Editor.\n\"0\" = gratis. Pembayaran all-or-nothing: gold kurang = tidak jadi.");
+                    var bdef = Visual.InventorySystem.Find(p1.Trim());
+                    if (bdef != null)
+                        ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {bdef.Name} — Price {bdef.Price} Gold (max stack {bdef.MaxStack})");
+                    else
+                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor (set Price!).");
+                    ImGui.TextDisabled("Pakai di choice dialogue dengan condition 'gold:<total>' supaya opsi beli\nhanya muncul saat gold cukup (contoh: beli 2 @30 → condition gold:60).");
+                    break;
+                }
+                case TriggerActionTypes.SellItem:
+                {
+                    string p3s = act.Param3;
+                    if (ImGui.InputText("Item ID##sellitem", ref p1, 64)) act.Param = p1;
+                    if (ImGui.InputText("Amount##sellamt", ref p2, 32)) act.Param2 = p2;
+                    if (ImGui.InputText("Payout (kosong = Price/payout item)##sellprice", ref p3s, 32)) act.Param3 = p3s;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Gold yang diterima per item. Kosong = pakai kolom Price di Item Editor.\n\"0\" = tidak dibayar. Semua amount harus ada di inventory.");
+                    var sdef = Visual.InventorySystem.Find(p1.Trim());
+                    if (sdef != null)
+                        ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {sdef.Name} — Payout {sdef.Price} Gold/pcs");
+                    else
+                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor (set Price!).");
+                    ImGui.TextDisabled("Pakai di choice dialogue dengan condition 'item:<id>>=N' supaya opsi jual\nhanya muncul saat stok cukup (contoh: jual 3 → condition item:Ember>=3).");
+                    break;
+                }
+                case TriggerActionTypes.OpenShop:
+                {
+                    if (ImGui.InputText("Shop ID##shopid", ref p1, 64)) act.Param = p1;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Id shop dari panel Shop Editor (Assets/Shops/shops.json).\nPanel belanja terbuka di atas dialogue; Esc menutupnya.");
+                    if (Visual.ShopSystem.Shops.Count > 0)
+                    {
+                        foreach (var sh in Visual.ShopSystem.Shops)
+                        {
+                            ImGui.SameLine();
+                            if (ImGui.SmallButton($"{sh.Id}##osp")) act.Param = sh.Id;
+                        }
+                        var sel = Visual.ShopSystem.GetShop(p1.Trim());
+                        if (sel != null)
+                            ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {sel.Name} — {sel.Stock.Count} item, sell {sel.SellPercent}%");
+                        else
+                            ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), "Shop ID belum ada — buat di panel Shop Editor.");
+                    }
+                    else
+                        ImGui.TextDisabled("Belum ada shop terdaftar — buat di menu Shop Editor.");
+                    break;
+                }
+                case TriggerActionTypes.ActivateQuest:
+                case TriggerActionTypes.CompleteQuest:
+                {
+                    string qlabel = act.Type == TriggerActionTypes.ActivateQuest ? "Quest ID##qact" : "Quest ID##qdone";
+                    if (ImGui.InputText(qlabel, ref p1, 64)) act.Param = p1;
+                    ImGui.TextDisabled("Set flag 'quest_<id>_active' / 'quest_<id>_done' di DialogueSystem.\nDibaca condition dialogue 'quest:<id>', 'questdone:<id>', 'notflag:quest_<id>_done'.");
+                    break;
+                }
                 case TriggerActionTypes.ChangeSprite:
                 {
                     if (ImGui.InputText("Object Name##csobj", ref p1, 64)) act.Param = p1;
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Nama objek di Hierarchy (Sprite2D/Player2D) yang spritenya diganti.\nKosong = objek terdekat dari trigger (chest di dalam area trigger-nya).");
-                    // List objek yang tersedia supaya tidak salah ketik nama.
-                    if (_bridge.EditorObjectManager != null)
-                    {
-                        foreach (var o in _bridge.EditorObjectManager.Objects)
-                        {
-                            if (o is not { IsVisible: true } ||
-                                (o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Sprite2D
-                                 && o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Player2D)) continue;
-                            ImGui.SameLine();
-                            if (ImGui.SmallButton($"{o.Name}##cs{a}"))
-                                act.Param = o.Name;
-                        }
-                    }
                     if (ImGui.InputText("New Sheet|Clip##csart", ref p2, 160)) act.Param2 = p2;
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Format 'Sheet|Clip' — nama di Sprite Editor. Contoh: 'chest|open'.\nIni mengganti BASE sprite objek (chest tertutup → terbuka), bukan sekadar\nmemutar animasi: art-nya MENEMPEL sampai action 'Revert' dijalankan.");
@@ -1860,6 +1921,31 @@ public class MapEditorPanel
                         act.Param3 = csRevert ? "Revert" : "";
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Off = Swap: ganti base sprite ke Sheet|Clip (chest tertutup → terbuka).\nOn = Revert: kembalikan art yang objek punya SEBELUM di-swap (tutup chest lagi).");
+                    // Loop mode of the swapped art (action field LoopAnim — serialized).
+                    bool csLoop = act.LoopAnim;
+                    if (ImGui.Checkbox("Loop Animasi (off = main sekali, tahan frame terakhir)##csloop", ref csLoop))
+                        act.LoopAnim = csLoop;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("ON: clip swap diputar berulang (idle loop).\nOFF: clip main SEKALI lalu menahan frame terakhir — untuk\nchest terbuka / tuas / pintu yang tidak boleh mengulang animasinya.");
+                    // Quick-pick object names BELOW the inputs (user: they were cut off
+                    // when rendered on the same line as the Object Name field).
+                    if (_bridge.EditorObjectManager != null)
+                    {
+                        bool any = false;
+                        ImGui.NewLine(); // own row — first SameLine would stick to the Loop checkbox
+                        ImGui.TextDisabled("Isi cepat Object Name:");
+                        foreach (var o in _bridge.EditorObjectManager.Objects)
+                        {
+                            if (o is not { IsVisible: true } ||
+                                (o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Sprite2D
+                                 && o.PrimitiveType != Engine.Objects.EditorPrimitiveType.Player2D)) continue;
+                            any = true;
+                            ImGui.SameLine();
+                            if (ImGui.SmallButton($"{o.Name}##cs{a}"))
+                                act.Param = o.Name;
+                        }
+                        if (any) ImGui.TextDisabled("< klik untuk isi");
+                    }
                     ImGui.TextDisabled("Chest: OnEnter + [Change Sprite Swap] → [Give Item Drop].\nCentang 'Skip When Done' supaya masuk kedua kali tidak drop item lagi.");
                     break;
                 }

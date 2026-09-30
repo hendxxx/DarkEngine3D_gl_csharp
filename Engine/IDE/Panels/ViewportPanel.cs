@@ -3322,7 +3322,7 @@ ImGui.SameLine();
             // scene texture (SceneManager no-scene pass → shared FBO), but the mouse is
             // in window space — publish the letterbox inverse so slot hit-tests map
             // window → scene pixels. Cleared outside preview so F8/true scenes use 1:1.
-            InventoryHud.WindowToScene = (_bridge.IsPreviewMode || _bridge.InGameActive) && _imageSize.X > 1f
+            ShopHud.WindowToScene = InventoryHud.WindowToScene = (_bridge.IsPreviewMode || _bridge.InGameActive) && _imageSize.X > 1f
                 ? (wx, wy) =>
                 {
                     float u = (wx - _imageMin.X) / MathF.Max(1f, _imageSize.X);

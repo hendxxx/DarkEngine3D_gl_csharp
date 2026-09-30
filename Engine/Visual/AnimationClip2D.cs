@@ -62,12 +62,39 @@ public class AnimationClip2D
         return frame;
     }
 
+    /// <summary>Loop-override variant (Change Sprite "Loop Animasi"): the caller's
+    /// loop flag wins over the clip's own — Off = play once and hold the last frame.</summary>
+    public int GetFrameAtTime(float time, bool loopOverride)
+    {
+        if (FrameIndices.Count == 0) return 0;
+
+        float frameDuration = 1f / (FPS * SpeedMultiplier);
+        int frame = (int)(time / frameDuration);
+
+        if (loopOverride)
+            frame = ((frame % FrameIndices.Count) + FrameIndices.Count) % FrameIndices.Count;
+        else
+            frame = Math.Clamp(frame, 0, FrameIndices.Count - 1);
+
+        return frame;
+    }
+
     /// <summary>
     /// Get the sprite sheet frame index at a given time.
     /// </summary>
     public int GetSpriteFrameAtTime(float time)
     {
         int localFrame = GetFrameAtTime(time);
+        if (localFrame < FrameIndices.Count)
+            return FrameIndices[localFrame];
+        return 0;
+    }
+
+    /// <summary>Loop-override variant — mirrors GetFrameAtTime(time, loopOverride)
+    /// for the Change Sprite "Loop Animasi" off state (hold the last frame).</summary>
+    public int GetSpriteFrameAtTime(float time, bool loopOverride)
+    {
+        int localFrame = GetFrameAtTime(time, loopOverride);
         if (localFrame < FrameIndices.Count)
             return FrameIndices[localFrame];
         return 0;

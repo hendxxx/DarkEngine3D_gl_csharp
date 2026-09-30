@@ -647,9 +647,13 @@ public class TilemapTriggerAction
     public string Param3 { get; set; } = "";
     /// <summary>Delay in seconds before the action executes after the trigger fires.</summary>
     public float Delay { get; set; }
+    /// <summary>Change Sprite: loop mode of the swapped art. TRUE (default) = keep
+    /// looping the clip; FALSE = play it ONCE and hold the last frame (chest-open,
+    /// levers — the "Loop Animasi" checkbox in the Map Editor).</summary>
+    public bool LoopAnim { get; set; } = true;
 
     public TilemapTriggerAction Clone() => new()
-    { Type = Type, Param = Param, Param2 = Param2, Param3 = Param3, Delay = Delay };}
+    { Type = Type, Param = Param, Param2 = Param2, Param3 = Param3, Delay = Delay, LoopAnim = LoopAnim };}
 
 /// <summary>Catalog of trigger action types the engine understands. String-based so
 /// the editor dropdown and the runtime dispatcher always agree.</summary>
@@ -670,6 +674,10 @@ public static class TriggerActionTypes
     public const string CameraShake = "Camera Shake";
     public const string UnlockDoor = "Unlock Door";
     public const string GiveItem = "Give Item";
+    public const string RemoveItem = "Remove Item";
+    public const string BuyItem = "Buy Item";
+    public const string SellItem = "Sell Item";
+    public const string OpenShop = "Open Shop";
     /// <summary>Swap the TARGET object's base sprite (sheet+clip) — chest closed →
     /// open, door, lever. Param = object name (empty = nearest Player2D), Param2 =
     /// "Sheet|Clip", Param3 = "Swap" (default) or "Revert". State lives on the
@@ -692,7 +700,7 @@ public static class TriggerActionTypes
     [
         SaveGame, SaveCheckpoint, LoadCheckpoint, ChangeMap, PlaySound, PlayMusic, SpawnEffect,
         SpawnObject, StartDialogue, ShowBubble, HideBubble, StartCutscene, CameraShake, UnlockDoor,
-        GiveItem, ModifyStat, SpawnProjectile, Rain, SetWind, ActivateQuest, CompleteQuest, RunScript, EnablePortal,
+        GiveItem, RemoveItem, BuyItem, SellItem, OpenShop, ModifyStat, SpawnProjectile, Rain, SetWind, ActivateQuest, CompleteQuest, RunScript, EnablePortal,
         DisablePortal, Portal, PortalOneWay, ChangeSprite
     ];
 
@@ -704,7 +712,8 @@ public static class TriggerActionTypes
         SaveGame or SaveCheckpoint or LoadCheckpoint or ChangeMap or CameraShake
             or StartDialogue or ShowBubble or HideBubble or Portal or PortalOneWay
             or EnablePortal or DisablePortal or ModifyStat or Rain or SetWind
-            or SpawnEffect or GiveItem or SpawnProjectile or ChangeSprite => true,
+            or SpawnEffect or GiveItem or RemoveItem or BuyItem or SellItem or OpenShop or ActivateQuest or CompleteQuest
+            or SpawnProjectile or ChangeSprite => true,
         _ => false
     };
 }

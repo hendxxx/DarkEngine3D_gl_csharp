@@ -95,6 +95,9 @@ public static class Player2DSystem
                             TriggerEventSystem.ResetRuntime(om);
                     // Fresh session: the runtime level restarts on the active map.
                     TriggerEventSystem.RuntimeMap = activeMap;
+                    // World journal fresh-run: BeginSession cleared it, so nothing to
+                    // re-apply here — sprites are clean (chest closed). (Save-load path
+                    // re-fills the journal BEFORE spawning and applies below.)
                 }
             }
         }
@@ -160,7 +163,7 @@ public static class Player2DSystem
             // levels keep right-drag = pan, so player input stays live there.
             // (RmbFreeflyActive is only ever set in perspective — the static flag is
             // the single source of truth; no ortho check needed here.)
-            bool conversationActive = DialogueSystem.IsConversationActive;
+            bool conversationActive = DialogueSystem.IsConversationActive || ShopHud.IsOpen;
             bool rmbLookOwnsInput = Camera.RmbFreeflyActive;
             float walkSpeed = conversationActive ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
             float runSpeed = conversationActive ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);

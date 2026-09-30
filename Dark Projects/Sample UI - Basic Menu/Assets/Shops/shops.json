@@ -1,0 +1,16 @@
+{
+  "Shops": [
+    {
+      "Id": "warung_pedagang",
+      "Name": "Warung Pedagang",
+      "SellPercent": 50,
+      "Stock": [
+        {
+          "ItemId": "Potion",
+          "PriceOverride": 30,
+          "Stock": -1
+        }
+      ]
+    }
+  ]
+}

@@ -125,6 +125,11 @@
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": false,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
         "Actions": [
           {
@@ -132,14 +137,16 @@
             "Param": "2",
             "Param2": "1",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           },
           {
             "Type": "Modify Stat",
             "Param": "HP",
             "Param2": "-10",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           }
         ],
         "PortalAutoEnter": true,
@@ -162,6 +169,11 @@
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": true,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
         "Actions": [
           {
@@ -169,7 +181,8 @@
             "Param": "",
             "Param2": "",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           }
         ],
         "PortalAutoEnter": true,
@@ -185,13 +198,18 @@
       {
         "Name": "Trigger 3",
         "IsEnabled": true,
-        "LeftPx": 1233.797,
-        "TopPx": 506.602,
+        "LeftPx": 1241.9148,
+        "TopPx": 509.30792,
         "WidthPx": 72.12561,
         "HeightPx": 96,
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": false,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
         "Actions": [
           {
@@ -199,7 +217,8 @@
             "Param": "Trigger 5",
             "Param2": "",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           }
         ],
         "PortalAutoEnter": false,
@@ -215,13 +234,18 @@
       {
         "Name": "Trigger 4",
         "IsEnabled": true,
-        "LeftPx": 937.245,
-        "TopPx": 405.50885,
-        "WidthPx": 160,
-        "HeightPx": 38.973915,
+        "LeftPx": 891.4944,
+        "TopPx": 502.19507,
+        "WidthPx": 36.765747,
+        "HeightPx": 103.00149,
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": true,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
         "Actions": [
           {
@@ -229,7 +253,8 @@
             "Param": "village_intro",
             "Param2": "0",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           }
         ],
         "PortalAutoEnter": true,
@@ -252,6 +277,11 @@
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": false,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
         "Actions": [
           {
@@ -259,7 +289,8 @@
             "Param": "Trigger 3",
             "Param2": "",
             "Param3": "",
-            "Delay": 0
+            "Delay": 0,
+            "LoopAnim": true
           }
         ],
         "PortalAutoEnter": false,
@@ -275,15 +306,29 @@
       {
         "Name": "Trigger 6",
         "IsEnabled": true,
-        "LeftPx": 1024,
-        "TopPx": 640,
-        "WidthPx": 8,
-        "HeightPx": 8,
+        "LeftPx": 1091.4099,
+        "TopPx": 498.43216,
+        "WidthPx": 48.010315,
+        "HeightPx": 112.27987,
         "OnEnter": true,
         "OnStayIntervalSeconds": 0,
         "OnExit": false,
+        "RequireInteractKey": true,
+        "InteractKey": "E",
+        "RequireItemId": "",
+        "RequireItemMessage": "Locked \u2014 key required!",
+        "SkipWhenDone": true,
         "RequireMovingRight": false,
-        "Actions": [],
+        "Actions": [
+          {
+            "Type": "Start Dialogue",
+            "Param": "Quest: Bawa 3 Ember",
+            "Param2": "0",
+            "Param3": "",
+            "Delay": 0,
+            "LoopAnim": true
+          }
+        ],
         "PortalAutoEnter": true,
         "PortalEnterKey": "E",
         "PortalSheet": "",
