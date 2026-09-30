@@ -147,7 +147,11 @@ public class IDEBridge
     // ── Static sprite-clip registry: lets engine-side objects (Player2D EditorObject)
     // resolve the Sprite Editor's sheets/clips by name without a panel reference.
     // Refreshed every frame by SpriteEditorPanel.Render (cheap dictionary fill).
-    private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new();
+    // Both registries are CASE-INSENSITIVE: trigger/dialogue action params are free-text
+    // typed by the designer ("Cooking Area" vs the registered "Cooking area") — an exact-
+    // case dictionary made those swaps resolve to nothing and silently fall back to the
+    // base art (log said success, sprite never changed).
+    private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<(string sheet, string clip), AnimationClip2D> _spriteClips = new();
 
     /// <summary>Replace the static registry contents (called by SpriteEditorPanel every
@@ -196,7 +200,8 @@ public class IDEBridge
     public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
 
     public static List<string> GetClipNames(string sheetName)
-        => _spriteClips.Where(kv => kv.Key.sheet == sheetName).Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
+        => _spriteClips.Where(kv => string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
+            .Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
 
     public static bool TryGetSpriteClip(string sheetName, string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)
     {
@@ -207,6 +212,20 @@ public class IDEBridge
             if (_spriteSheets.TryGetValue(sheetName, out var entry))
                 sheet = entry.sheet;
             return true;
+        }
+        // Case-insensitive fallback (the clip dict itself keeps exact keys): free-text
+        // action params must resolve to the registered spelling — 'Cooking Area|Alat
+        // Masak 1' finds the registered 'Cooking area|Alat Masak 1'.
+        foreach (var kv in _spriteClips)
+        {
+            if (string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(kv.Key.clip, clipName, StringComparison.OrdinalIgnoreCase))
+            {
+                clip = kv.Value;
+                if (_spriteSheets.TryGetValue(kv.Key.sheet, out var entry))
+                    sheet = entry.sheet;
+                return true;
+            }
         }
         return false;
     }

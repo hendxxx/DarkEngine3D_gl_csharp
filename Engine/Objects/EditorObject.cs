@@ -3970,12 +3970,32 @@ public unsafe class EditorObject
     public bool SetSpriteStateOverride(string sheet, string clip, string sourceName, bool loopAnim = true)
     {
         string effSheet = string.IsNullOrEmpty(sheet) ? Player2DSpriteSheet : sheet;
+        // Fast path first (case-insensitive): already in this exact state → keep the
+        // anim clock running AND skip the unregistered-art warning (re-firing the same
+        // action must not spam the console).
         if (Sprite2DStateOverrideActive
             && Sprite2DStateOverrideSource == sourceName
-            && Sprite2DStateOverrideSheet == effSheet
-            && Sprite2DStateOverrideClip == clip
+            && string.Equals(Sprite2DStateOverrideSheet, effSheet, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(Sprite2DStateOverrideClip, clip, StringComparison.OrdinalIgnoreCase)
             && (!Sprite2DLoopOverrideActive || Sprite2DLoopOverrideValue == loopAnim))
-            return true; // already in this exact state — keep the anim clock running
+            return true;
+        // CANONICALIZE to the registered spelling: action params are free text typed by
+        // the designer ('Cooking Area') while the registry holds the authored name
+        // ('Cooking area'). Storing the canonical form keeps the idempotency check and
+        // the WorldStateJournal comparable across re-applies.
+        bool resolved = IDEBridge.TryGetSpriteClip(effSheet, clip, out var regSheet, out var regClip)
+            && regSheet != null && regClip != null;
+        if (resolved)
+        {
+            effSheet = regSheet!.Name;
+            clip = regClip!.Name;
+        }
+        else
+        {
+            // NEVER silent: an unregistered art name used to resolve to nothing and
+            // quietly fall back to the base sprite (log said success, art unchanged).
+            Console.WriteLine($"[ChangeSprite] art '{effSheet}|{clip}' tidak terdaftar di Sprite Editor — sprite TIDAK akan berubah (cek ejaan sheet/clip)");
+        }
         if (!Sprite2DStateOverrideActive)
         {
             Sprite2DStateOverridePrevSheet = Player2DSpriteSheet;
@@ -4993,8 +5013,19 @@ public unsafe class EditorObject
         var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
         if (act == null) { Player2DCurrentAction = ""; return null; }
 
+        // Base sheet/clip = the OVERRIDE art while a Change Sprite swap is active —
+        // otherwise Idle/Walk/Run keep resolving against the ORIGINAL sprite and a
+        // swapped player/cook never visibly changes (the swap only lived in the base-
+        // clip path). Unresolvable override names fall back to the object's own fields.
         string playerSheet = Player2DSpriteSheet;
         string playerClip = Player2DAnimationClip;
+        if (Sprite2DStateOverrideActive
+            && IDEBridge.TryGetSpriteClip(Sprite2DStateOverrideSheet, Sprite2DStateOverrideClip, out var ovrSheet, out var ovrClip)
+            && ovrSheet != null && ovrClip != null)
+        {
+            playerSheet = Sprite2DStateOverrideSheet;
+            playerClip = Sprite2DStateOverrideClip;
+        }
 
         // (1) Action's own sheet + clip. The owning sheet is returned too — the caller
         //     must sample THIS sheet's texture (walk/run often live on a different
