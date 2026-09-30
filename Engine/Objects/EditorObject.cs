@@ -4621,10 +4621,11 @@ public unsafe class EditorObject
         // width — animated water surfaces, hedges, fences. Each tile is one full frame
         // quad (UVs per tile — an atlas must NOT be GL-wrapped) sharing the same clip
         // frame, so the whole strip animates in lockstep. Strip centered on Position.X,
-        // base on Position.Y. Cap 256 tiles (a typo like 99999 must not hang the IDE).
+        // base on Position.Y. NO cap: all tiles are batched into ONE draw call, so
+        // thousands of tiles cost one draw (a huge width only grows the vertex buffer).
         int reps = 1;
         if (Sprite2DWorldWidth > 0.01f && Sprite2DWorldWidth > w * 1.001f)
-            reps = Math.Clamp((int)MathF.Ceiling(Sprite2DWorldWidth / w), 1, 256);
+            reps = (int)MathF.Ceiling(Sprite2DWorldWidth / w);
         // AS-IS: strip centered on Position.X, bottom on Position.Y.
         float x0 = Position.X - w * reps * 0.5f + offX;
         float x1 = x0 + w;
@@ -4686,19 +4687,28 @@ public unsafe class EditorObject
             _player2dVAO = vao; _player2dVBO = vbo;
         }
 
+        // Batch ALL tiles into ONE BufferData + ONE DrawArrays (reps × 6 verts) —
+        // a 10,000-tile strip is a single draw, not 10,000.
+        int vertCount = reps * 6;
+        Map2DVertex* batch = stackalloc Map2DVertex[vertCount <= 4096 ? vertCount : 4096];
         GL.BindVertexArray(_player2dVAO);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
-        for (int r = 0; r < reps; r++)
+        const int TilesPerFlush = 682; // 4096 / 6 — chunked flush for very long strips
+        for (int start = 0; start < reps; start += TilesPerFlush)
         {
-            float rx0 = x0 + r * w, rx1 = x1 + r * w;
-            verts[0] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
-            verts[1] = new(rx1, y0, z, su1, svBot, tR, tG, tB, tA);
-            verts[2] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
-            verts[3] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
-            verts[4] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
-            verts[5] = new(rx0, y1, z, su0, svTop, tR, tG, tB, tA);
-            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+            int n = Math.Min(TilesPerFlush, reps - start);
+            for (int r = 0; r < n; r++)
+            {
+                float rx0 = x0 + (start + r) * w, rx1 = rx0 + w;
+                batch[r * 6 + 0] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
+                batch[r * 6 + 1] = new(rx1, y0, z, su1, svBot, tR, tG, tB, tA);
+                batch[r * 6 + 2] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
+                batch[r * 6 + 3] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
+                batch[r * 6 + 4] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
+                batch[r * 6 + 5] = new(rx0, y1, z, su0, svTop, tR, tG, tB, tA);
+            }
+            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(n * 6 * sizeof(Map2DVertex)), batch, Const.GL_DYNAMIC_DRAW);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, n * 6);
         }
         GL.BindVertexArray(0);
 
@@ -4739,7 +4749,7 @@ public unsafe class EditorObject
             float pxToWorld = snapH > 0f ? Player2DHeight / snapH : Player2DHeight / cellH;
             float w = MathF.Max(0.05f, cellW * pxToWorld);
             if (Sprite2DWorldWidth <= w * 1.001f) return 1;
-            return Math.Clamp((int)MathF.Ceiling(Sprite2DWorldWidth / w), 1, 256);
+            return (int)MathF.Ceiling(Sprite2DWorldWidth / w);
         }
     }
 

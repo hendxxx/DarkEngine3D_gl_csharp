@@ -2733,14 +2733,14 @@ public class InspectorPanel
             editorObj.Sprite2DFacingRight = faceR;
 
         // Repeat-to-width: tile the animated frame across a world width (water,
-        // hedges, fences). 0 = auto single frame. 0.01 = the strip's own auto width
-        // (the "snap to whole frames" shortcut).
+        // hedges, fences). 0 = auto single frame. DragFloat = TANPA batas atas
+        // (ketik nilai berapapun; drag dengan Ctrl+click untuk presisi).
         float wpx = editorObj.Sprite2DWorldWidth;
         string wLabel = wpx <= 0f ? "Width (off)" : "Width (repeat)";
-        if (ImGui.SliderFloat(wLabel, ref wpx, 0f, 60f, wpx <= 0f ? "off" : "%.2f u"))
-            editorObj.Sprite2DWorldWidth = wpx < 0.005f ? 0f : wpx;
+        if (ImGui.DragFloat(wLabel, ref wpx, 0.25f, 0f, float.MaxValue, wpx <= 0f ? "off" : "%.2f u"))
+            editorObj.Sprite2DWorldWidth = wpx < 0.005f ? 0f : MathF.Max(0.01f, wpx);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Ulangi frame (beserta animasinya) melebar sampai width ini — air, semak, pagar.\n0 = off (satu frame lebar asli). Strip center di Position.X, dasar di Position.Y.\nSet > lebar frame untuk repeat; max 256 tile.");
+            ImGui.SetTooltip("Ulangi frame (beserta animasinya) melebar sampai width ini — air, semak, pagar.\n0 = off (satu frame lebar asli). Strip center di Position.X, dasar di Position.Y.\nNilai BEBAS — ketik langsung atau drag. Tile di-batch satu draw call, ribuan tile tetap ringan.");
         if (wpx > 0f)
         {
             int rc = editorObj.Sprite2DRepeatCount;
