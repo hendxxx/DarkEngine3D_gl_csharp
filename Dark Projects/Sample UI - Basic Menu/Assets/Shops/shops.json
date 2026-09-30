@@ -9,6 +9,11 @@
           "ItemId": "Potion",
           "PriceOverride": 30,
           "Stock": -1
+        },
+        {
+          "ItemId": "Ember",
+          "PriceOverride": 30,
+          "Stock": -1
         }
       ]
     }

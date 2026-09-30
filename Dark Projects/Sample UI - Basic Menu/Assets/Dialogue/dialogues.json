@@ -217,7 +217,16 @@
               "LoopAnim": true
             }
           ],
-          "OnEndActions": [],
+          "OnEndActions": [
+            {
+              "Type": "Change Sprite",
+              "Param": "Alat Masak 1",
+              "Param2": "Cooking Area|Alat Masak 1",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            }
+          ],
           "GraphX": 750.1018,
           "GraphY": 232.8205
         },
@@ -232,7 +241,16 @@
           "AutoAdvance": false,
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
-          "OnEndActions": [],
+          "OnEndActions": [
+            {
+              "Type": "Change Sprite",
+              "Param": "Alat Masak 1",
+              "Param2": "Cooking area|Alat Masak 1",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            }
+          ],
           "GraphX": 646,
           "GraphY": 5
         }
