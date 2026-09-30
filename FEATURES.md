@@ -272,7 +272,7 @@ Data-driven dialogue: RPG conversation window + world-space speech bubbles, auth
 | **Bubbles** | `ShowBubble/HideBubble` follow any object (player/NPC) with fade in/out, auto-hide on duration/distance, type-tinted borders (Speech/Thought/Quest/Warning); also fired from trigger actions |
 | **NPC Interaction** | `EditorObject.NpcDialogueId` (Inspector: NPC Dialogue section) — Sprite2D/Player2D with a dialogue id shows an "[E] Talk" prompt in range and starts the conversation on E |
 | **Conditions** | Choice conditions: `level:5`, `flag:name`, `item:potion`, `quest:id`, `questdone:id`, `gold:100`, `var:name:10` — unknown conditions fail closed |
-| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed |
+| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed. `Change Sprite` gets a dedicated contextual editor row: object name + `Sheet|Clip|Loop` art string with a live clip picker from the Sprite Editor registry (loop segment optional — `Loop`/`Once`; runtime also honors it from trigger actions) |
 | **Localization** | `DialogueLibrary.CurrentLanguage` + per-language override tables (English/Indonesia/Japanese/Chinese/Korean/Thai/Vietnamese); untranslated text passes through |
 | **Save/Load** | `SaveData.DialogueCompleted/Flags/Variables` captured on save, restored on load; session state resets on new play sessions |
 | **Trigger Integration** | Start Dialogue (Param = asset id), Show Bubble (Param = text, Param2 = `type\|seconds`), Hide Bubble — wired in `TriggerEventSystem` |

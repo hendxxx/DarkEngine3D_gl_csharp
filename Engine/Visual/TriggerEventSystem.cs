@@ -1059,18 +1059,28 @@ public static class TriggerEventSystem
                 string swClip = parts.Length > 1 ? parts[1].Trim() : "";
                 if (swSheet.Length == 0 || swClip.Length == 0)
                 {
-                    Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite FAILED: Param2 must be 'Sheet|Clip' (Sprite Editor names)");
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite FAILED: Param2 must be 'Sheet|Clip' or 'Sheet|Clip|Loop' (Sprite Editor names)");
                     break;
                 }
-                // Loop mode from the "Loop Animasi" checkbox: ON = keep looping the
-                // swapped clip, OFF = play it once and hold the last frame (chest-open,
-                // levers) so the art does not re-open forever.
-                target.SetSpriteStateOverride(swSheet, swClip, triggerName, action.LoopAnim);
+                // Loop mode: optional THIRD Param2 segment "Loop"/"Once" (the Dialogue
+                // Editor packs it into Param2 as 'Sheet|Clip|Loop'); absent segment = the
+                // action's LoopAnim field (the Map Editor "Loop Animasi" checkbox). An
+                // explicit segment wins over the checkbox when both are set. OFF = play
+                // the swapped clip ONCE and hold the last frame (chest-open, levers).
+                bool swLoop = action.LoopAnim;
+                if (parts.Length > 2 && parts[2].Trim().Length > 0)
+                {
+                    string seg = parts[2].Trim();
+                    swLoop = !seg.Equals("Once", StringComparison.OrdinalIgnoreCase)
+                          && !seg.Equals("Off", StringComparison.OrdinalIgnoreCase)
+                          && !seg.Equals("0", StringComparison.OrdinalIgnoreCase);
+                }
+                target.SetSpriteStateOverride(swSheet, swClip, triggerName, swLoop);
                 // Journal the END-STATE so leaving and returning to the map keeps the
                 // chest open (re-applied after every map reload / save load).
-                WorldStateJournal.RecordSprite(target.Name, swSheet, swClip, action.LoopAnim, triggerName);
+                WorldStateJournal.RecordSprite(target.Name, swSheet, swClip, swLoop, triggerName);
                 if (trigger != null) trigger.RuntimeTargetName = target.Name;
-                Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite '{target.Name}' → '{swSheet}|{swClip}' (loop {(action.LoopAnim ? "on" : "off")})");
+                Console.WriteLine($"[Trigger] '{triggerName}' → Change Sprite '{target.Name}' → '{swSheet}|{swClip}' (loop {(swLoop ? "on" : "off")})");
                 break;
             }
 

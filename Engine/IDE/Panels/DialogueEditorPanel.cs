@@ -1409,18 +1409,88 @@ public class DialogueEditorPanel
                 ImGui.SetNextItemWidth(64f);
                 if (ImGui.InputText("##p2", ref p2, 64)) a.Param2 = p2;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Param 2 — arti tergantung action:\nGive/Remove Item = amount, Start Dialogue = node id,\nModify Stat = delta, Play Sound = volume.");
+                    ImGui.SetTooltip("Param 2 — arti tergantung action:\nGive/Remove Item = amount, Start Dialogue = node id,\nModify Stat = delta, Play Sound = volume,\nChange Sprite = 'Sheet|Clip' atau 'Sheet|Clip|Loop'.");
                 ImGui.SameLine();
                 ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.55f, 0.2f, 0.2f, 1f));
                 if (ImGui.SmallButton("x")) { actions.RemoveAt(i); ImGui.PopStyleColor(); ImGui.PopID(); continue; }
                 ImGui.PopStyleColor();
                 ImGui.PopID();
+
+                // ── Contextual editor row (Change Sprite): the compact 3-field row above
+                // cannot express 'Sheet|Clip|Loop' — a dedicated row draws the object
+                // name, sheet|clip with a clip-picker, and the loop toggle, writing the
+                // SAME Param/Param2 format the Map Editor trigger case uses.
+                if (a.Type == TriggerActionTypes.ChangeSprite)
+                    RenderChangeSpriteFields(a);
             }
             if (ImGui.Button("+ Action"))
                 actions.Add(new TilemapTriggerAction { Type = TriggerActionTypes.PlaySound, Param = "click.wav" });
             ImGui.TreePop();
         }
         ImGui.PopID();
+    }
+
+    /// <summary>Contextual fields for a dialogue-action 'Change Sprite': object name,
+    /// art as 'Sheet|Clip' plus a clip picker, and the loop toggle packed as the
+    /// optional third Param2 segment ("Loop"/"Once"). Runtime parsing lives in
+    /// TriggerEventSystem (segment wins over the action's LoopAnim field).</summary>
+    private static void RenderChangeSpriteFields(TilemapTriggerAction a)
+    {
+        ImGui.Indent();
+        ImGui.TextDisabled("Change Sprite — ganti base sprite objek (menempel sampai action Revert):");
+
+        string objName = a.Param ?? "";
+        ImGui.SetNextItemWidth(220f);
+        if (ImGui.InputText("Object Name##dcs", ref objName, 64)) a.Param = objName;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Nama objek di Hierarchy (Sprite2D/Player2D) yang spritenya diganti.\nKosong = objek Player2D/Sprite2D terdekat (Change Sprite dari dialogue biasanya\nmenarget NPC yang bercakap-cakap, jadi isi namanya secara eksplisit).");
+
+        // Sheet|Clip with a live clip picker from the Sprite Editor registry.
+        string art = a.Param2 ?? "";
+        var parts = art.Split('|');
+        string sheetName = parts.Length > 0 ? parts[0].Trim() : "";
+        string clipName = parts.Length > 1 ? parts[1].Trim() : "";
+        ImGui.SetNextItemWidth(220f);
+        if (ImGui.InputText("Sheet|Clip|Loop##dcsart", ref art, 160)) a.Param2 = art;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Format 'Sheet|Clip' + segmen loop opsional: 'Sheet|Clip|Loop' (berulang)\natau 'Sheet|Clip|Once' (main sekali, tahan frame terakhir — chest, masak selesai).\nContoh: 'Cooking Area|Alat Masak 1|Loop'.");
+
+        var clips = IDEBridge.GetClipNames(sheetName);
+        if (clips.Count > 0)
+        {
+            ImGui.SetNextItemWidth(220f);
+            if (ImGui.BeginCombo("Pick Clip##dcspick", string.IsNullOrWhiteSpace(clipName) ? "<pick clip>" : clipName))
+            {
+                foreach (var cn in clips)
+                    if (ImGui.Selectable(cn, cn == clipName))
+                        a.Param2 = WithLoopSegment(sheetName, cn, parts);
+                ImGui.EndCombo();
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(sheetName))
+            ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), $"Sheet '{sheetName}' tidak ada / belum punya clip (cek Sprite Editor).");
+
+        // Loop toggle — reads the optional third segment back into the SAME string
+        // (checkbox ↔ 'Loop'/'Once' segment, tanpa field tambahan di JSON). Only
+        // writes when sheet+clip are both present — a half-typed 'Sheet|' would
+        // otherwise get rewritten into an invalid 'Sheet||Loop'.
+        bool loop = true;
+        if (parts.Length > 2 && parts[2].Trim().Length > 0)
+            loop = !parts[2].Trim().Equals("Once", StringComparison.OrdinalIgnoreCase)
+                && !parts[2].Trim().Equals("Off", StringComparison.OrdinalIgnoreCase)
+                && !parts[2].Trim().Equals("0", StringComparison.OrdinalIgnoreCase);
+        if (ImGui.Checkbox("Loop Animasi (off = main sekali, tahan frame terakhir)##dcsloop", ref loop)
+            && sheetName.Length > 0 && clipName.Length > 0)
+            a.Param2 = $"{sheetName}|{clipName}|{(loop ? "Loop" : "Once")}";
+        ImGui.Unindent();
+    }
+
+    /// <summary>Rebuild 'Sheet|Clip[|seg]' keeping the existing third segment (loop
+    /// state) when a new clip is picked from the combo.</summary>
+    private static string WithLoopSegment(string sheet, string clip, string[] parts)
+    {
+        string seg = parts.Length > 2 ? parts[2].Trim() : "";
+        return seg.Length > 0 ? $"{sheet}|{clip}|{seg}" : $"{sheet}|{clip}";
     }
 
     // ── Speakers ───────────────────────────────────
