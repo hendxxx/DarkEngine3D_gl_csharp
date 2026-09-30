@@ -285,7 +285,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing
                 {
                     if (o.Sprite2DRenderLayer == PostFxSettings.DofSpriteShapeLayer)
                     {
-                        ok = o.TryGetSprite2DDrawData(out texId, out uvMin, out uvMax, out bl, out br, out tr, out tl);
+                        // Repeated strips (Sprite2DWorldWidth) carve EVERY tile into the
+                        // sharp mask — one pass per tile, same texture, per-tile UVs.
+                        int reps = o.Sprite2DRepeatCount;
+                        for (int tile = 0; tile < reps; tile++)
+                        {
+                            ok = o.TryGetSprite2DTileData(tile, out texId, out uvMin, out uvMax, out bl, out br, out tr, out tl);
+                            if (!ok || texId == 0) continue;
+
+                            var qBL = TransformGizmo.ProjectToScreen(cam, bl, _maskW, _maskH);
+                            var qBR = TransformGizmo.ProjectToScreen(cam, br, _maskW, _maskH);
+                            var qTR = TransformGizmo.ProjectToScreen(cam, tr, _maskW, _maskH);
+                            var qTL = TransformGizmo.ProjectToScreen(cam, tl, _maskW, _maskH);
+                            if (float.IsNaN(qBL.X) || float.IsInfinity(qBL.X)) continue;
+
+                            WriteMaskVert(v, 0, qBL, uvMin.X, uvMax.Y);
+                            WriteMaskVert(v, 4, qBR, uvMax.X, uvMax.Y);
+                            WriteMaskVert(v, 8, qTR, uvMax.X, uvMin.Y);
+                            WriteMaskVert(v, 12, qBL, uvMin.X, uvMax.Y);
+                            WriteMaskVert(v, 16, qTR, uvMax.X, uvMin.Y);
+                            WriteMaskVert(v, 20, qTL, uvMin.X, uvMin.Y);
+
+                            GL.ActiveTexture(Const.GL_TEXTURE0);
+                            GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+                            fixed (float* pv = v)
+                                GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(24 * sizeof(float)), pv, Const.GL_DYNAMIC_DRAW);
+                            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+                            drawn++;
+                        }
+                        continue;
                     }
                 }
 

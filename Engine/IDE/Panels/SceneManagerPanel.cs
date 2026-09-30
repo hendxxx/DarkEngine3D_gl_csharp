@@ -984,6 +984,7 @@ public class SceneManagerPanel
                         Sprite2DGlowFlicker = obj.Sprite2DGlowFlicker,
                         Player2DGlowFlicker = obj.Player2DGlowFlicker,
                         Sprite2DRenderLayer = obj.Sprite2DRenderLayer,
+                        Sprite2DWorldWidth = obj.Sprite2DWorldWidth,
                         Player2DRenderLayer = obj.Player2DRenderLayer,
                         CameraFollowSpeed = obj.CameraFollowSpeed,
                         CameraDeadZoneWidth = obj.CameraDeadZoneWidth,
@@ -1605,6 +1606,7 @@ public class SceneManagerPanel
                         obj.Sprite2DGlowFlicker = objData.Sprite2DGlowFlicker;
                         obj.Player2DGlowFlicker = objData.Player2DGlowFlicker;
                         obj.Sprite2DRenderLayer = objData.Sprite2DRenderLayer;
+                        obj.Sprite2DWorldWidth = objData.Sprite2DWorldWidth;
                         obj.Player2DRenderLayer = objData.Player2DRenderLayer;
                         obj.CameraFollowSpeed = objData.CameraFollowSpeed;
                         obj.CameraDeadZoneWidth = objData.CameraDeadZoneWidth;

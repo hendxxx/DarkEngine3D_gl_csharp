@@ -410,6 +410,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                 Sprite2DStartOffset = source.Sprite2DStartOffset,
                 Sprite2DFacingRight = source.Sprite2DFacingRight,
                 Sprite2DRenderLayer = source.Sprite2DRenderLayer,
+                Sprite2DWorldWidth = source.Sprite2DWorldWidth,
                 Sprite2DGlow = source.Sprite2DGlow,
                 Player2DGlow = source.Player2DGlow,
                 Sprite2DGlowColor = source.Sprite2DGlowColor,

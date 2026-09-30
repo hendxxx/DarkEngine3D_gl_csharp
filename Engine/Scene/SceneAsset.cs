@@ -275,6 +275,8 @@ public class EditorObjectData
     public List<string>? EquipmentSlots { get; set; }
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
+    /// <summary>World width the sprite strip REPEATS across (0 = auto, single frame).</summary>
+    public float Sprite2DWorldWidth { get; set; } = 0f;
     /// <summary>Player2D render layer — higher draws on top of NPC/sprites on lower layers.</summary>
     public int Player2DRenderLayer { get; set; } = 0;
     // ── Player2D camera-follow tuning ──

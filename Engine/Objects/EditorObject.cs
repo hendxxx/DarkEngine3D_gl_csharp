@@ -481,6 +481,11 @@ public unsafe class EditorObject
     /// the quad 0.01 world units closer to the camera (Position.Z + 0.01/layer) so the
     /// ordering survives even when depth testing is enabled. Default 0 = base layer.</summary>
     public int Sprite2DRenderLayer { get; set; }
+    /// <summary>World width the sprite REPEATS across (animated water, tiled bushes,
+    /// fences). 0 = auto (single frame at native width). The frame art tiles edge-to-
+    /// edge — each repeat plays the SAME clip frame (one shared clock), Position.X is
+    /// the CENTER of the whole strip, Position.Y stays the base. Player2D ignores this.</summary>
+    public float Sprite2DWorldWidth { get; set; } = 0f;
     /// <summary>Render layer for Player2D — works exactly like <see cref="Sprite2DRenderLayer"/>:
     /// higher layers draw ON TOP of lower ones (and in front of same-layer sprites),
     /// each step nudging the quad 0.01 world units closer to the camera. Default 0 =
@@ -4612,8 +4617,16 @@ public unsafe class EditorObject
         float mirror = (Sprite2DFacingRight ? 1f : -1f) * (sheet.FlipX ? -1f : 1f);
         float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
-        // AS-IS: centered on Position.X, bottom on Position.Y.
-        float x0 = Position.X - w * 0.5f + offX;
+        // REPEAT-to-width (Sprite2DWorldWidth > 0): tile the frame across that world
+        // width — animated water surfaces, hedges, fences. Each tile is one full frame
+        // quad (UVs per tile — an atlas must NOT be GL-wrapped) sharing the same clip
+        // frame, so the whole strip animates in lockstep. Strip centered on Position.X,
+        // base on Position.Y. Cap 256 tiles (a typo like 99999 must not hang the IDE).
+        int reps = 1;
+        if (Sprite2DWorldWidth > 0.01f && Sprite2DWorldWidth > w * 1.001f)
+            reps = Math.Clamp((int)MathF.Ceiling(Sprite2DWorldWidth / w), 1, 256);
+        // AS-IS: strip centered on Position.X, bottom on Position.Y.
+        float x0 = Position.X - w * reps * 0.5f + offX;
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
@@ -4654,15 +4667,7 @@ public unsafe class EditorObject
             if (gMax > 0f) gtc = new Vector3(gtc.X / gMax, gtc.Y / gMax, gtc.Z / gMax);
             tR *= boost * gtc.X; tG *= boost * gtc.Y; tB *= boost * gtc.Z;
         }
-        var verts = stackalloc Map2DVertex[6]
-        {
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y0, z, su1, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y0, z, su0, svBot, tR, tG, tB, tA),
-            new(x1, y1, z, su1, svTop, tR, tG, tB, tA),
-            new(x0, y1, z, su0, svTop, tR, tG, tB, tA),
-        };
+        var verts = stackalloc Map2DVertex[6]; // hoisted (CA2014 — never stackalloc in a loop)
 
         if (_player2dVAO == 0)
         {
@@ -4683,8 +4688,18 @@ public unsafe class EditorObject
 
         GL.BindVertexArray(_player2dVAO);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
-        GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
-        GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        for (int r = 0; r < reps; r++)
+        {
+            float rx0 = x0 + r * w, rx1 = x1 + r * w;
+            verts[0] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
+            verts[1] = new(rx1, y0, z, su1, svBot, tR, tG, tB, tA);
+            verts[2] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
+            verts[3] = new(rx0, y0, z, su0, svBot, tR, tG, tB, tA);
+            verts[4] = new(rx1, y1, z, su1, svTop, tR, tG, tB, tA);
+            verts[5] = new(rx0, y1, z, su0, svTop, tR, tG, tB, tA);
+            GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+        }
         GL.BindVertexArray(0);
 
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
@@ -4705,10 +4720,38 @@ public unsafe class EditorObject
         out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
         out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
         out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
+        => TryGetSprite2DTileData(0, out texId, out uvMin, out uvMax, out bl, out br, out tr, out tl);
+
+    /// <summary>One TILE of the (possibly repeating) sprite strip — index 0 = the
+    /// original single quad, higher indices march right. The DoF mask consumes this
+    /// per tile so a repeated water strip carves the whole silhouette, not just the
+    /// first frame.</summary>
+    public int Sprite2DRepeatCount
+    {
+        get
+        {
+            if (Sprite2DWorldWidth <= 0.01f) return 1;
+            if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return 1;
+            float cellH = sheet.FrameHeight > 0 ? sheet.FrameHeight : sheet.ImageHeight;
+            if (cellH <= 0) cellH = 64;
+            float cellW = sheet.FrameWidth > 0 ? sheet.FrameWidth : cellH;
+            float snapH = clip.MasterHeight;
+            float pxToWorld = snapH > 0f ? Player2DHeight / snapH : Player2DHeight / cellH;
+            float w = MathF.Max(0.05f, cellW * pxToWorld);
+            if (Sprite2DWorldWidth <= w * 1.001f) return 1;
+            return Math.Clamp((int)MathF.Ceiling(Sprite2DWorldWidth / w), 1, 256);
+        }
+    }
+
+    public bool TryGetSprite2DTileData(int tileIndex, out uint texId,
+        out System.Numerics.Vector2 uvMin, out System.Numerics.Vector2 uvMax,
+        out System.Numerics.Vector3 bl, out System.Numerics.Vector3 br,
+        out System.Numerics.Vector3 tr, out System.Numerics.Vector3 tl)
     {
         texId = 0; uvMin = default; uvMax = default;
         bl = br = tr = tl = default;
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return false;
+        if (tileIndex < 0 || tileIndex >= Sprite2DRepeatCount) return false;
         if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return false;
         if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out texId, out int _, out int _))
             return false;
@@ -4755,7 +4798,8 @@ public unsafe class EditorObject
         float mirror = (Sprite2DFacingRight ? 1f : -1f) * (sheet.FlipX ? -1f : 1f);
         float offX = ((clip.SpriteOffsetX) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((clip.SpriteOffsetY) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
-        float x0 = Position.X - w * 0.5f + offX;
+        int reps = Sprite2DRepeatCount;
+        float x0 = Position.X - w * reps * 0.5f + offX + tileIndex * w;
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;

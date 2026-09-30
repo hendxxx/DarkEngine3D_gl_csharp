@@ -2732,6 +2732,21 @@ public class InspectorPanel
         if (ImGui.Checkbox("Facing Right", ref faceR))
             editorObj.Sprite2DFacingRight = faceR;
 
+        // Repeat-to-width: tile the animated frame across a world width (water,
+        // hedges, fences). 0 = auto single frame. 0.01 = the strip's own auto width
+        // (the "snap to whole frames" shortcut).
+        float wpx = editorObj.Sprite2DWorldWidth;
+        string wLabel = wpx <= 0f ? "Width (off)" : "Width (repeat)";
+        if (ImGui.SliderFloat(wLabel, ref wpx, 0f, 60f, wpx <= 0f ? "off" : "%.2f u"))
+            editorObj.Sprite2DWorldWidth = wpx < 0.005f ? 0f : wpx;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Ulangi frame (beserta animasinya) melebar sampai width ini — air, semak, pagar.\n0 = off (satu frame lebar asli). Strip center di Position.X, dasar di Position.Y.\nSet > lebar frame untuk repeat; max 256 tile.");
+        if (wpx > 0f)
+        {
+            int rc = editorObj.Sprite2DRepeatCount;
+            ImGui.TextDisabled($"repeat: {rc}× frame");
+        }
+
         // Per-sprite glow (emissive): boosts the sprite's bright pixels above the
         // Post FX bloom threshold so only fire/lava/candles glow — the rest of the
         // sprite and the rest of the scene stay normal. Requires Post FX ON.
