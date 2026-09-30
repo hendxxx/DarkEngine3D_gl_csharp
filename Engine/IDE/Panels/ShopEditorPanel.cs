@@ -36,12 +36,12 @@ public class ShopEditorPanel
 
     public void ShowInMenu()
     {
-        if (ImGui.MenuItem("Shop Editor"))
-        {
-            _show = !_show;
-            if (_show && ShopSystem.Shops.Count > 0 && _selectedIndex < 0)
-                _selectedIndex = 0;
-        }
+        // ref overload → ImGui draws the ✓ checkmark like every other panel menu item
+        // (the click-only overload renders as a bare entry with no state indicator).
+        bool was = _show;
+        ImGui.MenuItem("Shop Editor", null, ref _show);
+        if (_show && !was && ShopSystem.Shops.Count > 0 && _selectedIndex < 0)
+            _selectedIndex = 0; // opening with no selection → select the first shop
     }
 
     public void Render()
