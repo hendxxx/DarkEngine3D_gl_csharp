@@ -823,10 +823,13 @@ public class IDE : IDisposable
             _dialogueEditor = new DialogueEditorPanel(Bridge);
             _itemEditor = new ItemEditorPanel(Bridge);
             _shopEditor = new ShopEditorPanel(Bridge);
-            // Bake the inventory HUD's font atlas once, outside any frame (see
+            // Bake the HUD font atlases once, outside any frame (see
             // InventoryHud.Prewarm — mid-frame bakes render text as empty boxes).
+            // QuestHud included: its fonts (22/15 in SharedHud) previously baked
+            // mid-frame on the first quest render → "boxes but no glyphs".
             Visual.InventoryHud.Prewarm();
             Visual.ShopHud.Prewarm();
+            Visual.QuestHud.Prewarm();
             _ideSettings = new IDESettingsPanel(Bridge);
 
             // Wire tilemap painting: viewport raycasts → panel paint/fill/pick handlers.

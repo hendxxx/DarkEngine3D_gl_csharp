@@ -3989,6 +3989,76 @@ public unsafe class EditorObject
     /// <summary>Look up the Sprite Editor's sheet+clip by name via the IDEBridge static
     /// registry (set every frame by SpriteEditorPanel.SyncToBridge). Returns false when
     /// the sheet/clip no longer exists.</summary>
+    /// <summary>World-units between the sprite quad's TOP edge and its first OPAQUE
+    /// pixel row (transparent art padding INSIDE the frame — e.g. a 64px character
+    /// cell whose pixels only occupy the lower ~40 rows). Recomputed every draw from
+    /// the playing sheet+clip; badges/alerts subtract it so they hug the VISIBLE head
+    /// instead of floating a padding-height above it. Not persisted.</summary>
+    [JsonIgnore]
+    public float RuntimeVisualTopOffset { get; private set; }
+
+    /// <summary>Cached alpha-scan results: (sheetName, frameIdx, imgW, imgH) → opaque-
+    /// top fraction (0 = pixels reach the frame's top edge). One file read per sheet.</summary>
+    private static readonly Dictionary<(string sheet, int frame, int w, int h), float> _opaqueTopCache = new();
+
+    /// <summary>Measure how far BELOW the frame's top edge the first non-transparent
+    /// pixel row sits, as a fraction of the frame height (0..1). Alpha-scans the sheet
+    /// PNG once and caches — draws are dictionary lookups. Returns 0 when the sheet
+    /// file is unavailable or fully transparent at the top (fallback = quad top).</summary>
+    private static float SpriteOpaqueTopFraction(SpriteSheet sheet, AnimationClip2D? clip)
+    {
+        try
+        {
+            int frameIdx = clip?.FrameIndices is { Count: > 0 } fi ? fi[0] : 0;
+            var (uvMin, uvMax) = sheet.GetFrameUV(frameIdx);
+            int imgW = sheet.ImageWidth, imgH = sheet.ImageHeight;
+            if (imgW <= 0 || imgH <= 0) return 0f;
+
+            var key = (sheet.Name ?? "", frameIdx, imgW, imgH);
+            if (_opaqueTopCache.TryGetValue(key, out float cached)) return cached;
+
+            string path = PathHelpers.Resolve(sheet.ImagePath ?? "");
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                _opaqueTopCache[key] = 0f;
+                return 0f;
+            }
+
+            using var fs = File.OpenRead(path);
+            var img = ImageResult.FromStream(fs, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+            if (img?.Data == null || img.Width != imgW) { _opaqueTopCache[key] = 0f; return 0f; }
+
+            // GetFrameUV is normalized in the FLIPPED convention (v=0 = image bottom):
+            // raw uvMin.Y = frame BOTTOM, raw uvMax.Y = frame TOP → image pixel rows.
+            int x0 = Math.Clamp((int)(uvMin.X * imgW), 0, imgW - 1);
+            int x1 = Math.Clamp((int)MathF.Ceiling(uvMax.X * imgW), 1, imgW);
+            int rowTop = Math.Clamp((int)((1f - uvMax.Y) * imgH), 0, imgH - 1);
+            int rowBot = Math.Clamp((int)MathF.Ceiling((1f - uvMin.Y) * imgH), rowTop + 1, imgH);
+            int cellH = Math.Max(1, rowBot - rowTop);
+
+            // Scan at most the top 60% of the frame — below that the "top" is the
+            // torso anyway and the badge belongs on the quad top rather than mid-body.
+            int scanEnd = Math.Min(rowBot, rowTop + (int)(cellH * 0.6f));
+            int found = -1;
+            for (int y = rowTop; y < scanEnd && found < 0; y++)
+            {
+                int row = y * imgW;
+                for (int x = x0; x < x1; x++)
+                {
+                    if (img.Data[(row + x) * 4 + 3] >= 16) { found = y; break; }
+                }
+            }
+
+            float frac = found < 0 ? 0f : Math.Clamp((found - rowTop) / (float)cellH, 0f, 0.85f);
+            _opaqueTopCache[key] = frac;
+            return frac;
+        }
+        catch
+        {
+            return 0f; // unreadable art → quad-top fallback (status quo ante)
+        }
+    }
+
     public bool TryGetPlayer2DClip(out SpriteSheet? sheet, out AnimationClip2D? clip)
     {
         sheet = null; clip = null;
@@ -4458,6 +4528,10 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
+        // Head anchor for badges/bubbles: distance from the quad TOP edge down to the
+        // first opaque pixel row (transparent padding inside the art). Y-up world →
+        // a top-gap of G pushes the visual head DOWN to y1 − G.
+        RuntimeVisualTopOffset = SpriteOpaqueTopFraction(drawSheet, clip) * h;
         float z = Position.Z + 0.05f + Math.Clamp(Player2DRenderLayer, -1000, 1000) * 0.01f;
 
         EnsureMap2DShader();
@@ -4631,6 +4705,7 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
+        RuntimeVisualTopOffset = SpriteOpaqueTopFraction(sheet, clip) * h;
         // Render layer: each layer step nudges the quad 0.01 units toward the camera
         // (matching the draw order set by the layer sort in EditorObjectManager) so a
         // higher layer ALSO wins when depth testing is on — not just by draw order.
@@ -4813,6 +4888,7 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
+        RuntimeVisualTopOffset = SpriteOpaqueTopFraction(sheet, clip) * h; // badge head anchor (per-tile site)
         float z = Position.Z + 0.05f + Math.Clamp(Sprite2DRenderLayer, -1000, 1000) * 0.01f;
 
         uvMin = new System.Numerics.Vector2(su0, svTop);
@@ -5075,6 +5151,7 @@ public unsafe class EditorObject
         float x1 = x0 + w;
         float y0 = Position.Y + offY;
         float y1 = y0 + h;
+        RuntimeVisualTopOffset = SpriteOpaqueTopFraction(drawSheet, clip) * h; // badge head anchor (DoF mask parity)
         float z = Position.Z + 0.05f + Math.Clamp(Player2DRenderLayer, -1000, 1000) * 0.01f;
 
         uvMin = new System.Numerics.Vector2(su0, svTop);

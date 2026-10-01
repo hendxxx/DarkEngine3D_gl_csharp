@@ -397,7 +397,9 @@ public static unsafe class DialogueSystem
         // Head anchor: Player2D uses capsule top; Sprite2D/others use render height.
         if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
             return obj.Player2DCapsuleOffsetY + obj.Player2DCapsuleHeight + 0.15f;
-        return obj.Player2DHeight + 0.25f;
+        // Sprite2D art often has transparent padding inside the top frame row; strip it
+        // so bubbles track the VISUAL head, not the quad edge.
+        return MathF.Max(0.05f, obj.Player2DHeight + 0.25f - obj.RuntimeVisualTopOffset);
     }
 
     /// <summary>Visual head top WITHOUT the bubble margins — badges/alerts anchor here
@@ -408,7 +410,8 @@ public static unsafe class DialogueSystem
     {
         if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
             return obj.Player2DCapsuleOffsetY + obj.Player2DCapsuleHeight + 0.05f;
-        return obj.Player2DHeight + 0.05f;
+        // Same padding strip as bubbles: default badge = PASS right above the head.
+        return MathF.Max(0.05f, obj.Player2DHeight + 0.05f - obj.RuntimeVisualTopOffset);
     }
 
     // ── NPC interaction badge defaults (per-NPC overrides: NpcBadgeSize/NpcBadgeLift) ──
@@ -661,6 +664,8 @@ public static unsafe class DialogueSystem
         var sp = Project(anchorWorld, w, h);
         float ax = sp.X + b.OffsetX;
         float ay = sp.Y + b.OffsetY;
+        // Bubble hidden while its anchor sits behind an open HUD panel.
+        if (HUD.PointInPanelOccluder(ax, ay)) return;
 
         string text = DialogueLibrary.Localize(b.Text);
         int fontSlot = GetFontSlot(hud, theme, theme.BubbleFontSize);
@@ -713,6 +718,9 @@ public static unsafe class DialogueSystem
         float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift;
         var sp = Project(new Vector3(npc.Position.X,
             npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
+        // Behind an opaque HUD panel (inventory/shop/quest open) → skip entirely;
+        // the world-anchored badge must not read through the panel ("layer UI").
+        if (HUD.PointInPanelOccluder(sp.X, sp.Y)) return;
         string label = "[E] Talk";
         int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
         var ext = hud.GetTextExtents(label);
@@ -737,6 +745,14 @@ public static unsafe class DialogueSystem
         float lift = (npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift) - 0.05f;
         var sp = Project(new Vector3(npc.Position.X,
             npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
+        // Behind an opaque HUD panel → skip (name + indicator must not read through it).
+        if (HUD.PointInPanelOccluder(sp.X, sp.Y)) return;
+
+        // Display name always visible above the indicator (out-of-range NPCs too —
+        // previously only the in-range [E] prompt showed the name).
+        string disp = string.IsNullOrWhiteSpace(npc.NpcDisplayName) ? npc.Name : npc.NpcDisplayName;
+        int nameSlot = GetFontSlot(hud, theme, theme.BubbleFontSize);
+        var nameExt = hud.GetTextExtents(disp, nameSlot);
 
         // Custom alert IMAGE (dragged from the Asset Browser in the Inspector) replaces
         // the text "!" bubble entirely — quest marks, alert icons, any exclamation art.
@@ -751,6 +767,8 @@ public static unsafe class DialogueSystem
                 float ix = sp.X - size * 0.5f;
                 float iy = sp.Y - size + bob; // bottom-center anchored above the head
                 hud.DrawImage(ix, iy, size, size, tex);
+                hud.DrawText(disp, sp.X - nameExt.Width * 0.5f, iy - 2f - nameExt.Height,
+                    new Vector3(1f, 1f, 1f), new Vector3(0f, 0f, 0f), 1.2f, nameSlot);
                 return;
             }
         }
@@ -768,6 +786,8 @@ public static unsafe class DialogueSystem
         hud.DrawBox(bx, by, boxW, boxH, theme.BubbleColor);                            // bubble
         hud.DrawText(mark, bx + padX, by + padY, new Vector3(1f, 0.85f, 0.25f),
             new Vector3(0f, 0f, 0f), 1.2f, slot);
+        hud.DrawText(disp, sp.X - nameExt.Width * 0.5f, by - 2f - nameExt.Height,
+            new Vector3(1f, 1f, 1f), new Vector3(0f, 0f, 0f), 1.2f, nameSlot);
     }
 
     // ── Conversation window ────────────────────────
@@ -1018,6 +1038,17 @@ public static unsafe class DialogueSystem
 
         var defTheme = DialogueLibrary.GetTheme("Default");
 
+        // World-anchored marker hidden while its anchor sits behind an open HUD panel?
+        // (The ImGui overlay composites on top of the finished scene texture with no
+        // depth — the HUD's occluder rects are the only layering signal it has.)
+        bool IsNpcPromptBehindPanel(EditorObject npc, int vw, int vh)
+        {
+            var p = Project(new Vector3(npc.Position.X,
+                npc.Position.Y + BadgeHeadHeight(npc) +
+                (npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift), npc.Position.Z), vw, vh);
+            return HUD.PointInPanelOccluder(p.X, p.Y);
+        }
+
         // ── Bubbles ──
         foreach (var b in _bubbles.Values)
         {
@@ -1026,6 +1057,10 @@ public static unsafe class DialogueSystem
             if (fade <= 0.01f) continue;
 
             var anchor = AnchorScenePx(b, w, h);
+            // Behind an opaque HUD panel → skip (ImGui overlay composites on top of
+            // the finished scene texture with no depth — occluder rects are the only
+            // layering signal it has).
+            if (HUD.PointInPanelOccluder(anchor.X, anchor.Y)) continue;
             string text = DialogueLibrary.Localize(b.Text);
 
             // Word-wrap against a ~32%-wide bubble (scene-px), like the HUD version.
@@ -1140,7 +1175,12 @@ public static unsafe class DialogueSystem
                 // Same lift as the HUD indicator (NpcBadgeLift − 0.05), visual-head anchor.
                 float oLift = (obj.NpcBadgeLift > 0f ? obj.NpcBadgeLift : DefaultNpcBadgeLift) - 0.05f;
                 var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BadgeHeadHeight(obj) + oLift, obj.Position.Z), w, h);
+                // Behind an opaque HUD panel (inventory/shop open) → skip name + marker.
+                if (HUD.PointInPanelOccluder(head.X, head.Y)) continue;
                 var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
+                // Display name always visible above the indicator (parity with HUD path).
+                string disp = string.IsNullOrWhiteSpace(obj.NpcDisplayName) ? obj.Name : obj.NpcDisplayName;
+                float nw = TextW(disp), nh = TextH(disp);
 
                 // Custom alert IMAGE (Inspector drag-drop) replaces the text "!" bubble.
                 if (!string.IsNullOrEmpty(obj.NpcAlertImagePath))
@@ -1153,6 +1193,9 @@ public static unsafe class DialogueSystem
                         var amax = sceneToScreen(new Vector2(head.X + size * 0.5f, head.Y + bob));
                         // sceneToScreen is pixel-space → DON'T scene-scale again here.
                         dl.AddImage((nint)alertTex, new Vector2(amin.X, amin.Y), new Vector2(amax.X, amax.Y));
+                        dl.AddRectFilled(new Vector2(scr.X - nw / 2 - 5f, amin.Y - nh - 6f),
+                            new Vector2(scr.X + nw / 2 + 5f, amin.Y - 3f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.6f));
+                        Text(disp, new Vector2(scr.X - nw / 2, amin.Y - nh - 6f), Rgba(new Vector3(1f, 1f, 1f), 0.95f));
                         continue;
                     }
                 }
@@ -1166,9 +1209,14 @@ public static unsafe class DialogueSystem
                 dl.AddRectFilled(new Vector2(scr.X - mw / 2 - padX, scr.Y - mh - padY * 2),
                     new Vector2(scr.X + mw / 2 + padX, scr.Y), Rgba(th.BubbleColor, 1f));
                 Text(mark, new Vector2(scr.X - mw / 2, scr.Y - mh - padY), Rgba(new Vector3(1f, 0.85f, 0.25f), 1f));
+                float bubbleTop = scr.Y - mh - padY * 2f;
+                dl.AddRectFilled(new Vector2(scr.X - nw / 2 - 5f, bubbleTop - nh - 6f),
+                    new Vector2(scr.X + nw / 2 + 5f, bubbleTop - 3f), Rgba(new Vector3(0.05f, 0.05f, 0.08f), 0.6f));
+                Text(disp, new Vector2(scr.X - nw / 2, bubbleTop - nh - 6f), Rgba(new Vector3(1f, 1f, 1f), 0.95f));
             }
 
-            if (Active == null && InteractableNpc != null)
+            if (Active == null && InteractableNpc != null
+                && !IsNpcPromptBehindPanel(InteractableNpc, w, h)) // hidden while behind an open HUD panel
             {
                 float iLift = InteractableNpc.NpcBadgeLift > 0f ? InteractableNpc.NpcBadgeLift : DefaultNpcBadgeLift;
                 var head = Project(new Vector3(InteractableNpc.Position.X,

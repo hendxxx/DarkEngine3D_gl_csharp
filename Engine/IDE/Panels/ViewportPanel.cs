@@ -3352,8 +3352,26 @@ ImGui.SameLine();
                     DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
                 if (rawDialogueFont != null && (nint)rawDialogueFont != IntPtr.Zero)
                     dialogueFont = new ImFontPtr(rawDialogueFont);
+
+                // Publish the ImGui font resolver + THIS window's draw list for the HUD
+                // text-fallback mirror (HUD.FrameTextOut). The stb atlas path can render
+                // no glyphs in this preview (GPU-empty atlas) — mirrored HUD strings
+                // (slot numbers, labels, tooltips, quest tracker) draw here instead,
+                // through the same proven font path as the dialogue overlay.
+                Visual.HUD.ImGuiFontResolver = (path, sizePx) =>
+                {
+                    var raw = _bridge.ImGuiCtrl?.GetFont(path, sizePx);
+                    return raw != null && (nint)raw != IntPtr.Zero ? (nint)raw : 0;
+                };
+                Visual.HUD.OverlayDrawList = dlDialogue;
+                Visual.HUD.OverlayFontPath = "Artifacts\\fonts\\Worldstar.ttf";
+
                 DialogueSystem.DrawImGuiOverlay(dlDialogue, _bridge.Camera, _bridge.EditorObjectManager,
                     (int)_texW, (int)_texH, p => SceneToScreen(p.X, p.Y), dialogueFont);
+
+                // Mirrored HUD text AFTER the dialogue overlay → labels/qty/tooltip/
+                // tracker sit on top of the HUD panels (which live in the scene texture).
+                Visual.HUD.DrawTextOutOverlay(p => SceneToScreen(p.X, p.Y));
             }
 
             //  Preview mode indicator badge (bottom-right corner) 

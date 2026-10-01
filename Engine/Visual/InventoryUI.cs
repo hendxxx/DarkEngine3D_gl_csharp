@@ -181,7 +181,51 @@ public static class InventoryHud
         if (PanelOpen) DrawPanel(hud, mx, my, leftPressed, rightPressed);
         DrawTooltip(hud, mx, my);
         DrawFlash(hud);
+        if (PanelOpen) DrawInfoSummary(hud, mx, my);
     }
+
+    /// <summary>ALWAYS-ON item info summary (user: "kalau teksnya kosong, kasih info
+    /// qty + short desc") — the grid slot's NAME ×QTY + first notes line, drawn under
+    /// the name plate in the paperdoll column via the ImGui fallback overlay. Shows
+    /// the FIRST non-empty grid slot (the hotbar's slot 1 doubles as it); hovering is
+    /// not required, and the tooltip on hover still gives the full breakdown.</summary>
+    private static void DrawInfoSummary(HUD hud, float mx, float my)
+    {
+        // First non-empty grid slot → item to summarize.
+        for (int i = 0; i < InventorySystem.GridSize; i++)
+        {
+            ref var slotData = ref InventorySystem.Grid[i];
+            if (slotData.IsEmpty) continue;
+            var def = InventorySystem.Find(slotData.ItemId);
+            if (def == null) continue;
+
+            // Column under the name plate: same width as the paperdoll, stacked lines.
+            float slot = Slot, gap = Gap, pad = slot * 0.45f;
+            float dollW = DollCols * slot + (DollCols - 1) * gap;
+            float gridW = GridCols * slot + (GridCols - 1) * gap;
+            float gridH = GridRows * slot + (GridRows - 1) * gap;
+            float gx = (Glfw.WindowWidth - (pad * 2 + dollW + pad + gridW)) * 0.5f + pad + dollW + pad; // grid left
+            float px = gx + slot * 0.1f;
+            float py = (Glfw.WindowHeight - (pad + bannerH() + pad * 0.6f + MathF.Max(gridH, dollHApprox()) + pad)) * 0.5f
+                     + pad + bannerH() + pad * 0.6f + gridH + 20f;
+
+            HUD.TextOut(px, py, $"{def.Name} ×{slotData.Count}", HighlightGold * 0.95f, fontSizePx: 15f);
+            string desc = !string.IsNullOrEmpty(def.Notes)
+                ? def.Notes
+                : !string.IsNullOrEmpty(def.UseEffect) ? $"Use: {def.UseEffect} {def.UseAmount:0}"
+                : !string.IsNullOrEmpty(def.EquipSlot) ? $"Equippable → {def.EquipSlot}"
+                : "";
+            if (desc.Length > 0)
+                HUD.TextOut(px, py + 20f, desc, InkSoft, fontSizePx: 13f);
+            if (def.Price > 0)
+                HUD.TextOut(px, py + 38f, $"Price: {def.Price} gold", InkSoft, fontSizePx: 13f);
+            return; // first item only — keep the summary compact
+        }
+    }
+
+    /// <summary>Banner/height helpers shared by DrawInfoSummary (panel layout probes).</summary>
+    private static float bannerH() => Slot * 0.85f;
+    private static float dollHApprox() => DollRows * (Slot + Gap + 20f) + Gap + Slot * 0.55f;
 
     private static void ResetEdges()
     {
@@ -193,11 +237,15 @@ public static class InventoryHud
 
     // ═══════════════════════ Style primitives ═══════════════════════
 
-    /// <summary>HUD boxes composite at a fixed ~0.6 alpha, so stacking the same rect
-    /// N times approaches opacity — panels read as solid parchment over the world.</summary>
+    /// <summary>OPAQUE fill via HUD.DrawSolidBox — the quad replaces the framebuffer
+    /// (blend off), so panels/banner/plates read as solid parchment over ANY scene.
+    /// The old 3× DrawBox stack at the shader's 0.6 alpha still washed out over bright
+    /// maps and its interleaved groups lost draw order (images overdrawn by later
+    /// boxes) — "layer HUD tembus cahaya". `layers` is kept for call-site compat and
+    /// ignored.</summary>
     private static void FillSolid(HUD hud, float x, float y, float w, float h, Vector3 color, int layers = 3)
     {
-        for (int i = 0; i < layers; i++) hud.DrawBox(x, y, w, h, color);
+        hud.DrawSolidBox(x, y, w, h, color);
     }
 
     /// <summary>Wooden frame: thick dark outer border + thin mid-brown inner line
@@ -226,6 +274,7 @@ public static class InventoryHud
         float tw = hud.GetTextExtents(label, fontSlot).Width;
         float th = hud.GetTextExtents(label, fontSlot).Height;
         hud.DrawText(label, x + (size - tw) * 0.5f, y + (size - th) * 0.5f, Cream, null, 0f, fontSlot);
+        HUD.TextOut(x + (size - tw) * 0.5f, y + (size - th) * 0.5f, label, Cream, fontSizePx: 13f);
     }
 
     // ═══════════════════════ Slot drawing ═══════════════════════
@@ -264,7 +313,9 @@ public static class InventoryHud
                 hud.DrawBox(x + size * 0.25f, y + size * 0.25f, size * 0.5f, size * 0.5f,
                     new Vector3(0.45f, 0.45f, 0.5f));
             }
-            // Count badge (bottom-right, dark chip + cream text).
+            // Count badge (bottom-right, dark chip + cream text). The chip quad renders
+            // via the HUD batch; the NUMBER mirrors to the ImGui fallback overlay —
+            // the stb-atlas digits can be invisible in the editor preview.
             if (count > 1)
             {
                 string text = count > 999 ? "999+" : count.ToString();
@@ -273,6 +324,7 @@ public static class InventoryHud
                 float cx = x + size - textW - 6f, cy = y + size - textH - 4f;
                 FillSolid(hud, cx - 4f, cy - 2f, textW + 8f, textH + 4f, PlateDark, 2);
                 hud.DrawText(text, cx, cy, Cream);
+                HUD.TextOut(cx, cy, text, Cream, fontSizePx: 14f);
             }
         }
         return hover;
@@ -310,6 +362,9 @@ public static class InventoryHud
         string title = "Inventory";
         var titleExt = hud.GetTextExtents(title, TitleFont(hud));
         hud.DrawText(title, bx + pad * 0.7f, by + (bannerH - titleExt.Height) * 0.5f, Cream, null, 0f, TitleFont(hud));
+        // Title mirrors to the ImGui fallback overlay (26px) — stb-atlas glyphs can be
+        // invisible in the editor preview.
+        HUD.TextOut(bx + pad * 0.7f, by + (bannerH - titleExt.Height) * 0.5f, title, Cream, fontSizePx: 26f);
 
         float chip = bannerH * 0.62f;
         HintChip(hud, bx + bw - chip - pad * 0.6f, by + (bannerH - chip) * 0.5f, chip, "I", LabelFont(hud));
@@ -367,6 +422,8 @@ public static class InventoryHud
         var nameExt = hud.GetTextExtents(name, LabelFont(hud));
         hud.DrawText(name, dx + (dollW - nameExt.Width) * 0.5f, plateY + (nameH - nameExt.Height) * 0.5f,
             Cream, null, 0f, LabelFont(hud));
+        HUD.TextOut(dx + (dollW - nameExt.Width) * 0.5f, plateY + (nameH - nameExt.Height) * 0.5f,
+            name, Cream, fontSizePx: 14f);
 
         // ── Right: 6×6 grid ──
         float gx = px + pad + dollW + pad;
@@ -468,6 +525,7 @@ public static class InventoryHud
         {
             var col = i == 0 ? InkBrown : InkSoft;
             hud.DrawText(lines[i], bx + padX, by + padY + i * lineStep, col, null, 0f, labelFont);
+            HUD.TextOut(bx + padX, by + padY + i * lineStep, lines[i], col, fontSizePx: 14f);
         }
     }
 
@@ -489,13 +547,17 @@ public static class InventoryHud
             bool hover = DrawSlot(hud, x, y0, slot, def, slotData.IsEmpty ? 0 : slotData.Count,
                 highlighted: false, dragging: false);
 
-            // Slot number chip (top-left, tiny dark square + cream digit).
-            float numChip = slot * 0.30f;
+            // Slot number chip (top-left, solid dark square + cream digit). Sized to
+            // fit the label font — at 0.30×slot the 16px digit clipped on 50px slots
+            // and the chip read as empty ("nomor slot tidak kelihatan").
+            float numChip = slot * 0.36f;
             FillSolid(hud, x + 3f, y0 + 3f, numChip, numChip, PlateDark, 2);
             string num = (i + 1).ToString();
             var nExt = hud.GetTextExtents(num, LabelFont(hud));
             hud.DrawText(num, x + 3f + (numChip - nExt.Width) * 0.5f, y0 + 3f + (numChip - nExt.Height) * 0.5f,
                 Cream, null, 0f, LabelFont(hud));
+            HUD.TextOut(x + 3f + (numChip - nExt.Width) * 0.5f, y0 + 3f + (numChip - nExt.Height) * 0.5f,
+                num, Cream, fontSizePx: 13f);
 
             if (hover && def != null)
             {
@@ -527,5 +589,6 @@ public static class InventoryHud
         var col = Vector3.Lerp(new Vector3(0.05f, 0.05f, 0.08f), Cream, a);
         float w = hud.GetTextExtents(_flash).Width;
         hud.DrawText(_flash, (Glfw.WindowWidth - w) * 0.5f, Glfw.WindowHeight - Slot - 44f, col);
+        HUD.TextOut((Glfw.WindowWidth - w) * 0.5f, Glfw.WindowHeight - Slot - 44f, _flash, col, a);
     }
 }

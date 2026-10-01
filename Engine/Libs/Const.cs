@@ -125,6 +125,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         public const uint GL_UNSIGNED_BYTE = 0x1401;
         public const uint GL_UNSIGNED_INT = 0x1405;
 
+        public const uint GL_PACK_ALIGNMENT = 0x0D05;
+
         public const uint GL_TEXTURE_MAX_ANISOTROPY = 0x84FE;
         public const int GL_MAX_TEXTURE_SIZE = 0x0D33;
         public const int GL_POLYGON_OFFSET_FILL = 0x8037;

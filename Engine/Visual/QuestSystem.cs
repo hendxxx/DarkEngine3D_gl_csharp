@@ -250,10 +250,12 @@ public static class QuestHud
         {
             var q = active[qi];
             hud.DrawText(q.Name, x + pad, ty, HighlightGold, null, 0f, lf);
+            HUD.TextOut(x + pad, ty, q.Name, HighlightGold, fontSizePx: 14f);
             ty += lineStep;
             foreach (var o in q.Objectives)
             {
                 hud.DrawText("• " + o, x + pad + 6f, ty, Cream, null, 0f, lf);
+                HUD.TextOut(x + pad + 6f, ty, "• " + o, Cream, fontSizePx: 13f);
                 ty += lineStep;
             }
             if (qi < active.Count - 1) ty += 4f;
@@ -261,6 +263,7 @@ public static class QuestHud
         // Log hint (part of the plate when there's room; below it otherwise).
         string hint = "[Q] Quest Log";
         hud.DrawText(hint, x, y + h + 4f, Cream * 0.75f, null, 0f, lf);
+        HUD.TextOut(x, y + h + 4f, hint, Cream * 0.75f, fontSizePx: 13f);
     }
 
     // ── Quest Log panel ([Q]) ──────────────────────
@@ -299,6 +302,7 @@ public static class QuestHud
         string title = "Quest Log";
         var tExt = hud.GetTextExtents(title, tf);
         hud.DrawText(title, bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, Cream, null, 0f, tf);
+        HUD.TextOut(bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, title, Cream, fontSizePx: 22f);
         float chip = bannerH * 0.62f;
         HintChip(hud, bx + bw - chip - pad * 0.6f, by + (bannerH - chip) * 0.5f, chip, "Q", lf);
         string gold = $"◈ {InventorySystem.Gold}";
@@ -315,25 +319,30 @@ public static class QuestHud
         if (active.Count == 0)
         {
             hud.DrawText("Belum ada quest aktif. Bicara dengan NPC bertanda \"!\".", tx, ty, InkSoft, null, 0f, lf);
+            HUD.TextOut(tx, ty, "Belum ada quest aktif. Bicara dengan NPC bertanda \"!\".", InkSoft, fontSizePx: 14f);
             ty += lineStep;
         }
         foreach (var q in active)
         {
             hud.DrawText(q.Name, tx + 6f, ty, HighlightGold, null, 0f, lf);
+            HUD.TextOut(tx + 6f, ty, q.Name, HighlightGold, fontSizePx: 15f);
             ty += lineStep;
             if (q.Description.Length > 0)
             {
                 hud.DrawText(q.Description, tx + 18f, ty, InkSoft, null, 0f, lf);
+                HUD.TextOut(tx + 18f, ty, q.Description, InkSoft, fontSizePx: 13f);
                 ty += lineStep;
             }
             foreach (var o in q.Objectives)
             {
                 hud.DrawText("• " + o, tx + 18f, ty, InkBrown, null, 0f, lf);
+                HUD.TextOut(tx + 18f, ty, "• " + o, InkBrown, fontSizePx: 13f);
                 ty += lineStep;
             }
             if (q.RewardText.Length > 0)
             {
                 hud.DrawText("Hadiah: " + q.RewardText, tx + 18f, ty, DoneGreen, null, 0f, lf);
+                HUD.TextOut(tx + 18f, ty, "Hadiah: " + q.RewardText, DoneGreen, fontSizePx: 13f);
                 ty += lineStep;
             }
             ty += 4f;
@@ -346,23 +355,29 @@ public static class QuestHud
             hud.DrawBox(tx, ty, bw - pad * 1.2f, 1.5f, WoodMid);
             ty += lineStep * 0.6f;
             hud.DrawText("— SELESAI —", tx, ty, InkSoft, null, 0f, lf);
+            HUD.TextOut(tx, ty, "— SELESAI —", InkSoft, fontSizePx: 14f);
             ty += lineStep;
             foreach (var q in done)
             {
                 hud.DrawText("✓", tx + 6f, ty, DoneGreen, null, 0f, lf);
                 hud.DrawText(q.Name, tx + 26f, ty, InkSoft, null, 0f, lf);
+                HUD.TextOut(tx + 26f, ty, "✓ " + q.Name, InkSoft, fontSizePx: 13f);
                 ty += lineStep + 4f;
             }
         }
 
         hud.DrawText("[Q] / [Esc] tutup", tx, ty + lineStep * 0.2f, InkBrown * 0.8f, null, 0f, lf);
+        HUD.TextOut(tx, ty + lineStep * 0.2f, "[Q] / [Esc] tutup", InkBrown * 0.8f, fontSizePx: 13f);
     }
 
     // ── Style helpers (mirror InventoryHud/ShopHud) ──
 
+    /// <summary>OPAQUE fill via HUD.DrawSolidBox — see InventoryHud.FillSolid. The old
+    /// 3× DrawBox stack at 0.6 alpha washed out over bright maps ("layer tembus").
+    /// `layers` kept for call-site compat, ignored.</summary>
     private static void FillSolid(HUD hud, float x, float y, float w, float h, Vector3 color, int layers = 3)
     {
-        for (int i = 0; i < layers; i++) hud.DrawBox(x, y, w, h, color);
+        hud.DrawSolidBox(x, y, w, h, color);
     }
 
     private static void WoodFrame(HUD hud, float x, float y, float w, float h)
@@ -386,5 +401,6 @@ public static class QuestHud
         float tw = hud.GetTextExtents(label, fontSlot).Width;
         float th = hud.GetTextExtents(label, fontSlot).Height;
         hud.DrawText(label, x + (size - tw) * 0.5f, y + (size - th) * 0.5f, Cream, null, 0f, fontSlot);
+        HUD.TextOut(x + (size - tw) * 0.5f, y + (size - th) * 0.5f, label, Cream, fontSizePx: 13f);
     }
 }

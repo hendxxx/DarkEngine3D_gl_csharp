@@ -60,7 +60,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         internal static IntPtr TexParameterfPtr = IntPtr.Zero;
         internal static IntPtr TexParameterfvPtr = IntPtr.Zero;
         internal static IntPtr BlendFuncPtr = IntPtr.Zero;
+        internal static IntPtr BlendFuncSeparatePtr = IntPtr.Zero;
         internal static IntPtr PixelStorePtr = IntPtr.Zero;
+        internal static IntPtr GetTexImagePtr = IntPtr.Zero;
         internal static IntPtr BufferSubDataPtr = IntPtr.Zero;
         internal static IntPtr PolygonOffsetPtr = IntPtr.Zero;
 
@@ -488,6 +490,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             => ((delegate* unmanaged[Cdecl]<uint, uint, void>)BlendFuncPtr)(sfactor, dfactor);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void BlendFuncSeparate(uint srcRGB, uint dstRGB, uint srcAlpha, uint dstAlpha)
+            => ((delegate* unmanaged[Cdecl]<uint, uint, uint, uint, void>)BlendFuncSeparatePtr)(srcRGB, dstRGB, srcAlpha, dstAlpha);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void ColorMask(bool red, bool green, bool blue, bool alpha)
             => ((delegate* unmanaged[Cdecl]<byte, byte, byte, byte, void>)ColorMaskPtr)(
                 (byte)(red ? 1 : 0), (byte)(green ? 1 : 0), (byte)(blue ? 1 : 0), (byte)(alpha ? 1 : 0));
@@ -524,6 +530,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void PixelStore(uint pname, int param)
             => ((delegate* unmanaged[Cdecl]<uint, int, void>)PixelStorePtr)(pname, param);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void GetTexImage(uint target, int level, uint format, uint type, void* data)
+            => ((delegate* unmanaged[Cdecl]<uint, int, uint, uint, void*, void>)GetTexImagePtr)(target, level, format, type, data);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void BufferSubData(uint target, nuint offset, nuint size, void* data)

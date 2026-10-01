@@ -287,6 +287,7 @@ public static class ShopHud
         string title = shop.Name.Length > 0 ? shop.Name : "Shop";
         var tExt = hud.GetTextExtents(title, TitleFont(hud));
         hud.DrawText(title, bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, Cream, null, 0f, TitleFont(hud));
+        HUD.TextOut(bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, title, Cream, fontSizePx: 22f);
         // Gold counter + [Esc] chip on the banner's right.
         string gold = $"◈ {InventorySystem.Gold}";
         int lf = LabelFont(hud);
@@ -295,6 +296,8 @@ public static class ShopHud
         float chipX = bx + bw - chip - pad * 0.6f;
         hud.DrawText(gold, chipX - pad * 0.8f - goldW, by + (bannerH - hud.GetTextExtents(gold, lf).Height) * 0.5f,
             HighlightGold, null, 0f, lf);
+        HUD.TextOut(chipX - pad * 0.8f - goldW, by + (bannerH - hud.GetTextExtents(gold, lf).Height) * 0.5f,
+            gold, HighlightGold, fontSizePx: 14f);
         HintChip(hud, chipX, by + (bannerH - chip) * 0.5f, chip, "Esc", lf);
 
         float bodyY = by + bannerH + pad * 0.6f;
@@ -379,22 +382,26 @@ public static class ShopHud
 
         if (selDef != null)
         {
-            hud.DrawText(
-                isBuy ? $"{selDef.Name}  —  {unitBuy} Gold / pcs" : $"{selDef.Name}  —  jual {unitSell} Gold / pcs",
-                dTextX, dTextY, InkBrown, null, 0f, lf);
+            string l1 = isBuy ? $"{selDef.Name}  —  {unitBuy} Gold / pcs" : $"{selDef.Name}  —  jual {unitSell} Gold / pcs";
+            hud.DrawText(l1, dTextX, dTextY, InkBrown, null, 0f, lf);
+            HUD.TextOut(dTextX, dTextY, l1, InkBrown, fontSizePx: 15f);
             string line2 = isBuy
                 ? (selStock >= 0 ? $"Stok toko: {selStock}" : "Stok toko: tak terbatas")
                 : $"Kamu punya: {InventorySystem.Count(selDef.Id)}";
             hud.DrawText(line2, dTextX, dTextY + lineStep, InkSoft, null, 0f, lf);
+            HUD.TextOut(dTextX, dTextY + lineStep, line2, InkSoft, fontSizePx: 14f);
             string hint = isBuy
                 ? $"Total {unitBuy * qty} Gold — tekan Beli (B)"
                 : $"Dapat {unitSell * qty} Gold — tekan Jual (S)";
             hud.DrawText(hint, dTextX, dTextY + lineStep * 2f, InkBrown, null, 0f, lf);
+            HUD.TextOut(dTextX, dTextY + lineStep * 2f, hint, InkBrown, fontSizePx: 14f);
         }
         else
         {
             hud.DrawText("Pilih barang di toko (kiri) untuk membeli,", dTextX, dTextY, InkSoft, null, 0f, lf);
             hud.DrawText("atau barang di tas (kanan) untuk menjual.", dTextX, dTextY + lineStep, InkSoft, null, 0f, lf);
+            HUD.TextOut(dTextX, dTextY, "Pilih barang di toko (kiri) untuk membeli,", InkSoft, fontSizePx: 14f);
+            HUD.TextOut(dTextX, dTextY + lineStep, "atau barang di tas (kanan) untuk menjual.", InkSoft, fontSizePx: 14f);
         }
 
         float btnY = dY + descH + pad * 0.4f;
@@ -435,9 +442,12 @@ public static class ShopHud
         return _mx >= x && _mx < x + w && _my >= y && _my < y + h;
     }
 
+    /// <summary>OPAQUE fill via HUD.DrawSolidBox — see InventoryHud.FillSolid. The old
+    /// 3× DrawBox stack at 0.6 alpha washed out over bright maps ("layer tembus").
+    /// `layers` kept for call-site compat, ignored.</summary>
     private static void FillSolid(HUD hud, float x, float y, float w, float h, Vector3 color, int layers = 3)
     {
-        for (int i = 0; i < layers; i++) hud.DrawBox(x, y, w, h, color);
+        hud.DrawSolidBox(x, y, w, h, color);
     }
 
     private static void WoodFrame(HUD hud, float x, float y, float w, float h)
@@ -461,6 +471,7 @@ public static class ShopHud
         float tw = hud.GetTextExtents(label, fontSlot).Width;
         float th = hud.GetTextExtents(label, fontSlot).Height;
         hud.DrawText(label, x + (size - tw) * 0.5f, y + (size - th) * 0.5f, Cream, null, 0f, fontSlot);
+        HUD.TextOut(x + (size - tw) * 0.5f, y + (size - th) * 0.5f, label, Cream, fontSizePx: 13f);
     }
 
     /// <summary>One shop/bag cell. badge = price text (buy cells), stock −1 = unlimited.
@@ -581,6 +592,7 @@ public static class ShopHud
         {
             var col = i == 0 ? InkBrown : InkSoft;
             hud.DrawText(lines[i], bx + padX, by + padY + i * lineStep, col, null, 0f, labelFont);
+            HUD.TextOut(bx + padX, by + padY + i * lineStep, lines[i], col, fontSizePx: 14f);
         }
     }
 

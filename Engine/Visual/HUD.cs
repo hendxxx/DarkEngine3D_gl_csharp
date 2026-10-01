@@ -3,6 +3,7 @@ using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using StbTrueTypeSharp;
 using System.Numerics;
+using ImGuiNET;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual
 {
@@ -70,6 +71,97 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
     public unsafe class HUD
     {
+        // ════════════════════════════════════════════════════════════════════
+        //  FALLBACK TEXT OUT (ImGui draw-list mirror) — see HUD.TextOut below.
+        //  Lives on the static HUDEx class because DialogueSystem must draw the
+        //  mirrored strings AFTER its own overlay via ImGui (namespace-neutral,
+        //  no Visual→IDE dependency from the HUD itself).
+        // ════════════════════════════════════════════════════════════════════
+
+        /// <summary>One mirrored HUD text string, drawn by the ImGui overlay when
+        /// the stb-atlas path produces no glyphs in the editor preview.</summary>
+        public struct TextOutItem
+        {
+            public float X, Y;                 // scene px (top-left baseline top)
+            public string Text;
+            public Vector4 Color;              // rgba 0..1
+            public bool CenteredAtX;           // true: X is the CENTER of the string
+            public float FontSizePx;           // 0 = overlay default
+        }
+
+        /// <summary>Current frame's mirrored HUD text strings (scene-px coords).
+        /// Emptied at the start of every Flush(); the ViewportPanel's ImGui overlay
+        /// draws them AFTER the dialogue overlay so they sit on the panels.</summary>
+        public static readonly List<TextOutItem> FrameTextOut = [];
+
+        /// <summary>Optional overlay-supplied font resolver (set by ViewportPanel:
+        /// (path, sizePx) → ImGui ImFont*). Used by DialogueSystem to draw the
+        /// mirrored HUD text with the SAME proven font path as its own overlay.
+        /// Signature keeps the Visual→IDE dependency inverted.</summary>
+        public static Func<string, float, nint>? ImGuiFontResolver;
+
+        /// <summary>ImGui draw list the overlay published for THIS frame (the viewport's
+        /// scene-image window list). Null = no overlay this frame → mirroring no-ops.</summary>
+        public static ImDrawListPtr? OverlayDrawList;
+
+        /// <summary>Font FILE the overlay resolved for mirrored strings (Worldstar) —
+        /// passed to the font resolver together with each item's size.</summary>
+        public static string OverlayFontPath = "";
+
+        /// <summary>Draw every mirrored HUD text string through the ImGui overlay
+        /// (called by ViewportPanel AFTER the dialogue overlay). Coordinates are
+        /// scene-px; sceneToScreen converts them into window space. Guarded so any
+        /// missing piece (list, draw list, font) silently skips — never throws.</summary>
+        public static void DrawTextOutOverlay(Func<Vector2, Vector2> sceneToScreen)
+        {
+            if (FrameTextOut.Count == 0) return;
+            var dl = OverlayDrawList;
+            if (dl == null || (nint)dl.Value.NativePtr == 0) return;
+
+            foreach (var item in FrameTextOut)
+            {
+                float size = item.FontSizePx > 0f ? item.FontSizePx : 16f;
+                nint fontRaw = ImGuiFontResolver?.Invoke(OverlayFontPath, size) ?? 0;
+                if (fontRaw == 0)
+                {
+                    // Resolver returned nothing (font queued for NEXT frame) → fall back
+                    // to ImGui's current default font so the string still shows.
+                    fontRaw = (nint)ImGuiNET.ImGui.GetFont().NativePtr;
+                    if (fontRaw == 0) continue;
+                }
+                var font = new ImFontPtr((ImFont*)fontRaw);
+                float fs = size;
+
+                var scr = sceneToScreen(new Vector2(item.X, item.Y));
+                var col = new Vector4(item.Color.X, item.Color.Y, item.Color.Z, item.Color.W);
+                uint packed = ImGui.GetColorU32(col);
+
+                Vector2 pos = new(scr.X, scr.Y);
+                if (item.CenteredAtX)
+                {
+                    float w = font.CalcTextSizeA(fs, float.MaxValue, 0f, item.Text).X;
+                    pos.X -= w * 0.5f;
+                }
+                dl.Value.AddText(font, fs, pos, packed, item.Text);
+            }
+            FrameTextOut.Clear(); // drawn — don't let a second overlay pass double them
+        }
+
+        /// <summary>Mirror a HUD text draw to the ImGui fallback list (no-op unless
+        /// the overlay opted in this frame). Call after the primary DrawText.
+        /// centerAtX: X is the string's horizontal center (badges/labels).</summary>
+        public static void TextOut(float x, float y, string text, Vector3 rgb, float alpha = 1f,
+            bool centerAtX = false, float fontSizePx = 0f)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            FrameTextOut.Add(new TextOutItem
+            {
+                X = x, Y = y, Text = text,
+                Color = new Vector4(rgb.X, rgb.Y, rgb.Z, alpha),
+                CenteredAtX = centerAtX, FontSizePx = fontSizePx,
+            });
+        }
+
         private readonly uint vao;
         private readonly uint vbo;
         private readonly uint shaderProgram;
@@ -90,6 +182,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Queued box draw commands. Flushed by Flush().</summary>
         private readonly List<(float x, float y, float w, float h, Vector3 color)> _boxQueue = [];
 
+        /// <summary>UNIFIED box submission queue — DrawBox (blended 0.6-alpha look)
+        /// and DrawSolidBox (opaque, blend off) append here IN CALL ORDER and Flush
+        /// renders consecutive same-kind+colour runs in sequence (painter's order).
+        /// The previous two-queue design rendered ALL solids before ALL boxes, which
+        /// let blended slot backgrounds overdraw the solid number chips and banners
+        /// queued before them ("layer UI" regression: chips/banner invisible).
+        /// _boxQueue is kept only because FlushWithBackdrop-era callers probe it.</summary>
+        private readonly List<(bool solid, float x, float y, float w, float h, Vector3 color)> _drawQueue = [];
+
         /// <summary>Queued text draw commands. Flushed by Flush().</summary>
         private readonly List<(int fontSlot, float x, float y, string text, Vector3 color)> _textQueue = [];
 
@@ -98,6 +199,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         /// <summary>Queued SUB-RECT image commands (icon crops). Flushed by Flush().</summary>
         private readonly List<(float x, float y, float w, float h, uint texId, float u0, float v0, float u1, float v1)> _imageUvQueue = [];
+
+        /// <summary>Count of OPAQUE quads currently in _drawQueue (DrawSolidBox).
+        /// QueuedItemCount must include these so the preview flush guard fires when
+        /// only panels were queued.</summary>
+        private int _solidCount;
+
+        // ── Panel occlusion registry (for world-anchored overlays) ──
+        // Every opaque quad queued this frame is remembered so overlays that composite
+        // LATER, OUTSIDE the HUD batch (the ImGui draw-list overlay that draws NPC
+        // badges, names and speech bubbles over the finished scene texture) can skip
+        // markers that sit BEHIND an open panel. Filtered by frame id — only rects        // claimed during the CURRENT frame occlude.
+        private static readonly List<(int frame, float x, float y, float w, float h)> _occluders = [];
 
         // ════════════════════════════════════════════
         //  CONSTRUCTOR
@@ -227,6 +340,69 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.GenerateMipmap(Const.GL_TEXTURE_2D);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR_MIPMAP_LINEAR);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            // ── GPU READBACK VERIFICATION + AUTO RE-BAKE ──
+            // CPU bitmap non-empty + GPU upload logged no error, yet glyphs stayed            // invisible in the editor preview: the driver silently dropped/zeroed the            // upload (context-state dependent). Read the atlas BACK from VRAM and            // verify; if empty, bake+upload once more immediately. The Prewarm-time            // retry runs with clean state, which is exactly the condition that has            // always produced a WORKING atlas on the other paths.
+            if (VerifyAtlasUploaded("initial bake", slot.FontPath, slot.FontSize, rgbaBitmap))
+                return;
+
+            Console.WriteLine($"[HUD] Atlas GPU-empty after first upload — re-baking '{slot.FontPath}' @ {slot.FontSize}px");
+            fixed (byte* pTtf2 = ttfData)
+            fixed (byte* pTemp2 = tempBitmap)
+            fixed (StbTrueType.stbtt_bakedchar* pChars2 = slot.BakedChars)
+            {
+                StbTrueType.stbtt_BakeFontBitmap(pTtf2, 0, slot.FontSize, pTemp2, AtlasSize, AtlasSize, 32, 96, pChars2);
+            }
+            for (int i = 0; i < tempBitmap.Length; i++)
+            {
+                rgbaBitmap[i * 4 + 0] = 255;
+                rgbaBitmap[i * 4 + 1] = 255;
+                rgbaBitmap[i * 4 + 2] = 255;
+                rgbaBitmap[i * 4 + 3] = tempBitmap[i];
+            }
+            fixed (byte* pB2 = rgbaBitmap)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA, AtlasSize, AtlasSize, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pB2);
+            }
+            GL.GenerateMipmap(Const.GL_TEXTURE_2D);
+            if (!VerifyAtlasUploaded("re-bake", slot.FontPath, slot.FontSize, rgbaBitmap))
+            {
+                Console.WriteLine($"[HUD] Atlas STILL empty after re-bake — '{slot.FontPath}' @ {slot.FontSize}px");
+            }
+        }
+
+        /// <summary>Read the mipmap level 0 of the currently-bound atlas texture back
+        /// from VRAM and confirm its alpha channel actually contains the baked glyphs.
+        /// Logs and returns true when the GPU copy matches the CPU bitmap (or when        /// readback itself is unavailable — never fail loudly here).</summary>
+        private static unsafe bool VerifyAtlasUploaded(string stage, string fontPath, float fontSize, byte[] expectedRgba)
+        {
+            try
+            {
+                var probe = new byte[AtlasSize * AtlasSize * 4];
+                fixed (byte* pProbe = probe)
+                {
+                    GL.PixelStore(Const.GL_PACK_ALIGNMENT, 1);
+                    GL.GetTexImage(Const.GL_TEXTURE_2D, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, pProbe);
+                    GL.PixelStore(Const.GL_PACK_ALIGNMENT, 4);
+                }
+
+                int nonZeroAlpha = 0;
+                for (int i = 3; i < probe.Length; i += 4)
+                    if (probe[i] != 0) nonZeroAlpha++;
+
+                bool ok = nonZeroAlpha > 1000; // glyphs ≈ tens of thousands of lit pixels
+                if (!ok)
+                {
+                    Console.WriteLine($"[HUD] ATLAS GPU READBACK EMPTY ({stage}) '{fontPath}' @ {fontSize}px " +
+                        $"(alpha-lit bytes={nonZeroAlpha}, glError=0x{GL.GetError():X})");
+                }
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HUD] Atlas readback unavailable ({stage}): {ex.Message} — skipping verification");
+                return true; // no verification possible → assume the upload stuck
+            }
         }
 
         // ════════════════════════════════════════════
@@ -237,6 +413,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public void DrawBox(float x, float y, float w, float h, Vector3 color)
         {
             _boxQueue.Add((x, y, w, h, color));
+            _drawQueue.Add((false, x, y, w, h, color));
+        }
+
+        /// <summary>Queue an OPAQUE solid rectangle: drawn IN QUEUE ORDER (like every
+        /// other category) with blending DISABLED — the quad REPLACES the framebuffer,
+        /// so a panel stamped this way is fully solid no matter how bright the scene        /// behind it is, and its shader mode writes alpha 1.0 (MODE SOLID) so the RGBA8
+        /// scene texture stays blittable by ImGui without fading. Also registers an        /// occluder rect for the world-anchored overlay (see PointInPanelOccluder).</summary>
+        public void DrawSolidBox(float x, float y, float w, float h, Vector3 color)
+        {
+            _drawQueue.Add((true, x, y, w, h, color));
+            _solidCount++;
+            _occluders.Add((Glfw.FrameId, x, y, w, h));
+        }
+
+        /// <summary>Is this scene-px point covered by any OPAQUE panel queued this        /// frame (DrawSolidBox)? The ImGui world-anchored overlay (NPC badges, names,        /// speech bubbles) composites AFTER the HUD batch with no depth — without this        /// check its markers draw ON TOP of open inventory/shop panels ("layer UI").        /// Cheap: a handful of rects, one point test each.</summary>
+        public static bool PointInPanelOccluder(float x, float y)
+        {
+            int frame = Glfw.FrameId;
+            foreach (var (f, ox, oy, ow, oh) in _occluders)
+            {
+                if (f != frame) continue;
+                if (x >= ox && x <= ox + ow && y >= oy && y <= oy + oh) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -269,6 +469,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         {
             if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count)
                 fontSlotIndex = 0;
+
+            // FALLBACK TEXT MIRROR: hand the string to the ImGui overlay too. The stb
+            // atlas path can render nothing in the editor preview (GPU-empty atlas); the
+            // overlay draws every mirrored string with the PROVEN ImGui font path, so
+            // HUD labels survive in both modes. Full alpha when outlined (the outline
+            // darkens the backdrop the old halo provided), slightly softer otherwise.
+            TextOut(startX, startY, text, color, outlineColor != null ? 1f : 0.95f);
 
             if (outlineColor != null)
             {
@@ -399,7 +606,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// </summary>
         public void Flush()
         {
-            if (_boxQueue.Count == 0 && _textQueue.Count == 0 && _imageQueue.Count == 0)
+            if (_drawQueue.Count == 0 && _textQueue.Count == 0 && _imageQueue.Count == 0 && _imageUvQueue.Count == 0)
                 return;
 
             GL.UseProgram(shaderProgram);
@@ -408,37 +615,45 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             GL.Disable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_BLEND);
-            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+            // RGB: standard alpha blending. ALPHA: dst = max(src·srcA, dst·(1−srcA))
+            // — box quads composite at the shader's fixed 0.6 alpha, so plain
+            // BlendFunc would DRIVE THE TARGET'S ALPHA DOWN (dst → 0.6). Everything
+            // that later mixes using dst-alpha (MSAA resolve, DoF composite, bloom/
+            // exposure in-place passes) then treats the HUD as partially transparent
+            // and the panels ghost back toward the scene. Keeping dst at ~1 fixes the
+            // "HUD layer tembus cahaya" without touching the shader's 0.6 look.
+            GL.BlendFuncSeparate(
+                Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA,
+                Const.GL_ONE, Const.GL_ONE_MINUS_SRC_ALPHA);
             OpenGL.EnableFaceCulling(false);
 
             int stride = 4 * sizeof(float);
             int w = Glfw.WindowWidth;
             int h = Glfw.WindowHeight;
 
-            // ── 1. BOXES: group by colour, render in first-occurrence order ──
-            if (_boxQueue.Count > 0)
+            // ── 0. BOX RUNS: solids + blended boxes IN QUEUE ORDER. Consecutive
+            // same kind+colour quads batch into one draw call (painter's order kept).
+            // The two-queue version drew ALL solids before ALL boxes, so blended slot
+            // backgrounds overdraw the solid number chips and banners queued before
+            // them ("layer UI" regression: chips/banner invisible). Solids toggle
+            // blending OFF and use shader MODE SOLID (alpha 1.0 — the RGBA8 scene
+            // texture must stay opaque for the Viewport panel's ImGui blit). ──
+            if (_drawQueue.Count > 0)
             {
-                // Group by colour preserving first-occurrence order
-                var boxGroups = new List<(Vector3 color, List<(float x, float y, float w, float h)> items, int order)>();
-                var colorMap = new Dictionary<(float r, float g, float b), int>();
-
-                foreach (var box in _boxQueue)
+                int di = 0;
+                while (di < _drawQueue.Count)
                 {
-                    var key = (box.color.X, box.color.Y, box.color.Z);
-                    if (!colorMap.TryGetValue(key, out int idx))
-                    {
-                        idx = boxGroups.Count;
-                        colorMap[key] = idx;
-                        boxGroups.Add((box.color, [], boxGroups.Count));
-                    }
-                    boxGroups[idx].items.Add((box.x, box.y, box.w, box.h));
-                }
+                    bool runSolid = _drawQueue[di].solid;
+                    var runColor = _drawQueue[di].color;
+                    int start = di;
+                    while (di < _drawQueue.Count && _drawQueue[di].solid == runSolid &&
+                           ColorsEqual(_drawQueue[di].color, runColor))
+                        di++;
 
-                foreach (var group in boxGroups)
-                {
-                    var verts = new List<float>(group.items.Count * 24); // 6 verts × 4 floats
-                    foreach (var (bx, by, bw, bh) in group.items)
+                    var verts = new List<float>((di - start) * 24); // 6 verts × 4 floats
+                    for (int k = start; k < di; k++)
                     {
+                        var (_, bx, by, bw, bh, _) = _drawQueue[k];
                         float x0 = (bx / w) * 2.0f - 1.0f;
                         float y0 = 1.0f - (by / h) * 2.0f;
                         float x1 = ((bx + bw) / w) * 2.0f - 1.0f;
@@ -453,7 +668,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                         verts.Add(x1); verts.Add(y1); verts.Add(0f); verts.Add(0f);
                     }
 
-                    UploadAndDraw(verts, group.color, new Vector3(0, 0, 0), 0, stride, 0f);
+                    if (runSolid)
+                    {
+                        GL.Disable(Const.GL_BLEND); // opaque replace
+                        UploadAndDraw(verts, runColor, new Vector3(3, 0, 0), 0, stride, 0f); // MODE SOLID (alpha 1)
+                        GL.Enable(Const.GL_BLEND);  // back to the blended state the rest of Flush expects
+                    }
+                    else
+                    {
+                        UploadAndDraw(verts, runColor, new Vector3(0, 0, 0), 0, stride, 0f); // MODE BOX (0.6 look)
+                    }
                 }
             }
 
@@ -601,10 +825,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Enable(Const.GL_DEPTH_TEST);
 
             // Clear all queues
+            _drawQueue.Clear();
+            _solidCount = 0;
             _boxQueue.Clear();
             _textQueue.Clear();
             _imageQueue.Clear();
             _imageUvQueue.Clear();
+            // Text mirror: BEGIN a fresh frame (Flush runs mid-frame; the ImGui overlay
+            // reads this list afterwards in the same frame).
+            FrameTextOut.Clear();
+            // Keep only THIS frame's occluder rects — the world-anchored overlay
+            // queries them after Flush; stale frames must not occlude.
+            _occluders.RemoveAll(o => o.frame != Glfw.FrameId);
         }
 
         /// <summary>Upload vertex data and issue a single draw call.</summary>
@@ -944,7 +1176,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         public int FontSlotCount => _fontSlots.Count;
 
         /// <summary>Total queued items (boxes+text+images) — diagnostics.</summary>
-        public int QueuedItemCount => _boxQueue.Count + _textQueue.Count + _imageQueue.Count + _imageUvQueue.Count;
+        public int QueuedItemCount => _drawQueue.Count + _textQueue.Count + _imageQueue.Count + _imageUvQueue.Count;
 
         /// <summary>The (font,size) pair this HUD was CONSTRUCTED with → always slot 0.
         /// Slot 0 is baked by the constructor before the render loop (clean GL state) and

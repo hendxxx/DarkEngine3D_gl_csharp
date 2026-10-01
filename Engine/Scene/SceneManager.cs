@@ -684,26 +684,29 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     var bridge = _ide.Bridge;
 
-                    // ── Inventory HUD (preview, no-scene path): the 2D sidescroller
-                    // preview runs editor objects WITHOUT a GameScene, so GameScene's
-                    // HUD pass never fires here. Draw the inventory (hotbar + [I] panel)
-                    // into a shared HUD and flush it into the SHARED FBO right before it
-                    // resolves — the viewport texture then contains it, exactly like
-                    // GameScene's own flush path. Session-gated inside (edit mode: no-op). ──
-                    if (bridge.InGameActive || bridge.IsPreviewMode)
+                // ── Inventory HUD (preview, no-scene path): the 2D sidescroller
+                // preview runs editor objects WITHOUT a GameScene, so GameScene's
+                // HUD pass never fires here. QUEUE only — the flush happens AFTER
+                // ResolveSharedFBO + DoF/PostFx below. Flushing BEFORE those passes
+                // (the old order) meant the inventory/shop/quest panels got blurred
+                // and re-graded by DoF/bloom/tonemap and lost draw order against
+                // every overlay that composites later — GameScene flushes its HUD
+                // after PostProcessStack.RunStack, so this path must match. ──
+                bool flushPreviewHud = false;
+                HUD? previewHud = null;
+                if (bridge.InGameActive || bridge.IsPreviewMode)
+                {
+                    InventoryHud.Prewarm();
+                    if (InventoryHud.SharedHud is { } invHudQ)
                     {
-                        InventoryHud.Prewarm();
-                        if (InventoryHud.SharedHud is { } invHud)
-                        {
-                            InventoryHud.Render(invHud, dt);
-                            // Shop panel + quest tracker — same shared HUD + flush path.
-                            ShopHud.Render(invHud, dt);
-                            QuestHud.Render(invHud, dt);
-                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
-                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
-                            invHud.Flush();
-                        }
+                        InventoryHud.Render(invHudQ, dt);
+                        // Shop panel + quest tracker — same shared HUD + flush path.
+                        ShopHud.Render(invHudQ, dt);
+                        QuestHud.Render(invHudQ, dt);
+                        flushPreviewHud = invHudQ.QueuedItemCount > 0;
+                        previewHud = invHudQ;
                     }
+                }
 
                     // Resolve the shared MSAA FBO into its single-sample texture so the
                     // Viewport panel (and any scene that rendered into the shared FBO)
@@ -736,6 +739,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                         }
+                    }
+
+                    // ── HUD flush AFTER DoF/PostFx, INTO the resolve FBO whose texture
+                    // is what the Viewport panel samples (post-fx content). Drawing into
+                    // _sharedFBO here would be INVISIBLE for MSAA (the panel samples the
+                    // resolve texture) and double-graded for the non-MSAA path. ──
+                    if (flushPreviewHud && previewHud != null)
+                    {
+                        GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedResolveFBO);
+                        GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        previewHud.Flush();
+                        GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
+                        GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                     }
 
                     if (bridge != null && bridge.SceneTextureID == 0)
