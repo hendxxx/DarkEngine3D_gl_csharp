@@ -510,6 +510,13 @@ public static unsafe class DialogueSystem
     private static EditorObjectManager? _lastManager;
     private static Camera? _lastCamera;
 
+    // Z-index: HUD panels (inventory/shop/quest) are THE top layer. World-anchored
+    // markers — NPC name badges, "!" indicators, [E] prompts, speech bubbles — hide
+    // whenever one is open. Pure flag check: the panels queue their occluder rects
+    // only AFTER this system ticked (shared HUD, same frame), and a marker towers
+    // far above its anchor point, so the rect-probe alone can't cover either path.
+    public static bool PanelUiOpen => InventoryHud.PanelOpen || ShopHud.IsOpen || QuestHud.LogOpen;
+
     /// <summary>Update timers + queue all dialogue drawing. Call once per frame from
     /// the scene's HUD section (before hud.Flush()). manager/camera refresh the
     /// bubble follow targets and world→screen projection.</summary>
@@ -612,8 +619,13 @@ public static unsafe class DialogueSystem
         int h = Glfw.WindowHeight;
 
         // ── Bubbles (draw only — aging/expiry live in TickState) ──
+        // Open UI panel → skip entirely: the panel is queued LATER this frame into a
+        // DIFFERENT HUD, so its occluder rects are not visible here yet (and Flush
+        // purges last frame's list before Tick ever sees them).
+        bool panelUiOpen = PanelUiOpen;
         foreach (var b in _bubbles.Values)
         {
+            if (panelUiOpen) continue;
             Vector3 anchorWorld = b.Target != null
                 ? new Vector3(b.Target.Position.X, b.Target.Position.Y + b.HeadHeight, b.Target.Position.Z)
                 : new Vector3(b.WorldPos.X, b.WorldPos.Y, 0f);
@@ -624,7 +636,7 @@ public static unsafe class DialogueSystem
         // ── NPC "!" indicators — every visible object with a dialogue binding ──
         // Reads as "this character has something to say". The nearest in-range NPC
         // shows the "[E] Talk" prompt instead, so the two markers never stack.
-        if (ShowPrompts && Active == null && manager != null && camera != null)
+        if (ShowPrompts && Active == null && !panelUiOpen && manager != null && camera != null)
         {
             var indTheme = DialogueLibrary.GetTheme("Default");
             foreach (var obj in manager.Objects)
@@ -636,7 +648,7 @@ public static unsafe class DialogueSystem
         }
 
         // ── Interaction prompt ("E — Talk") above the nearby NPC ──
-        if (ShowPrompts && Active == null && InteractableNpc != null && camera != null)
+        if (ShowPrompts && Active == null && !panelUiOpen && InteractableNpc != null && camera != null)
             DrawInteractPrompt(hud, InteractableNpc, w, h);
 
         // ── Conversation window (state advanced in TickState — draw only) ──
@@ -682,6 +694,9 @@ public static unsafe class DialogueSystem
         // Keep on screen.
         float bx = Math.Clamp(ax - boxW * 0.5f, 4f, w - boxW - 4f);
         float by = ay - boxH - arrowH - 4f;
+        // Full-extent occluder probe (box + arrow + stem): any overlap with an open
+        // panel → skip, the bubble must never read through the parchment.
+        if (HUD.PanelCoversRect(bx, by, boxW, boxH + arrowH + 8f)) return;
 
         var (bg, border, txt) = BubbleColors(b.BubbleType, theme);
 
@@ -720,7 +735,7 @@ public static unsafe class DialogueSystem
             npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
         // Behind an opaque HUD panel (inventory/shop/quest open) → skip entirely;
         // the world-anchored badge must not read through the panel ("layer UI").
-        if (HUD.PointInPanelOccluder(sp.X, sp.Y)) return;
+        if (HUD.PanelCoversRect(sp.X - 45f, sp.Y - 30f, 90f, 30f)) return;
         string label = "[E] Talk";
         int slot = GetFontSlot(hud, theme, theme.BubbleFontSize);
         var ext = hud.GetTextExtents(label);
@@ -746,7 +761,7 @@ public static unsafe class DialogueSystem
         var sp = Project(new Vector3(npc.Position.X,
             npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
         // Behind an opaque HUD panel → skip (name + indicator must not read through it).
-        if (HUD.PointInPanelOccluder(sp.X, sp.Y)) return;
+        if (HUD.PanelCoversRect(sp.X - 45f, sp.Y - 30f, 90f, 30f)) return;
 
         // Display name always visible above the indicator (out-of-range NPCs too —
         // previously only the in-range [E] prompt showed the name).
@@ -1046,7 +1061,9 @@ public static unsafe class DialogueSystem
             var p = Project(new Vector3(npc.Position.X,
                 npc.Position.Y + BadgeHeadHeight(npc) +
                 (npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift), npc.Position.Z), vw, vh);
-            return HUD.PointInPanelOccluder(p.X, p.Y);
+            // Extent probe: the name line + key plate tower ~30px above the anchor —
+            // a point-only test let their upper half punch through the panel.
+            return HUD.PanelCoversRect(p.X - 45f, p.Y - 30f, 90f, 30f);
         }
 
         // ── Bubbles ──
@@ -1056,6 +1073,7 @@ public static unsafe class DialogueSystem
             float fade = b.Fade * (b.Life > 0f ? Math.Clamp((b.Life - b.Age) / 0.3f, 0f, 1f) : 1f);
             if (fade <= 0.01f) continue;
 
+            if (PanelUiOpen) continue; // an open UI panel owns the layer — no bubble through it
             var anchor = AnchorScenePx(b, w, h);
             // Behind an opaque HUD panel → skip (ImGui overlay composites on top of
             // the finished scene texture with no depth — occluder rects are the only
@@ -1094,6 +1112,9 @@ public static unsafe class DialogueSystem
             var imgMax = sceneToScreen(new Vector2(w, h));
             float bx = Math.Clamp(aScr.X - imgBoxW * 0.5f, imgMin.X + 4f, imgMax.X - imgBoxW - 4f);
             float by = aScr.Y - imgBoxH - arrowH * (imgBoxH / MathF.Max(1f, boxH)) - 4f;
+            // Full-extent occluder probe (box + arrow + stem): any overlap with an open
+            // panel → skip, the bubble must never read through the parchment.
+            if (HUD.PanelCoversRect(bx, by, imgBoxW, imgBoxH + arrowH + 8f)) continue;
 
             dl.AddRectFilled(new Vector2(bx - 1f, by - 1f), new Vector2(bx + imgBoxW + 1f, by + imgBoxH + 1f),
                 Rgba(border, fade * 0.9f));
@@ -1115,7 +1136,7 @@ public static unsafe class DialogueSystem
         // Mirrors the NPC "[E] Talk" prompt: a dark plate + key label floats above the
         // portal whenever the player is INSIDE its area (armed). Auto-enter portals
         // need no key → no badge. Skipped while a conversation owns the screen.
-        if (ShowPrompts && Active == null && manager != null && camera != null)
+        if (ShowPrompts && Active == null && !PanelUiOpen && manager != null && camera != null)
         {
             var player = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D });
@@ -1141,7 +1162,7 @@ public static unsafe class DialogueSystem
         }
 
         // ── Interact-KEY ZONE badge ("[E]" above a chest/lever trigger) — same plate        // as the portal badge, fed by the armed RequireInteractKey zones.
-        if (ShowPrompts && Active == null && manager != null && camera != null)
+        if (ShowPrompts && Active == null && !PanelUiOpen && manager != null && camera != null)
         {
             var player = manager.Objects.FirstOrDefault(o =>
                 o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D });
@@ -1164,7 +1185,7 @@ public static unsafe class DialogueSystem
         }
 
         // ── NPC "!" indicators + interact prompt (world-anchored) ──
-        if (ShowPrompts && manager != null && camera != null)
+        if (ShowPrompts && !PanelUiOpen && manager != null && camera != null)
         {
             foreach (var obj in manager.Objects)
             {
@@ -1176,7 +1197,9 @@ public static unsafe class DialogueSystem
                 float oLift = (obj.NpcBadgeLift > 0f ? obj.NpcBadgeLift : DefaultNpcBadgeLift) - 0.05f;
                 var head = Project(new Vector3(obj.Position.X, obj.Position.Y + BadgeHeadHeight(obj) + oLift, obj.Position.Z), w, h);
                 // Behind an opaque HUD panel (inventory/shop open) → skip name + marker.
-                if (HUD.PointInPanelOccluder(head.X, head.Y)) continue;
+                // Extent probe: the name plate + "!"/alert art tower ~34px above the
+                // anchor — test the whole footprint, not just the anchor point.
+                if (HUD.PanelCoversRect(head.X - 60f, head.Y - 34f, 120f, 34f)) continue;
                 var scr = sceneToScreen(new Vector2(head.X, head.Y + bob));
                 // Display name always visible above the indicator (parity with HUD path).
                 string disp = string.IsNullOrWhiteSpace(obj.NpcDisplayName) ? obj.Name : obj.NpcDisplayName;

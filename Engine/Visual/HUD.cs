@@ -429,12 +429,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         /// <summary>Is this scene-px point covered by any OPAQUE panel queued this        /// frame (DrawSolidBox)? The ImGui world-anchored overlay (NPC badges, names,        /// speech bubbles) composites AFTER the HUD batch with no depth — without this        /// check its markers draw ON TOP of open inventory/shop panels ("layer UI").        /// Cheap: a handful of rects, one point test each.</summary>
         public static bool PointInPanelOccluder(float x, float y)
+            => PanelCoversRect(x - 0.5f, y - 0.5f, 1f, 1f);
+
+        /// <summary>Does an open OPAQUE panel (the DrawSolidBox rects queued this frame
+        /// by the inventory/shop/quest panels) overlap ANY part of the given scene-px
+        /// rect? World-anchored markers must test their FULL on-screen extent with this,
+        /// not just their anchor point: the name badge + bubble tower ~40–80px ABOVE the
+        /// anchor, so a point-only test let the marker's upper half punch through the
+        /// panel parchment. Same-frame occluder rects, one rect test each.</summary>
+        public static bool PanelCoversRect(float x, float y, float w, float h)
         {
             int frame = Glfw.FrameId;
             foreach (var (f, ox, oy, ow, oh) in _occluders)
             {
                 if (f != frame) continue;
-                if (x >= ox && x <= ox + ow && y >= oy && y <= oy + oh) return true;
+                if (x < ox + ow && x + w > ox && y < oy + oh && y + h > oy) return true;
             }
             return false;
         }
