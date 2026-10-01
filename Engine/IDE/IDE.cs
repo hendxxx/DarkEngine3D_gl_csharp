@@ -2306,11 +2306,41 @@ public class IDE : IDisposable
             var rawFont = _imgui?.GetFont(
                 Visual.DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
             ImFontPtr? dialogueFont = rawFont != null && (nint)rawFont != IntPtr.Zero
-                ? new ImFontPtr(rawFont) : null;
+                ?                new ImFontPtr(rawFont) : null;
             Visual.DialogueSystem.DrawImGuiOverlay(drawList, Bridge.Camera, Bridge.EditorObjectManager,
                 (int)texW, (int)texH,
                 p => new Vector2(dImgMin.X + p.X / texW * dImgSize.X, dImgMin.Y + p.Y / texH * dImgSize.Y),
                 dialogueFont);
+        }
+
+        // MOUSE MAPPING (hit-test accuracy rule: ALL panel hover/click tests read the
+        // WindowToScene-mapped cursor): F8 early-returns BEFORE ViewportPanel.Render,
+        // so the panel's per-frame WindowToScene publisher never runs — a stale
+        // letterbox lambda from the last docked frame would keep mapping clicks
+        // through an outdated rect (hover/click land on the wrong slot — "mouse nya
+        // tidak akurat"). The F8 scene image above is letterboxed with the SAME fit
+        // math and the SAME center → publish the matching inverse mapper HERE, every
+        // frame.
+        if (Bridge.SceneTextureID != 0 && Bridge.SceneTextureWidth > 0 && Bridge.SceneTextureHeight > 0)
+        {
+            float iTexW = Bridge.SceneTextureWidth;
+            float iTexH = Bridge.SceneTextureHeight;
+            float iPanelAspect = screenW / screenH;
+            float iTexAspect = iTexW / iTexH;
+            Vector2 iImgSize = iPanelAspect > iTexAspect
+                ? new Vector2(screenH * iTexAspect, screenH)
+                : new Vector2(screenW, screenW / iTexAspect);
+            Vector2 iImgMin = new((screenW - iImgSize.X) * 0.5f, (screenH - iImgSize.Y) * 0.5f);
+            ShopHud.WindowToScene = InventoryHud.WindowToScene = (wx, wy) =>
+            {
+                float u = (wx - iImgMin.X) / MathF.Max(1f, iImgSize.X);
+                float v = (wy - iImgMin.Y) / MathF.Max(1f, iImgSize.Y);
+                return (u * iTexW, v * iTexH);
+            };
+        }
+        else
+        {
+            ShopHud.WindowToScene = InventoryHud.WindowToScene = null;
         }
 
         // ── Inventory UI (in-game F8 session) ──

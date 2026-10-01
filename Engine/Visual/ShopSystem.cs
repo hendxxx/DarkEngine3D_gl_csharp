@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
+using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Project;
@@ -250,8 +251,20 @@ public static class ShopHud
         if (Open == null) { ResetEdges(); return; }
         if (InventoryHud.SharedHud != null && _labelFont == 0) Prewarm();
 
-        Mouse.GetCursorPosition(out double mxRaw, out double myRaw);
-        float mx = (float)mxRaw, my = (float)myRaw;
+        // Cursor source = ImGui MousePos first (screen-space parity with the
+        // ViewportPanel letterbox rect — see InventoryHud.Render for the full comment;
+        // GLFW fallback is for paths outside an ImGui frame).
+        var imPos = ImGui.GetIO().MousePos;
+        float mx, my;
+        if (imPos.X >= 0f)
+        {
+            mx = imPos.X; my = imPos.Y;
+        }
+        else
+        {
+            Mouse.GetCursorPosition(out double mxRaw, out double myRaw);
+            mx = (float)mxRaw; my = (float)myRaw;
+        }
         if (WindowToScene != null) (mx, my) = WindowToScene(mx, my);
         _mx = mx; _my = my; // single source of truth for every hover test this frame
 

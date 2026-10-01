@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 
@@ -163,9 +164,25 @@ public static class InventoryHud
         }
 
         // ══════════ LAYOUT + MOUSE ══════════
-        Mouse.GetCursorPosition(out double mxRaw, out double myRaw);
-        float mx = (float)mxRaw, my = (float)myRaw;
-        // Docked preview: map through the viewport's letterbox inverse when provided.
+        // Cursor source = ImGui's MousePos (screen space — the SAME space the
+        // ViewportPanel letterbox rect lives in), valid in EVERY IDE path (docked AND
+        // F8 fullscreen — both run inside an ImGui frame). GLFW cursor is only the
+        // fallback for HUD paths outside an ImGui frame: raw GLFW coords live in
+        // OS screen units while ImGui/letterbox rects live in framebuffer px — on
+        // Windows display scaling ≠ 100% they DIVERGE and every hover/click lands
+        // offset by the scale factor ("mouse tidak akurat").
+        var imPos = ImGui.GetIO().MousePos;
+        float mx, my;
+        if (imPos.X >= 0f)
+        {
+            mx = imPos.X; my = imPos.Y;
+        }
+        else
+        {
+            Mouse.GetCursorPosition(out double mxRaw, out double myRaw);
+            mx = (float)mxRaw; my = (float)myRaw;
+        }
+        // Docked preview / F8 fullscreen: map through the published letterbox inverse.
         if (WindowToScene != null)
             (mx, my) = WindowToScene(mx, my);
         _mx = mx; _my = my; // single source of truth for every hover test this frame
