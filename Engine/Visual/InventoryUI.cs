@@ -87,6 +87,13 @@ public static class InventoryHud
     // Hover state for tooltips (scene-px rect of the last hovered slot this frame).
     private static string _tooltip = "";
 
+    // Hover state for the ALWAYS-visible info summary — which item the cursor is on
+    // this frame ("mouse over → kasih informasi desc itemnya"). Falls back to the
+    // first grid slot when nothing is hovered.
+    private static InventorySystem.ItemDef? _hoverDef;
+    private static int _hoverCount;
+    private static string? _hoverEquip;
+
     // Mouse in SCENE-px (mapped through WindowToScene when docked — identity/full-
     // screen otherwise). ALL slot hit-tests must use THIS, not a raw Mouse.GetPosition():
     // the raw cursor is in WINDOW px while slots are drawn in TEXTURE px — in the
@@ -193,6 +200,7 @@ public static class InventoryHud
         _leftWasDown = leftDown;
         _rightWasDown = rightDown;
         _tooltip = "";
+        _hoverDef = null; _hoverCount = 0; _hoverEquip = null;
 
         DrawHotbar(hud, mx, my, leftPressed, rightPressed);
         if (PanelOpen) DrawPanel(hud, mx, my, leftPressed, rightPressed);
@@ -202,42 +210,52 @@ public static class InventoryHud
     }
 
     /// <summary>ALWAYS-ON item info summary (user: "kalau teksnya kosong, kasih info
-    /// qty + short desc") — the grid slot's NAME ×QTY + first notes line, drawn under
-    /// the name plate in the paperdoll column via the ImGui fallback overlay. Shows
-    /// the FIRST non-empty grid slot (the hotbar's slot 1 doubles as it); hovering is
-    /// not required, and the tooltip on hover still gives the full breakdown.</summary>
+    /// qty + short desc" / "mouse over → kasih informasi desc itemnya") — name ×QTY
+    /// + first notes line, drawn under the grid via the ImGui fallback overlay. Shows
+    /// the HOVERED item when the cursor is on a slot (grid/hotbar/paperdoll — live
+    /// hover desc), otherwise the FIRST non-empty grid slot; the full tooltip on
+    /// hover still gives the complete breakdown.</summary>
     private static void DrawInfoSummary(HUD hud, float mx, float my)
     {
-        // First non-empty grid slot → item to summarize.
-        for (int i = 0; i < InventorySystem.GridSize; i++)
+        // Item under the cursor first; fall back to the first grid item.
+        InventorySystem.ItemDef? def = _hoverDef;
+        int count = _hoverCount;
+        if (def == null)
         {
-            ref var slotData = ref InventorySystem.Grid[i];
-            if (slotData.IsEmpty) continue;
-            var def = InventorySystem.Find(slotData.ItemId);
-            if (def == null) continue;
-
-            // Column under the name plate: same width as the paperdoll, stacked lines.
-            float slot = Slot, gap = Gap, pad = slot * 0.45f;
-            float dollW = DollCols * slot + (DollCols - 1) * gap;
-            float gridW = GridCols * slot + (GridCols - 1) * gap;
-            float gridH = GridRows * slot + (GridRows - 1) * gap;
-            float gx = (Glfw.WindowWidth - (pad * 2 + dollW + pad + gridW)) * 0.5f + pad + dollW + pad; // grid left
-            float px = gx + slot * 0.1f;
-            float py = (Glfw.WindowHeight - (pad + bannerH() + pad * 0.6f + MathF.Max(gridH, dollHApprox()) + pad)) * 0.5f
-                     + pad + bannerH() + pad * 0.6f + gridH + 20f;
-
-            HUD.TextOut(px, py, $"{def.Name} ×{slotData.Count}", HighlightGold * 0.95f, fontSizePx: 15f);
-            string desc = !string.IsNullOrEmpty(def.Notes)
-                ? def.Notes
-                : !string.IsNullOrEmpty(def.UseEffect) ? $"Use: {def.UseEffect} {def.UseAmount:0}"
-                : !string.IsNullOrEmpty(def.EquipSlot) ? $"Equippable → {def.EquipSlot}"
-                : "";
-            if (desc.Length > 0)
-                HUD.TextOut(px, py + 20f, desc, InkSoft, fontSizePx: 13f);
-            if (def.Price > 0)
-                HUD.TextOut(px, py + 38f, $"Price: {def.Price} gold", InkSoft, fontSizePx: 13f);
-            return; // first item only — keep the summary compact
+            for (int i = 0; i < InventorySystem.GridSize; i++)
+            {
+                ref var slotData = ref InventorySystem.Grid[i];
+                if (slotData.IsEmpty) continue;
+                def = InventorySystem.Find(slotData.ItemId);
+                if (def == null) continue;
+                count = slotData.Count;
+                break;
+            }
         }
+        if (def == null) return;
+
+        // Column under the name plate: same width as the paperdoll, stacked lines.
+        float slot = Slot, gap = Gap, pad = slot * 0.45f;
+        float dollW = DollCols * slot + (DollCols - 1) * gap;
+        float gridW = GridCols * slot + (GridCols - 1) * gap;
+        float gridH = GridRows * slot + (GridRows - 1) * gap;
+        float gx = (Glfw.WindowWidth - (pad * 2 + dollW + pad + gridW)) * 0.5f + pad + dollW + pad; // grid left
+        float px = gx + slot * 0.1f;
+        float py = (Glfw.WindowHeight - (pad + bannerH() + pad * 0.6f + MathF.Max(gridH, dollHApprox()) + pad)) * 0.5f
+                 + pad + bannerH() + pad * 0.6f + gridH + 20f;
+
+        // Equip slot suffix when hovering the paperdoll ("Iron Helm ×1 [Head]").
+        string title = $"{def.Name} ×{count}" + (_hoverEquip != null ? $"  [{_hoverEquip}]" : "");
+        HUD.TextOut(px, py, title, HighlightGold * 0.95f, fontSizePx: 15f);
+        string desc = !string.IsNullOrEmpty(def.Notes)
+            ? def.Notes
+            : !string.IsNullOrEmpty(def.UseEffect) ? $"Use: {def.UseEffect} {def.UseAmount:0}"
+            : !string.IsNullOrEmpty(def.EquipSlot) ? $"Equippable → {def.EquipSlot}"
+            : "";
+        if (desc.Length > 0)
+            HUD.TextOut(px, py + 20f, desc, InkSoft, fontSizePx: 13f);
+        if (def.Price > 0)
+            HUD.TextOut(px, py + 38f, $"Price: {def.Price} gold", InkSoft, fontSizePx: 13f);
     }
 
     /// <summary>Banner/height helpers shared by DrawInfoSummary (panel layout probes).</summary>
@@ -330,18 +348,21 @@ public static class InventoryHud
                 hud.DrawBox(x + size * 0.25f, y + size * 0.25f, size * 0.5f, size * 0.5f,
                     new Vector3(0.45f, 0.45f, 0.5f));
             }
-            // Count badge (bottom-right, dark chip + cream text). The chip quad renders
-            // via the HUD batch; the NUMBER mirrors to the ImGui fallback overlay —
-            // the stb-atlas digits can be invisible in the editor preview.
-            if (count > 1)
+            // Quantity badge (bottom-right, dark chip + cream "×N") — ALWAYS visible
+            // when the slot holds an item (user: "beri informasi jumlah itemnya" —
+            // count==1 slots used to show nothing). The × prefix reads as a quantity
+            // and can't be confused with the hotbar's slot-index chip; the chip quad
+            // renders via the HUD batch, the NUMBER mirrors to the ImGui fallback
+            // overlay — stb-atlas digits can be invisible on some paths.
+            if (count > 0)
             {
-                string text = count > 999 ? "999+" : count.ToString();
+                string text = count > 999 ? "×999+" : $"×{count}";
                 float textW = hud.GetTextExtents(text).Width;
                 float textH = hud.MeasureTextHeight(text);
                 float cx = x + size - textW - 6f, cy = y + size - textH - 4f;
-                FillSolid(hud, cx - 4f, cy - 2f, textW + 8f, textH + 4f, PlateDark, 2);
+                FillSolid(hud, cx - 5f, cy - 3f, textW + 10f, textH + 6f, PlateDark, 2);
                 hud.DrawText(text, cx, cy, Cream);
-                HUD.TextOut(cx, cy, text, Cream, fontSizePx: 14f);
+                HUD.TextOut(cx, cy, text, Cream, fontSizePx: 15f);
             }
         }
         return hover;
@@ -406,7 +427,9 @@ public static class InventoryHud
                 string id = InventorySystem.PlayerEquipment.Get(slotName);
                 var def = string.IsNullOrEmpty(id) ? null : InventorySystem.Find(id);
                 float x = dx + c * (slot + gap);
-                bool hover = DrawSlot(hud, x, dy, slot, def, def != null ? 1 : 0,
+                // count=0: equipment never stacks — no qty badge on paperdoll cells
+                // (the grid/hotbar carry the quantity info).
+                bool hover = DrawSlot(hud, x, dy, slot, def, 0,
                     highlighted: false, dragging: false);
                 // Label under the cell.
                 var labExt = hud.GetTextExtents(slotName, LabelFont(hud));
@@ -417,6 +440,7 @@ public static class InventoryHud
                     if (def != null)
                     {
                         _tooltip = BuildTooltip(def, 1, slotName);
+                        _hoverDef = def; _hoverCount = 1; _hoverEquip = slotName;
                         if (leftPressed)
                         {
                             if (InventorySystem.UnequipToGrid(slotName)) Flash($"{slotName} unequipped");
@@ -458,7 +482,11 @@ public static class InventoryHud
 
             if (hover)
             {
-                if (def != null) _tooltip = BuildTooltip(def, slotData.Count, null);
+                if (def != null)
+                {
+                    _tooltip = BuildTooltip(def, slotData.Count, null);
+                    _hoverDef = def; _hoverCount = slotData.Count; _hoverEquip = null;
+                }
                 if (leftPressed)
                 {
                     if (drag < 0)
@@ -496,7 +524,7 @@ public static class InventoryHud
     {
         var lines = new List<string>
         {
-            def.Name + (count > 1 ? $" ×{count}" : "")
+            def.Name + (count > 0 ? $" ×{count}" : "")
         };
         if (!string.IsNullOrEmpty(def.EquipSlot))
         {
@@ -579,6 +607,7 @@ public static class InventoryHud
             if (hover && def != null)
             {
                 _tooltip = BuildTooltip(def, slotData.Count, null);
+                _hoverDef = def; _hoverCount = slotData.Count; _hoverEquip = null;
                 if (leftPressed)
                 {
                     string r = InventorySystem.UseSlot(i);

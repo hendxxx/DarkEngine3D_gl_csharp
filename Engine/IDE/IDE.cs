@@ -1772,6 +1772,16 @@ public class IDE : IDisposable
         }
     }
 
+    /// <summary>Resolve (fontPath, sizePx) → nint ImFont* for HUD.ImGuiFontResolver
+    /// on the F8 path. Isolated in an unsafe helper so the resolver lambda stays free
+    /// of pointer syntax; returns 0 when the font is still queued for the next frame
+    /// (DrawTextOutOverlay then falls back to ImGui's default font).</summary>
+    private unsafe nint ResolveHudFont(string path, float sizePx)
+    {
+        var raw = _imgui?.GetFont(path, sizePx);
+        return raw != null && (nint)raw != IntPtr.Zero ? (nint)raw : 0;
+    }
+
     private unsafe void RenderInGameMode()
     {
         // In fullscreen mode the viewport IS the entire screen — always report focused
@@ -2337,10 +2347,27 @@ public class IDE : IDisposable
                 float v = (wy - iImgMin.Y) / MathF.Max(1f, iImgSize.Y);
                 return (u * iTexW, v * iTexH);
             };
+
+            // ── HUD TEXT MIRROR (F8 fullscreen): the stb font atlas can be GPU-empty
+            // on the HUD path (panel quads render, glyphs vanish — qty chip, title,
+            // labels, gold, tooltip), and the ImGui fallback mirror only ever ran from
+            // ViewportPanel — which F8 early-returns BEFORE. Publish the same trio the
+            // viewport publishes (font resolver + THIS foreground draw list + Worldstar)
+            // and draw every HUD.DrawText/TextOut string queued by this frame's HUD
+            // pass (FrameTextOut survives Flush now), mapped scene-px → window via the
+            // SAME letterbox fit as the scene image AND the mouse mapper above. Runs
+            // after the dialogue overlay block (code order) so HUD text sits on top.
+            Visual.HUD.ImGuiFontResolver = (path, sizePx) => ResolveHudFont(path, sizePx);
+            Visual.HUD.OverlayDrawList = drawList;
+            Visual.HUD.OverlayFontPath = "Artifacts\\fonts\\Worldstar.ttf";
+            Visual.HUD.DrawTextOutOverlay(p => new Vector2(
+                iImgMin.X + p.X / iTexW * iImgSize.X,
+                iImgMin.Y + p.Y / iTexH * iImgSize.Y));
         }
         else
         {
             ShopHud.WindowToScene = InventoryHud.WindowToScene = null;
+            Visual.HUD.OverlayDrawList = null; // no scene image → nothing to mirror onto
         }
 
         // ── Inventory UI (in-game F8 session) ──

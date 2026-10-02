@@ -87,12 +87,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             public Vector4 Color;              // rgba 0..1
             public bool CenteredAtX;           // true: X is the CENTER of the string
             public float FontSizePx;           // 0 = overlay default
+            public int Frame;                  // Glfw.FrameId at queue time (stale-drop)
         }
 
         /// <summary>Current frame's mirrored HUD text strings (scene-px coords).
         /// Emptied at the start of every Flush(); the ViewportPanel's ImGui overlay
         /// draws them AFTER the dialogue overlay so they sit on the panels.</summary>
         public static readonly List<TextOutItem> FrameTextOut = [];
+
+        /// <summary>Glfw.FrameId of the most recent TextOut() add — used to drop
+        /// strings from frames whose overlay pass never ran (no leak, no stale draw).</summary>
+        private static int _textOutFrame = -1;
 
         /// <summary>Optional overlay-supplied font resolver (set by ViewportPanel:
         /// (path, sizePx) → ImGui ImFont*). Used by DialogueSystem to draw the
@@ -114,6 +119,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// missing piece (list, draw list, font) silently skips — never throws.</summary>
         public static void DrawTextOutOverlay(Func<Vector2, Vector2> sceneToScreen)
         {
+            // Only THIS frame's strings — a late pass must never redraw stale text
+            // from a frame whose overlay didn't run.
+            if (FrameTextOut.Count > 0 && FrameTextOut[0].Frame != Glfw.FrameId)
+                FrameTextOut.Clear();
             if (FrameTextOut.Count == 0) return;
             var dl = OverlayDrawList;
             if (dl == null || (nint)dl.Value.NativePtr == 0) return;
@@ -154,9 +163,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             bool centerAtX = false, float fontSizePx = 0f)
         {
             if (string.IsNullOrEmpty(text)) return;
+            // Frame-scoped mirror: drop strings from earlier frames on the first add
+            // of a new frame (paths without an overlay — GameScene docked/editor —
+            // would otherwise accumulate forever; DrawTextOutOverlay also filters).
+            if (Glfw.FrameId != _textOutFrame)
+            {
+                FrameTextOut.Clear();
+                _textOutFrame = Glfw.FrameId;
+            }
             FrameTextOut.Add(new TextOutItem
             {
-                X = x, Y = y, Text = text,
+                X = x, Y = y, Text = text, Frame = Glfw.FrameId,
                 Color = new Vector4(rgb.X, rgb.Y, rgb.Z, alpha),
                 CenteredAtX = centerAtX, FontSizePx = fontSizePx,
             });
@@ -840,9 +857,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _textQueue.Clear();
             _imageQueue.Clear();
             _imageUvQueue.Clear();
-            // Text mirror: BEGIN a fresh frame (Flush runs mid-frame; the ImGui overlay
-            // reads this list afterwards in the same frame).
-            FrameTextOut.Clear();
+            // Text mirror: DO NOT clear FrameTextOut here — Flush runs mid-frame and
+            // the ImGui overlay reads this list AFTER the flush returns (same frame);
+            // clearing at flush end wiped every mirrored string before the overlay
+            // could draw it ("semua teks HUD hilang" — panel quads visible, glyphs
+            // nowhere). Strings survive until DrawTextOutOverlay consumes them;
+            // stale frames drop in TextOut() / DrawTextOutOverlay (frame-stamp).
             // Keep only THIS frame's occluder rects — the world-anchored overlay
             // queries them after Flush; stale frames must not occlude.
             _occluders.RemoveAll(o => o.frame != Glfw.FrameId);
