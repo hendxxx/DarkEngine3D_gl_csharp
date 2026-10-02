@@ -89,6 +89,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             public float FontSizePx;           // 0 = overlay default
             public int Frame;                  // Glfw.FrameId at queue time (stale-drop)
             public HUD? Source;                // HUD instance of the auto-mirror (null = explicit TextOut)
+            public bool IsRect;                // true: filled rect (X,Y,W,H) instead of text
+            public float W, H;                 // rect size (IsRect only)
         }
 
         /// <summary>Current frame's mirrored HUD text strings (scene-px coords).
@@ -134,6 +136,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             foreach (var item in FrameTextOut)
             {
                 if (accept != null && !accept(item)) continue;
+                if (item.IsRect)
+                {
+                    // Filled rect (tooltip plate): drawn in LIST ORDER — whatever is
+                    // queued after it draws on top. This is the only way a plate can
+                    // reach the front: the batch renders images AFTER boxes, so a
+                    // batched tooltip plate always sat UNDER the slot icons.
+                    var r0 = sceneToScreen(new Vector2(item.X, item.Y));
+                    var r1 = sceneToScreen(new Vector2(item.X + item.W, item.Y + item.H));
+                    uint rp = ImGui.GetColorU32(new Vector4(item.Color.X, item.Color.Y, item.Color.Z, item.Color.W));
+                    dl.Value.AddRectFilled(new Vector2(r0.X, r0.Y), new Vector2(r1.X, r1.Y), rp);
+                    continue;
+                }
                 float size = item.FontSizePx > 0f ? item.FontSizePx : 16f;
                 nint fontRaw = ImGuiFontResolver?.Invoke(OverlayFontPath, size) ?? 0;
                 if (fontRaw == 0)
@@ -195,6 +209,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 X = x, Y = y, Text = text, Frame = Glfw.FrameId, Source = source,
                 Color = new Vector4(rgb.X, rgb.Y, rgb.Z, alpha),
                 CenteredAtX = centerAtX, FontSizePx = fontSizePx,
+            });
+        }
+
+        /// <summary>Mirror a filled UI rect (tooltip plate) into the SAME list as
+        /// TextOut — insertion order = overlay draw order, so a plate queued LAST
+        /// renders above every string (queue the plate BEFORE its lines). The batch
+        /// path can't provide this: Flush draws images AFTER boxes, so a batched
+        /// tooltip plate is always painted over by the slot icons.</summary>
+        public static void RectOut(float x, float y, float w, float h, Vector3 rgb, float alpha = 1f, HUD? source = null)
+        {
+            if (w <= 0f || h <= 0f) return;
+            if (Glfw.FrameId != _textOutFrame)
+            {
+                FrameTextOut.Clear();
+                _textOutFrame = Glfw.FrameId;
+            }
+            FrameTextOut.Add(new TextOutItem
+            {
+                IsRect = true, X = x, Y = y, W = w, H = h,
+                Frame = Glfw.FrameId, Source = source,
+                Color = new Vector4(rgb.X, rgb.Y, rgb.Z, alpha),
             });
         }
 

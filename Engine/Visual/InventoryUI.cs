@@ -212,9 +212,12 @@ public static class InventoryHud
 
         DrawHotbar(hud, mx, my, leftPressed, rightPressed);
         if (PanelOpen) DrawPanel(hud, mx, my, leftPressed, rightPressed);
-        DrawTooltip(hud, mx, my);
         DrawFlash(hud);
         if (PanelOpen) DrawInfoSummary(hud, mx, my);
+        // Tooltip LAST (Z paling depan): the overlay draws FrameTextOut in INSERT
+        // ORDER, so the tooltip's mirrored plate + lines must be queued after every
+        // other HUD entry (summary/labels/badges) to render above them.
+        DrawTooltip(hud, mx, my);
     }
 
     /// <summary>ALWAYS-ON item info summary (user: "kalau teksnya kosong, kasih info
@@ -595,6 +598,17 @@ public static class InventoryHud
         hud.DrawBox(bx, by + boxH - t, boxW, t, WoodDark);
         hud.DrawBox(bx, by + t, t, boxH - t * 2f, WoodDark);
         hud.DrawBox(bx + boxW - t, by + t, t, boxH - t * 2f, WoodDark);
+        // Z PALING DEPAN: HUD.Flush renders ALL slot images AFTER every box — a
+        // batched plate can never cover the hovered slot's icon ("ikon potion
+        // menembus kotak tooltip"). Mirror the plate (fill + wooden edge) into the
+        // overlay list BEFORE the text lines: the overlay composites ON TOP of the
+        // scene texture and draws in insert order. Batch fill/box above stays as
+        // fallback for paths without an overlay.
+        HUD.RectOut(bx, by, boxW, boxH, Parchment, 1f, hud);
+        HUD.RectOut(bx, by, boxW, t, WoodDark, 1f, hud);
+        HUD.RectOut(bx, by + boxH - t, boxW, t, WoodDark, 1f, hud);
+        HUD.RectOut(bx, by + t, t, boxH - t * 2f, WoodDark, 1f, hud);
+        HUD.RectOut(bx + boxW - t, by + t, t, boxH - t * 2f, WoodDark, 1f, hud);
         for (int i = 0; i < lines.Length; i++)
         {
             var col = i == 0 ? InkBrown : InkSoft;

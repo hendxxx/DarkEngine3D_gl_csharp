@@ -594,18 +594,27 @@ public static class ShopHud
         float padX = 10f, padY = 7f, lineStep = lineH + 3f;
         float boxW = w + padX * 2f, boxH = lines.Length * lineStep + padY * 2f;
         float bx = MathF.Min(mx + 14f, Glfw.WindowWidth - boxW - 4f);
-        float by = MathF.Min(my + 16f, Glfw.WindowHeight - boxH - 4f);
-        FillSolid(hud, bx, by, boxW, boxH, Parchment, 3);
+        float by = MathF.Min(my + 16f, Glfw.WindowHeight - boxH - 4f);        FillSolid(hud, bx, by, boxW, boxH, Parchment, 3);
         float t = 2f;
         hud.DrawBox(bx, by, boxW, t, WoodDark);
         hud.DrawBox(bx, by + boxH - t, boxW, t, WoodDark);
         hud.DrawBox(bx, by + t, t, boxH - t * 2f, WoodDark);
         hud.DrawBox(bx + boxW - t, by + t, t, boxH - t * 2f, WoodDark);
+        // Z PALING DEPAN (mirror plate): batch Flush draws slot images AFTER boxes,
+        // so the batched plate sat UNDER the hovered icon — queue fill + edge into
+        // FrameTextOut before the lines (overlay draws in insert order, on top of
+        // the scene texture). Batch boxes above = fallback without overlay.
+        HUD.RectOut(bx, by, boxW, boxH, Parchment, 1f, hud);
+        HUD.RectOut(bx, by, boxW, t, WoodDark, 1f, hud);
+        HUD.RectOut(bx, by + boxH - t, boxW, t, WoodDark, 1f, hud);
+        HUD.RectOut(bx, by + t, t, boxH - t * 2f, WoodDark, 1f, hud);
+        HUD.RectOut(bx + boxW - t, by + t, t, boxH - t * 2f, WoodDark, 1f, hud);
         for (int i = 0; i < lines.Length; i++)
         {
             var col = i == 0 ? InkBrown : InkSoft;
             hud.DrawText(lines[i], bx + padX, by + padY + i * lineStep, col, null, 0f, labelFont);
-            HUD.TextOut(bx + padX, by + padY + i * lineStep, lines[i], col, fontSizePx: 14f);
+            HUD.TextOut(bx + padX, by + padY + i * lineStep, lines[i], col,
+                fontSizePx: hud.GetFontSlotSize(labelFont));
         }
     }
 
