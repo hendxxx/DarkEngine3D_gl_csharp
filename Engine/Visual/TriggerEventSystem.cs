@@ -1177,7 +1177,7 @@ public static class TriggerEventSystem
                 int charged = unitPrice * added; // grid penuh sebagian → bayar proporsional
                 InventorySystem.Gold -= charged;
                 if (def != null)
-                    InventoryHud.PushFlash($"-{charged} Gold → +{added} {def.Name}");
+                    InventoryHud.PushFlash($"-{charged} Gold -> +{added} {def.Name}");
                 Effect2DSystem.SpawnBurst("Coin",
 
                     new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
@@ -1215,7 +1215,7 @@ public static class TriggerEventSystem
                 int sold = InventorySystem.RemoveItem(itemId, amount);
                 InventorySystem.Gold += unitPrice * sold;
                 if (sold > 0)
-                    InventoryHud.PushFlash($"+{unitPrice * sold} Gold ← -{sold} {(def?.Name ?? itemId)}");
+                    InventoryHud.PushFlash($"+{unitPrice * sold} Gold <- -{sold} {(def?.Name ?? itemId)}");
                 Effect2DSystem.SpawnBurst("Coin",
                     new Vector3(InventorySystem.PlayerFeetX, InventorySystem.PlayerFeetY + 1f, 0f), 0.5f);
                 Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item '{itemId}' ×{sold} @ {unitPrice} → +{unitPrice * sold} gold (sisa {InventorySystem.Gold})");

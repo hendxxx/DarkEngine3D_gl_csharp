@@ -120,7 +120,7 @@ public static class ShopSystem
         int added = InventorySystem.AddItem(itemId, amount);
         if (added <= 0) return (false, "Inventory penuh!");
         InventorySystem.Gold -= unit * added; // partial add → charge proportionally
-        string msg = $"-{unit * added} Gold → +{added} {def.Name}";
+        string msg = $"-{unit * added} Gold -> +{added} {def.Name}";
         InventoryHud.PushFlash(msg);
         Console.WriteLine($"[Shop] Buy '{itemId}' ×{added} @ {unit} → gold {InventorySystem.Gold}");
         return (true, msg);
@@ -137,7 +137,7 @@ public static class ShopSystem
         int unit = payoutHint ?? (Math.Max(0, def.Price) * (shop?.SellPercent ?? 50) / 100);
         int sold = InventorySystem.RemoveItem(itemId, amount);
         InventorySystem.Gold += unit * sold;
-        string msg = $"+{unit * sold} Gold ← -{sold} {def.Name}";
+        string msg = $"+{unit * sold} Gold <- -{sold} {def.Name}";
         InventoryHud.PushFlash(msg);
         Console.WriteLine($"[Shop] Sell '{itemId}' ×{sold} @ {unit} → gold {InventorySystem.Gold}");
         return (true, msg);
@@ -302,7 +302,7 @@ public static class ShopHud
         hud.DrawText(title, bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, Cream, null, 0f, TitleFont(hud));
         HUD.TextOut(bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, title, Cream, fontSizePx: 22f);
         // Gold counter + [Esc] chip on the banner's right.
-        string gold = $"◈ {InventorySystem.Gold}";
+        string gold = $"Gold {InventorySystem.Gold}";
         int lf = LabelFont(hud);
         float goldW = hud.GetTextExtents(gold, lf).Width;
         float chip = bannerH * 0.62f;
@@ -395,7 +395,7 @@ public static class ShopHud
 
         if (selDef != null)
         {
-            string l1 = isBuy ? $"{selDef.Name}  —  {unitBuy} Gold / pcs" : $"{selDef.Name}  —  jual {unitSell} Gold / pcs";
+            string l1 = isBuy ? $"{selDef.Name}  -  {unitBuy} Gold / pcs" : $"{selDef.Name}  -  jual {unitSell} Gold / pcs";
             hud.DrawText(l1, dTextX, dTextY, InkBrown, null, 0f, lf);
             HUD.TextOut(dTextX, dTextY, l1, InkBrown, fontSizePx: 15f);
             string line2 = isBuy
@@ -404,8 +404,8 @@ public static class ShopHud
             hud.DrawText(line2, dTextX, dTextY + lineStep, InkSoft, null, 0f, lf);
             HUD.TextOut(dTextX, dTextY + lineStep, line2, InkSoft, fontSizePx: 14f);
             string hint = isBuy
-                ? $"Total {unitBuy * qty} Gold — tekan Beli (B)"
-                : $"Dapat {unitSell * qty} Gold — tekan Jual (S)";
+                ? $"Total {unitBuy * qty} Gold - tekan Beli (B)"
+                : $"Dapat {unitSell * qty} Gold - tekan Jual (S)";
             hud.DrawText(hint, dTextX, dTextY + lineStep * 2f, InkBrown, null, 0f, lf);
             HUD.TextOut(dTextX, dTextY + lineStep * 2f, hint, InkBrown, fontSizePx: 14f);
         }
@@ -558,7 +558,7 @@ public static class ShopHud
         var lines = new List<string> { def.Name };
         if (!string.IsNullOrEmpty(def.EquipSlot))
         {
-            lines.Add($"Equippable → {def.EquipSlot}");
+            lines.Add($"Equippable -> {def.EquipSlot}");
             if (def.BonusHealth != 0) lines.Add($"  +{def.BonusHealth:0} HP");
             if (def.BonusMana != 0) lines.Add($"  +{def.BonusMana:0} MP");
             if (def.BonusDefense != 0) lines.Add($"  +{def.BonusDefense:0} DEF");
@@ -575,7 +575,7 @@ public static class ShopHud
             lines.Add("Klik untuk memilih, lalu tekan Jual (S)");
         }
         if (!string.IsNullOrEmpty(def.Notes)) lines.Add(def.Notes);
-        lines.Add(buy ? "Klik untuk memilih, lalu tekan Beli (B)" : "Item tas — hanya bisa dijual di toko ini");
+        lines.Add(buy ? "Klik untuk memilih, lalu tekan Beli (B)" : "Item tas - hanya bisa dijual di toko ini");
         return string.Join('\n', lines);
     }
 

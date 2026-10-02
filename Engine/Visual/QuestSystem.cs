@@ -121,7 +121,7 @@ public static class QuestSystem
         var def = GetQuest(questId);
         if (def == null)
         {
-            def = new QuestDef { Id = questId, Name = questId, Description = "(belum diatur — tambahkan di Assets/Quests/quests.json)" };
+            def = new QuestDef { Id = questId, Name = questId, Description = "(belum diatur - tambahkan di Assets/Quests/quests.json)" };
             Quests.Add(def);
             Console.WriteLine($"[Quest] Auto-registered placeholder for '{questId}'");
         }
@@ -134,7 +134,7 @@ public static class QuestSystem
     {
         var def = GetQuest(questId);
         string name = def?.Name ?? questId;
-        InventoryHud.PushFlash($"✓ Quest selesai: {name}");
+        InventoryHud.PushFlash($"[OK] Quest selesai: {name}");
         Console.WriteLine($"[Quest] Tracker → '{name}' done");
     }
 }
@@ -231,7 +231,7 @@ public static class QuestHud
         {
             w = MathF.Max(w, hud.GetTextExtents(q.Name, lf).Width);
             foreach (var o in q.Objectives)
-                w = MathF.Max(w, hud.GetTextExtents("• " + o, lf).Width);
+                w = MathF.Max(w, hud.GetTextExtents("- " + o, lf).Width);
         }
         w = MathF.Min(MathF.Max(w + pad * 2f, 190f), Glfw.WindowWidth * 0.42f);
         int lines = active.Sum(q => 1 + q.Objectives.Count);
@@ -254,8 +254,8 @@ public static class QuestHud
             ty += lineStep;
             foreach (var o in q.Objectives)
             {
-                hud.DrawText("• " + o, x + pad + 6f, ty, Cream, null, 0f, lf);
-                HUD.TextOut(x + pad + 6f, ty, "• " + o, Cream, fontSizePx: 13f);
+                hud.DrawText("- " + o, x + pad + 6f, ty, Cream, null, 0f, lf);
+                HUD.TextOut(x + pad + 6f, ty, "- " + o, Cream, fontSizePx: 13f);
                 ty += lineStep;
             }
             if (qi < active.Count - 1) ty += 4f;
@@ -305,7 +305,7 @@ public static class QuestHud
         HUD.TextOut(bx + pad * 0.7f, by + (bannerH - tExt.Height) * 0.5f, title, Cream, fontSizePx: 22f);
         float chip = bannerH * 0.62f;
         HintChip(hud, bx + bw - chip - pad * 0.6f, by + (bannerH - chip) * 0.5f, chip, "Q", lf);
-        string gold = $"◈ {InventorySystem.Gold}";
+        string gold = $"Gold {InventorySystem.Gold}";
         float goldW = hud.GetTextExtents(gold, lf).Width;
         hud.DrawText(gold, bx + bw - chip - pad * 1.2f - goldW, by + (bannerH - hud.GetTextExtents(gold, lf).Height) * 0.5f,
             HighlightGold, null, 0f, lf);
@@ -314,7 +314,7 @@ public static class QuestHud
         float ty = by + bannerH + pad * 0.6f;
 
         // ── AKTIF ──
-        hud.DrawText("— AKTIF —", tx, ty, InkBrown, null, 0f, lf);
+        hud.DrawText("== AKTIF ==", tx, ty, InkBrown, null, 0f, lf);
         ty += lineStep;
         if (active.Count == 0)
         {
@@ -335,8 +335,8 @@ public static class QuestHud
             }
             foreach (var o in q.Objectives)
             {
-                hud.DrawText("• " + o, tx + 18f, ty, InkBrown, null, 0f, lf);
-                HUD.TextOut(tx + 18f, ty, "• " + o, InkBrown, fontSizePx: 13f);
+                hud.DrawText("- " + o, tx + 18f, ty, InkBrown, null, 0f, lf);
+                HUD.TextOut(tx + 18f, ty, "- " + o, InkBrown, fontSizePx: 13f);
                 ty += lineStep;
             }
             if (q.RewardText.Length > 0)
@@ -354,14 +354,16 @@ public static class QuestHud
             ty += lineStep * 0.4f;
             hud.DrawBox(tx, ty, bw - pad * 1.2f, 1.5f, WoodMid);
             ty += lineStep * 0.6f;
-            hud.DrawText("— SELESAI —", tx, ty, InkSoft, null, 0f, lf);
-            HUD.TextOut(tx, ty, "— SELESAI —", InkSoft, fontSizePx: 14f);
+            hud.DrawText("== SELESAI ==", tx, ty, InkSoft, null, 0f, lf);
+            HUD.TextOut(tx, ty, "== SELESAI ==", InkSoft, fontSizePx: 14f);
             ty += lineStep;
             foreach (var q in done)
             {
-                hud.DrawText("✓", tx + 6f, ty, DoneGreen, null, 0f, lf);
+                // ✓ marker = stb-only decoration (mirror font has no checkmark glyph
+                // → it would render '?' next to a doubled name).
+                hud.DrawText("✓", tx + 6f, ty, DoneGreen, null, 0f, lf, mirror: false);
                 hud.DrawText(q.Name, tx + 26f, ty, InkSoft, null, 0f, lf);
-                HUD.TextOut(tx + 26f, ty, "✓ " + q.Name, InkSoft, fontSizePx: 13f);
+                HUD.TextOut(tx + 26f, ty, q.Name, InkSoft, fontSizePx: 13f);
                 ty += lineStep + 4f;
             }
         }

@@ -88,6 +88,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             public bool CenteredAtX;           // true: X is the CENTER of the string
             public float FontSizePx;           // 0 = overlay default
             public int Frame;                  // Glfw.FrameId at queue time (stale-drop)
+            public HUD? Source;                // HUD instance of the auto-mirror (null = explicit TextOut)
         }
 
         /// <summary>Current frame's mirrored HUD text strings (scene-px coords).
@@ -116,8 +117,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// <summary>Draw every mirrored HUD text string through the ImGui overlay
         /// (called by ViewportPanel AFTER the dialogue overlay). Coordinates are
         /// scene-px; sceneToScreen converts them into window space. Guarded so any
-        /// missing piece (list, draw list, font) silently skips — never throws.</summary>
-        public static void DrawTextOutOverlay(Func<Vector2, Vector2> sceneToScreen)
+        /// missing piece (list, draw list, font) silently skips — never throws.
+        /// accept = optional per-item filter (e.g. only the shared inventory HUD's
+        /// entries — other HUDs render fine via stb and would double-draw).</summary>
+        public static void DrawTextOutOverlay(Func<Vector2, Vector2> sceneToScreen,
+            Func<TextOutItem, bool>? accept = null)
         {
             // Only THIS frame's strings — a late pass must never redraw stale text
             // from a frame whose overlay didn't run.
@@ -129,6 +133,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
             foreach (var item in FrameTextOut)
             {
+                if (accept != null && !accept(item)) continue;
                 float size = item.FontSizePx > 0f ? item.FontSizePx : 16f;
                 nint fontRaw = ImGuiFontResolver?.Invoke(OverlayFontPath, size) ?? 0;
                 if (fontRaw == 0)
@@ -160,7 +165,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// the overlay opted in this frame). Call after the primary DrawText.
         /// centerAtX: X is the string's horizontal center (badges/labels).</summary>
         public static void TextOut(float x, float y, string text, Vector3 rgb, float alpha = 1f,
-            bool centerAtX = false, float fontSizePx = 0f)
+            bool centerAtX = false, float fontSizePx = 0f, HUD? source = null)
         {
             if (string.IsNullOrEmpty(text)) return;
             // Frame-scoped mirror: drop strings from earlier frames on the first add
@@ -171,9 +176,23 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                 FrameTextOut.Clear();
                 _textOutFrame = Glfw.FrameId;
             }
+            // DEDUP: HUD.DrawText auto-mirrors, then the call site often adds an
+            // EXPLICIT sized TextOut for the SAME string at the SAME spot — without
+            // this the overlay drew both (16px ghost under the 26px title / 14px
+            // tooltip lines = "tumpang tindih"). The later (sized) entry wins; the
+            // 6px tolerance absorbs coordinate-expression drift between the pair.
+            for (int i = FrameTextOut.Count - 1; i >= 0; i--)
+            {
+                var e = FrameTextOut[i];
+                if (e.Text == text && MathF.Abs(e.X - x) <= 6f && MathF.Abs(e.Y - y) <= 6f)
+                {
+                    FrameTextOut.RemoveAt(i);
+                    break;
+                }
+            }
             FrameTextOut.Add(new TextOutItem
             {
-                X = x, Y = y, Text = text, Frame = Glfw.FrameId,
+                X = x, Y = y, Text = text, Frame = Glfw.FrameId, Source = source,
                 Color = new Vector4(rgb.X, rgb.Y, rgb.Z, alpha),
                 CenteredAtX = centerAtX, FontSizePx = fontSizePx,
             });
@@ -485,13 +504,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>Queue text using the default font slot (slot 0), with optional outline.</summary>
-        public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor = null, float outlineSize = 0.0f)
+        public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor = null, float outlineSize = 0.0f, bool mirror = true)
         {
-            DrawText(text, startX, startY, color, outlineColor, outlineSize, fontSlotIndex: 0);
+            DrawText(text, startX, startY, color, outlineColor, outlineSize, fontSlotIndex: 0, mirror: mirror);
         }
 
-        /// <summary>Queue text using a specific font slot, with optional outline.</summary>
-        public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor, float outlineSize, int fontSlotIndex)
+        /// <summary>Queue text using a specific font slot, with optional outline.
+        /// mirror=false = stb-only decoration (no ImGui fallback copy — used for
+        /// glyph markers that must not appear twice or as '?' in the overlay font).</summary>
+        public void DrawText(string text, float startX, float startY, Vector3 color, Vector3? outlineColor, float outlineSize, int fontSlotIndex, bool mirror = true)
         {
             if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count)
                 fontSlotIndex = 0;
@@ -501,7 +522,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             // overlay draws every mirrored string with the PROVEN ImGui font path, so
             // HUD labels survive in both modes. Full alpha when outlined (the outline
             // darkens the backdrop the old halo provided), slightly softer otherwise.
-            TextOut(startX, startY, text, color, outlineColor != null ? 1f : 0.95f);
+            // Size = the SLOT's size so overlay text matches the stb text exactly.
+            if (mirror)
+                TextOut(startX, startY, text, color, outlineColor != null ? 1f : 0.95f,
+                    fontSizePx: _fontSlots[fontSlotIndex].FontSize, source: this);
 
             if (outlineColor != null)
             {
@@ -966,6 +990,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
 
             public float GetCenteredBaselineY(float boxY, float boxH) => boxY + (boxH - Height) * 0.5f - MinY;
+        }
+
+        /// <summary>Pixel size of a baked font slot — explicit TextOut mirrors must
+        /// use the SAME size as the DrawText slot they duplicate, or overlay text and
+        /// stb text drift (double-struck look when both render).16 = overlay default.</summary>
+        public float GetFontSlotSize(int fontSlotIndex)
+        {
+            if (fontSlotIndex < 0 || fontSlotIndex >= _fontSlots.Count) return 16f;
+            return _fontSlots[fontSlotIndex].FontSize;
         }
 
         /// <summary>Compute text extents using a specific font slot. Defaults to slot 0.</summary>

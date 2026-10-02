@@ -2360,9 +2360,13 @@ public class IDE : IDisposable
             Visual.HUD.ImGuiFontResolver = (path, sizePx) => ResolveHudFont(path, sizePx);
             Visual.HUD.OverlayDrawList = drawList;
             Visual.HUD.OverlayFontPath = "Artifacts\\fonts\\Worldstar.ttf";
+            // Accept-filter: only the shared inventory HUD's strings (+ explicit
+            // TextOuts) — GameScene dialogue/debug text renders fine via stb and
+            // would otherwise draw twice (stb + mirror).
             Visual.HUD.DrawTextOutOverlay(p => new Vector2(
                 iImgMin.X + p.X / iTexW * iImgSize.X,
-                iImgMin.Y + p.Y / iTexH * iImgSize.Y));
+                iImgMin.Y + p.Y / iTexH * iImgSize.Y),
+                Visual.InventoryHud.AcceptMirrored);
         }
         else
         {
