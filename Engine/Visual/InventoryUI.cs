@@ -210,6 +210,17 @@ public static class InventoryHud
         _tooltip = "";
         _hoverDef = null; _hoverCount = 0; _hoverEquip = null;
 
+        // HIDE DURING CONVERSATION (user: "sembunyikan hotbar saat dialog") —
+        // hotbar + gold chip + flash + tooltip render NOTHING (neither the batch
+        // queue nor the FrameTextOut mirror) while a conversation is active, so no
+        // inventory element can punch through the conversation window on ANY path
+        // (preview overlay draws mirror AFTER the dialogue; in-game flushes the
+        // shared inventory HUD AFTER the main HUD — both put it on top). Panel
+        // state (PanelOpen) is kept, so an open [I] panel reappears after the
+        // dialogue ends; inputs are already gated by dialogueOwnsKeys above.
+        if (DialogueSystem.IsConversationActive)
+            return;
+
         DrawHotbar(hud, mx, my, leftPressed, rightPressed);
         if (PanelOpen) DrawPanel(hud, mx, my, leftPressed, rightPressed);
         DrawFlash(hud);
