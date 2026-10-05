@@ -19,6 +19,15 @@ public class SpriteEditorPanel
     private bool _visible = true;
     private readonly ImGuiFileDialog _importDialog = new();
     private readonly ImGuiFileDialog _loadSheetsDialog = new();
+    private readonly ImGuiFileDialog _saveAsJsonDialog = new();
+
+    // ── Save As Pattern (auto-clip per row) ──
+    /// <summary>Standard clip names assigned to rows IN ORDER; rows past 7 get "row N".</summary>
+    private static readonly string[] PatternClipNames =
+        ["idle", "walk", "run", "jump start", "jump end", "attack", "dead"];
+    /// <summary>Image extensions scanned when batch-generating pattern clips.</summary>
+    private static readonly string[] PatternImageExts =
+        [".png", ".jpg", ".jpeg", ".bmp", ".tga"];
 
     // ── Sprite sheets ──
     public List<SpriteSheet> SpriteSheets = new();
@@ -161,6 +170,19 @@ public class SpriteEditorPanel
                 LoadAllSheetsDialog();
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips)");
+
+            // ── Export row (new line): free-path JSON save + pattern batch auto-clip ──
+            if (ImGui.Button("Save As JSON"))
+                SaveAsJsonDialog();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Simpan sheets + clips ke file JSON di PATH BEBAS (folder pilihanmu).\nFormat sama dengan Save (sprites.sheets.json) — bisa dibuka lagi lewat Load.");
+            ImGui.SameLine();
+            ImGui.BeginDisabled(SelectedSheet == null);
+            if (ImGui.Button("Save As Pattern"))
+                SaveAsPattern();
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip("Auto-clip per BARIS memakai pattern sheet ini (grid + padding/offset + flip + master box):\nurutan idle, walk, run, jump start, jump end, attack, dead\nframe kosong (alpha 0) di-skip, FPS = jumlah frame, nama <sheet>-<clip>\nDijalankan untuk SEMUA file gambar di folder yang sama;\nhasil per file: <nama file>-sprite-anim.json");
 
             ImGui.Separator();
 
@@ -359,6 +381,8 @@ public class SpriteEditorPanel
         ProcessImportResult();
         _loadSheetsDialog.Render();
         ProcessLoadSheetsResult();
+        _saveAsJsonDialog.Render();
+        ProcessSaveAsJsonResult();
 
         EndUndoCapture();
     }
@@ -1407,18 +1431,234 @@ public class SpriteEditorPanel
         }
     }
 
+    // ── Save As JSON (path bebas) ──
+
+    /// <summary>Open a Save dialog so the user can write the sheets + clips JSON
+    /// to ANY folder/path they want (not just the default project location).</summary>
+    private void SaveAsJsonDialog()
+    {
+        string defaultPath = GetDefaultSavePath();
+        string? startDir = Path.GetDirectoryName(defaultPath);
+        _saveAsJsonDialog.OpenForSave(
+            defaultName: Path.GetFileName(defaultPath),
+            filter: "*.json",
+            title: "Save Sprite Sheets As JSON",
+            startDir: startDir);
+    }
+
+    /// <summary>Write the JSON after the user confirms the Save As dialog.</summary>
+    private void ProcessSaveAsJsonResult()
+    {
+        if (!_saveAsJsonDialog.IsConfirmed || _saveAsJsonDialog.SelectedPath == null) return;
+
+        string path = _saveAsJsonDialog.SelectedPath;
+        try
+        {
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            var data = CaptureSaveData();
+            File.WriteAllText(path, JsonSerializer.Serialize(data, opts));
+            Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
+            Console.WriteLine($"[SpriteEditor] Save As JSON: {SpriteSheets.Count} sheets + {AnimationClips.Count} clips -> {path}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Save As JSON failed: {ex.Message}");
+        }
+        _saveAsJsonDialog.Close();
+    }
+
+    // ── Save As Pattern (auto-clip per baris, batch per folder) ──
+
+    /// <summary>Batch-generate animation clips for EVERY image file in the selected
+    /// sheet's folder, using this sheet's pattern (grid + padding/offset + flip +
+    /// master box). One clip per ROW, in the fixed order
+    /// idle, walk, run, jump start, jump end, attack, dead (extra rows: "row N").
+    /// Empty frames (fully transparent / out of bounds) are skipped, FPS = frame
+    /// count (one second per clip), clip name = &lt;sheet name&gt;-&lt;clip name&gt;.
+    /// Result per file: &lt;file name&gt;-sprite-anim.json (same folder).</summary>
+    private void SaveAsPattern()
+    {
+        if (SelectedSheet == null) return;
+        var pattern = SelectedSheet;
+
+        string folder = "";
+        try
+        {
+            if (string.IsNullOrEmpty(pattern.ImagePath))
+            {
+                Console.WriteLine($"[SpriteEditor] Save As Pattern: sheet '{pattern.Name}' has no source image.");
+                return;
+            }
+            folder = Path.GetDirectoryName(Path.GetFullPath(pattern.ImagePath))!;
+        }
+        catch { folder = ""; }
+
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        {
+            Console.WriteLine($"[SpriteEditor] Save As Pattern: folder not found for sheet '{pattern.Name}'.");
+            return;
+        }
+
+        string[] files;
+        try
+        {
+            files = Directory.GetFiles(folder)
+                .Where(f => PatternImageExts.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Save As Pattern: cannot scan folder: {ex.Message}");
+            return;
+        }
+
+        if (files.Length == 0)
+        {
+            Console.WriteLine($"[SpriteEditor] Save As Pattern: no image files in {folder}");
+            return;
+        }
+
+        int saved = 0, totalClips = 0;
+        foreach (string file in files)
+        {
+            try
+            {
+                var (sheetData, clips) = BuildPatternForFile(pattern, file);
+                if (clips.Count == 0)
+                {
+                    Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
+                    continue;
+                }
+
+                string outPath = Path.Combine(folder,
+                    Path.GetFileNameWithoutExtension(file) + "-sprite-anim.json");
+                var data = new SpriteSheetsSaveData
+                {
+                    Sheets = [sheetData],
+                    AnimationClips = clips
+                };
+                var opts = new JsonSerializerOptions { WriteIndented = true };
+                File.WriteAllText(outPath, JsonSerializer.Serialize(data, opts));
+                Engine.Helpers.BinaryObjectCache.TryWrite(outPath, data);
+                saved++;
+                totalClips += clips.Count;
+                Console.WriteLine($"[SpriteEditor] Pattern {Path.GetFileName(file)}: {clips.Count} clips -> {Path.GetFileName(outPath)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SpriteEditor] Pattern failed for {Path.GetFileName(file)}: {ex.Message}");
+            }
+        }
+        Console.WriteLine($"[SpriteEditor] Save As Pattern: {saved}/{files.Length} files, {totalClips} clips -> {folder}");
+    }
+
+    /// <summary>Build one file's sheet (same pattern as the source sheet, incl. flips)
+    /// + its per-row clips. Frame emptiness comes from the image's alpha channel.</summary>
+    private static (SpriteSheetData sheet, List<AnimationClip2DData> clips) BuildPatternForFile(
+        SpriteSheet pattern, string imagePath)
+    {
+        ImageResult image;
+        using (var stream = File.OpenRead(imagePath))
+            image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+
+        string name = Path.GetFileNameWithoutExtension(imagePath);
+        var sheet = new SpriteSheet
+        {
+            Name = name,
+            ImagePath = imagePath,
+            ImageWidth = image.Width,
+            ImageHeight = image.Height,
+            // Pattern = the source sheet's settings verbatim (grid + padding/offset
+            // + master box + render offsets + flip), so every file slices identically.
+            Columns = pattern.Columns,
+            Rows = pattern.Rows,
+            FrameWidth = pattern.FrameWidth,
+            FrameHeight = pattern.FrameHeight,
+            PaddingX = pattern.PaddingX,
+            PaddingY = pattern.PaddingY,
+            OffsetX = pattern.OffsetX,
+            OffsetY = pattern.OffsetY,
+            MasterWidth = pattern.MasterWidth,
+            MasterHeight = pattern.MasterHeight,
+            SpriteOffsetX = pattern.SpriteOffsetX,
+            SpriteOffsetY = pattern.SpriteOffsetY,
+            FlipX = pattern.FlipX,
+            FlipY = pattern.FlipY
+        };
+        sheet.BakeUniformFrames();
+
+        var clips = new List<AnimationClip2DData>();
+        for (int row = 0; row < sheet.Rows; row++)
+        {
+            // Per-row detection: keep only non-empty frames, left to right.
+            var indices = new List<int>();
+            for (int col = 0; col < sheet.Columns; col++)
+            {
+                int x = sheet.OffsetX + col * (sheet.FrameWidth + sheet.PaddingX);
+                int y = sheet.OffsetY + row * (sheet.FrameHeight + sheet.PaddingY);
+                if (!IsFrameEmpty(image, x, y, sheet.FrameWidth, sheet.FrameHeight))
+                    indices.Add(row * sheet.Columns + col);
+            }
+            if (indices.Count == 0) continue; // fully empty row -> no clip
+
+            string clipName = row < PatternClipNames.Length
+                ? PatternClipNames[row]
+                : $"row {row + 1}";
+            var clip = new AnimationClip2D
+            {
+                Name = $"{name}-{clipName}",
+                SpriteSheetName = name,
+                FrameIndices = indices,
+                FPS = indices.Count,     // FPS = jumlah frame (clip = 1 detik)
+                Loop = row < 3,          // idle/walk/run loop; sisanya sekali jalan
+                // Snapshot like Create Clip: master box + offsets frozen with the clip.
+                MasterWidth = sheet.MasterWidth,
+                MasterHeight = sheet.MasterHeight,
+                SpriteOffsetX = sheet.SpriteOffsetX,
+                SpriteOffsetY = sheet.SpriteOffsetY
+            };
+            clips.Add(clip.ToData());
+        }
+        return (sheet.ToData(), clips);
+    }
+
+    /// <summary>A frame counts as EMPTY when every pixel in it is fully transparent
+    /// (alpha 0), or when its rect lies outside the image. Note: JPEG has no alpha
+    /// channel (decoded alpha = 255), so JPEG frames are never reported empty.</summary>
+    private static bool IsFrameEmpty(ImageResult img, int x, int y, int w, int h)
+    {
+        int x0 = Math.Max(0, x), y0 = Math.Max(0, y);
+        int x1 = Math.Min(img.Width, x + w), y1 = Math.Min(img.Height, y + h);
+        if (x1 <= x0 || y1 <= y0) return true;
+        if (img.Data == null) return true;
+
+        int stride = img.Width * 4; // ColorComponents.RedGreenBlueAlpha -> 4 Bpp
+        byte[] data = img.Data;
+        for (int py = y0; py < y1; py++)
+        {
+            int rowStart = py * stride;
+            for (int px = x0; px < x1; px++)
+                if (data[rowStart + px * 4 + 3] != 0)
+                    return false;
+        }
+        return true;
+    }
+
     private void ProcessLoadSheetsResult()
     {
         if (_loadSheetsDialog.IsConfirmed && _loadSheetsDialog.SelectedPath != null)
         {
             LoadSheetsFromFile(_loadSheetsDialog.SelectedPath);
+            _loadSheetsDialog.Close();
         }
     }
 
-    /// <summary>Open load dialog to choose a custom file.</summary>
+    /// <summary>Open load dialog to choose a custom file. The filter accepts both the
+    /// default sheets file and the generated &lt;file&gt;-sprite-anim.json exports.</summary>
     public void LoadAllSheetsDialog()
     {
-        _loadSheetsDialog.OpenForLoad("*.sheets.json", "Load Sprite Sheets");
+        _loadSheetsDialog.OpenForLoad("*.sheets.json;*-sprite-anim.json", "Load Sprite Sheets");
     }
 
     private void LoadSheetsFromFile(string path)

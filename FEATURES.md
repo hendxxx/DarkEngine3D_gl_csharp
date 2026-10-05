@@ -125,6 +125,8 @@ Panel for slicing sprite sheets and building 2D animation clips.
 | **Animation Clips** | Create clip from frame range (Start/End), FPS control, play/stop preview |
 | **Frame Thumbnails** | Selected frame image shown in Frame Properties |
 | **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`, auto-loaded on project open |
+| **Save As JSON** | Toolbar `Save As JSON`: writes sheets + clips JSON to ANY path via save dialog (starts in `Assets/Sprites`, filter `*.json`, indented JSON + binary sidecar cache). Load dialog accepts both `*.sheets.json` and generated `*-sprite-anim.json` |
+| **Save As Pattern** | Batch auto-clip per folder: copies the selected sheet's pattern (grid/padding/offset + **flip X/Y** + master box + render offsets) to EVERY image file in the same folder (png/jpg/jpeg/bmp/tga). One clip per ROW in fixed order `idle, walk, run, jump start, jump end, attack, dead` (extra rows `row N`); empty frames (all alpha 0, or rect outside the image — JPEG has no alpha so never empty) are skipped, fully-empty rows produce no clip; **FPS = frame count** (1s per clip); clip name `<sheet>-<clip name>`; idle/walk/run loop, the rest play once. Output per file: `<file name>-sprite-anim.json` next to the image (same `SpriteSheetsSaveData` schema → loadable via Load). Rows beyond the image = skipped (out of bounds) |
 | **Play Integration** | Play in Preview loads the selected animation clip |
 
 ### 2.5 Map Editor (2D Tilemap)

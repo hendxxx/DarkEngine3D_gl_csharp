@@ -59,15 +59,28 @@ public class ImGuiFileDialog
         Refresh();
     }
 
-    public void OpenForSave(string defaultName = "game.ing")
+    /// <param name="filter">Optional file filter (e.g. "*.json"). When null the
+    /// current filter is kept — existing callers keep their old behavior.</param>
+    /// <param name="title">Optional dialog title (default "Save .ing file").</param>
+    /// <param name="startDir">Optional starting folder (falls back to project root).
+    /// Lets "Save As" open in the folder of the file being saved.</param>
+    public void OpenForSave(string defaultName = "game.ing", string? filter = null,
+        string? title = null, string? startDir = null)
     {
         _mode = DialogMode.Save;
-        Title = "Save .ing file";
+        Title = title ?? "Save .ing file";
+        if (filter != null)
+        {
+            _filter = filter;
+            _customFilters = filter.Contains(';') ? filter.Split(';', StringSplitOptions.RemoveEmptyEntries) : [filter];
+        }
         _fileNameBuffer = defaultName;
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
-        if (Engine.Project.ProjectManager.IsProjectLoaded)
+        if (!string.IsNullOrEmpty(startDir) && Directory.Exists(startDir))
+            _currentDir = startDir;
+        else if (Engine.Project.ProjectManager.IsProjectLoaded)
             _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
         Refresh();
     }
