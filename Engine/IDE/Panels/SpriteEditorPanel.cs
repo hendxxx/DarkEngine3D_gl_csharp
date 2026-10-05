@@ -22,9 +22,17 @@ public class SpriteEditorPanel
     private readonly ImGuiFileDialog _saveAsJsonDialog = new();
 
     // ── Save As Pattern (auto-clip per row) ──
-    /// <summary>Standard clip names assigned to rows IN ORDER; rows past 7 get "row N".</summary>
+    /// <summary>Default free-text action list for Save As Pattern — one action per
+    /// row, '|' as separator. Also the fallback when the field is cleared.</summary>
+    public const string DefaultPatternActions = "idle|walk|run|jump start|jump end|attack|dead";
+    /// <summary>Standard clip names assigned to rows IN ORDER; rows past the action
+    /// list are NOT saved (the free text defines how many actions are written).</summary>
     private static readonly string[] PatternClipNames =
         ["idle", "walk", "run", "jump start", "jump end", "attack", "dead"];
+    /// <summary>Actions that play ONCE (matched by action name, case-insensitive);
+    /// every other action loops (e.g. custom "effect" loops).</summary>
+    private static readonly string[] PatternOnceActions =
+        ["jump start", "jump end", "attack", "dead"];
     /// <summary>Image extensions scanned when batch-generating pattern clips.</summary>
     private static readonly string[] PatternImageExts =
         [".png", ".jpg", ".jpeg", ".bmp", ".tga"];
@@ -32,6 +40,9 @@ public class SpriteEditorPanel
     /// refresh removes this set before re-merging, so Save As Pattern re-runs update
     /// clips in place instead of duplicating them.</summary>
     private readonly HashSet<string> _autoLoadedPatternClips = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Free-text action list for Save As Pattern — names per row separated
+    /// by '|' (e.g. "effect" for a single-row sheet). Persisted in the save file.</summary>
+    private string _patternActions = DefaultPatternActions;
 
     // ── Sprite sheets ──
     public List<SpriteSheet> SpriteSheets = new();
@@ -186,7 +197,16 @@ public class SpriteEditorPanel
                 SaveAsPattern();
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip("Auto-clip per BARIS memakai pattern sheet ini (grid + padding/offset + flip + master box):\nurutan idle, walk, run, jump start, jump end, attack, dead\nframe kosong (alpha 0) di-skip, FPS = jumlah frame, nama <sheet>-<clip>\nDijalankan untuk SEMUA file gambar di folder yang sama;\nhasil per file: <nama file>-sprite-anim.json");
+                ImGui.SetTooltip("Auto-clip per BARIS memakai pattern sheet ini (grid + padding/offset + flip + master box).\nAction per baris diambil dari kolom 'Pattern actions' (dipisah '|');\nbaris melebihi jumlah nama TIDAK disimpan.\nframe kosong (alpha 0) di-skip, FPS = jumlah frame, nama <sheet>-<clip>\nDijalankan untuk SEMUA file gambar di folder yang sama;\nhasil per file: <nama file>-sprite-anim.json");
+
+            // ── Free-text action list (defines HOW MANY actions + their names) ──
+            ImGui.Text("Pattern actions");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Nama action PER BARIS, dipisah '|', urut dari baris atas.\nDefault: idle|walk|run|jump start|jump end|attack|dead\nSheet 1 baris: cukup ketik 'effect' -> clip <sheet>-effect\nJumlah nama = jumlah action yang DISIMPAN (baris melebihi nama tidak dibuat).\nKosong = kembali ke default. jump start/jump end/attack/dead main SEKALI;\naction lain (termasuk custom seperti 'effect') LOOP.\nDipakai tombol Save As Pattern; tersimpan di file save (ikut Save/Load).");
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(-1f);
+            ImGui.InputTextWithHint("##pattern_actions", "idle|walk|run|jump start|jump end|attack|dead",
+                ref _patternActions, 256);
 
             ImGui.Separator();
 
@@ -1404,7 +1424,8 @@ public class SpriteEditorPanel
         var data = new SpriteSheetsSaveData
         {
             Sheets = SpriteSheets.Select(s => s.ToData()).ToList(),
-            AnimationClips = AnimationClips.Select(c => c.ToData()).ToList()
+            AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
+            PatternActions = _patternActions
         };
         // Persist the Animation Preview range (Start/End), FPS and Loop so they come
         // back exactly as the user left them after a reload.
@@ -1477,15 +1498,16 @@ public class SpriteEditorPanel
 
     /// <summary>Batch-generate animation clips for EVERY image file in the selected
     /// sheet's folder, using this sheet's pattern (grid + padding/offset + flip +
-    /// master box). One clip per ROW, in the fixed order
-    /// idle, walk, run, jump start, jump end, attack, dead (extra rows: "row N").
-    /// Empty frames (fully transparent / out of bounds) are skipped, FPS = frame
-    /// count (one second per clip), clip name = &lt;sheet name&gt;-&lt;clip name&gt;.
+    /// master box). One clip per ROW; action names &amp; count come from the free-text
+    /// "Pattern actions" field (default idle..dead) — rows past the action list are
+    /// not saved. Empty frames (fully transparent / out of bounds) are skipped, FPS =
+    /// frame count (one second per clip), clip name = &lt;sheet name&gt;-&lt;action&gt;.
     /// Result per file: &lt;file name&gt;-sprite-anim.json (same folder).</summary>
     private void SaveAsPattern()
     {
         if (SelectedSheet == null) return;
         var pattern = SelectedSheet;
+        var actions = ParsePatternActions(_patternActions);
 
         string folder = "";
         try
@@ -1530,7 +1552,7 @@ public class SpriteEditorPanel
         {
             try
             {
-                var (sheetData, clips) = BuildPatternForFile(pattern, file);
+                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions);
                 if (clips.Count == 0)
                 {
                     Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
@@ -1542,7 +1564,8 @@ public class SpriteEditorPanel
                 var data = new SpriteSheetsSaveData
                 {
                     Sheets = [sheetData],
-                    AnimationClips = clips
+                    AnimationClips = clips,
+                    PatternActions = _patternActions
                 };
                 var opts = new JsonSerializerOptions { WriteIndented = true };
                 File.WriteAllText(outPath, JsonSerializer.Serialize(data, opts));
@@ -1562,10 +1585,23 @@ public class SpriteEditorPanel
         LoadPatternAnimClips();
     }
 
+    /// <summary>Parse the free-text action list: split on '|', trim, drop empties.
+    /// Empty input falls back to the default list (idle..dead).</summary>
+    private static string[] ParsePatternActions(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return PatternClipNames;
+        var names = text.Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .ToArray();
+        return names.Length > 0 ? names : PatternClipNames;
+    }
+
     /// <summary>Build one file's sheet (same pattern as the source sheet, incl. flips)
-    /// + its per-row clips. Frame emptiness comes from the image's alpha channel.</summary>
+    /// + its per-row clips from the parsed action names. Frame emptiness comes from
+    /// the image's alpha channel.</summary>
     private static (SpriteSheetData sheet, List<AnimationClip2DData> clips) BuildPatternForFile(
-        SpriteSheet pattern, string imagePath)
+        SpriteSheet pattern, string imagePath, string[] actionNames)
     {
         ImageResult image;
         using (var stream = File.OpenRead(imagePath))
@@ -1598,7 +1634,7 @@ public class SpriteEditorPanel
         sheet.BakeUniformFrames();
 
         var clips = new List<AnimationClip2DData>();
-        for (int row = 0; row < sheet.Rows; row++)
+        for (int row = 0; row < sheet.Rows && row < actionNames.Length; row++)
         {
             // Per-row detection: keep only non-empty frames, left to right.
             var indices = new List<int>();
@@ -1611,16 +1647,14 @@ public class SpriteEditorPanel
             }
             if (indices.Count == 0) continue; // fully empty row -> no clip
 
-            string clipName = row < PatternClipNames.Length
-                ? PatternClipNames[row]
-                : $"row {row + 1}";
+            string clipName = actionNames[row];
             var clip = new AnimationClip2D
             {
                 Name = $"{name}-{clipName}",
                 SpriteSheetName = name,
                 FrameIndices = indices,
                 FPS = indices.Count,     // FPS = jumlah frame (clip = 1 detik)
-                Loop = row < 3,          // idle/walk/run loop; sisanya sekali jalan
+                Loop = !PatternOnceActions.Contains(clipName, StringComparer.OrdinalIgnoreCase),
                 // Snapshot like Create Clip: master box + offsets frozen with the clip.
                 MasterWidth = sheet.MasterWidth,
                 MasterHeight = sheet.MasterHeight,
@@ -1815,6 +1849,12 @@ public class SpriteEditorPanel
                 _animFPS = Math.Clamp(data.PreviewFps, 1f, 120f);
                 _animLoop = data.PreviewLoop;
             }
+
+            // Restore the free-text pattern action list when present
+            // (older files without the field keep the default).
+            if (!string.IsNullOrWhiteSpace(data.PatternActions))
+                _patternActions = data.PatternActions;
+
             Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} sheets + {AnimationClips.Count} clips from: {path}");
         }
         catch (Exception ex)
@@ -1829,6 +1869,7 @@ public class SpriteEditorPanel
         SpriteSheets.Clear();
         AnimationClips.Clear();
         _autoLoadedPatternClips.Clear();
+        _patternActions = DefaultPatternActions;
         _selectedSheetIdx = -1;
         _selectedFrameIdx = -1;
         _selectedClipIdx = -1;
@@ -2052,4 +2093,8 @@ public class SpriteSheetsSaveData
     public int PreviewEndFrame { get; set; } = -1;
     public float PreviewFps { get; set; } = 12f;
     public bool PreviewLoop { get; set; } = true;
+
+    /// <summary>Free-text action list for Save As Pattern (pipe-separated, one name
+    /// per row). Files saved before this field existed keep the default.</summary>
+    public string PatternActions { get; set; } = SpriteEditorPanel.DefaultPatternActions;
 }
