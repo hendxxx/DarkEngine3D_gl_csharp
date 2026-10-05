@@ -10,8 +10,71 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     /// Manages all editor-placed 3D objects (primitives + glb references).
     /// Handles lifecycle, rendering, shadow pass, and selection.
     /// </summary>
-    public unsafe class EditorObjectManager
+public unsafe class EditorObjectManager
+{
+    // ═══════════ 2D sprite frustum culling (perf: render HANYA yang terlihat kamera) ═══════════
+
+    /// <summary>Cull telemetry passthrough (set on the 2D sprite pass below, on the
+    /// shared per-object counters in EditorObject) — read right after the viewport
+    /// draw for the toolbar badge.</summary>
+    public static int Cull2DCulled => EditorObject.Cull2DCulled;
+    public static int Cull2DTotal => EditorObject.Cull2DTotal;
+
+    /// <summary>Frustum-cull check SATU PINTU untuk seluruh 2D sprite pass (Player2D,
+    /// Sprite2D, portal — pemanggil lain: clock-advance pre-cull DrawPlayer2D).
+    /// Kamera = argumen `camera` (pass ini selalu dipanggil dengan kamera yang sedang
+    /// render — active camera aturan user). AABB di-inflate ±0.4 unit (≈2× karakter
+    /// 2 unit + overlay equipment/efek), lalu diuji lewat penerbangan delapan titik
+    /// sudut (aman di bawah rotasi, persis seperti chunk PBR).</summary>
+    public static bool Is2DSpriteCulled(EditorObject obj, Camera camera, Matrix4x4? viewProj = null)
     {
+        var vp = viewProj ?? camera.GetViewMatrix() * camera.GetProjectionMatrix();
+        // AABB quad sprite (BUKAN box kapsul seleksi — strip repeat lebar butuh extent art nyata).
+        var (amin, amax) = obj.Get2DSpriteAABB();
+        for (int i = 0; i < 8; i++)
+        {
+            // Vector4.Transform (bukan Vector3) — hasilnya Vector4 clip-space dengan W.
+            var corner = System.Numerics.Vector4.Transform(new System.Numerics.Vector4(
+                (i & 1) != 0 ? amax.X : amin.X,
+                (i & 2) != 0 ? amax.Y : amin.Y,
+                (i & 4) != 0 ? amax.Z : amin.Z, 1f), vp);
+            if (corner.X >= -corner.W && corner.X <= corner.W
+                && corner.Y >= -corner.W && corner.Y <= corner.W
+                && corner.Z >= -corner.W && corner.Z <= corner.W)
+                return false; // satu sudut pun di dalam → gambar
+        }
+        return true; // seluruh AABB di luar clip volume → skip draw
+    }
+
+    /// <summary>Debug boxes for the 2D cull pass — RED wire = culled (skipped),
+    /// GREEN = rendered this pass. Drawn through the shared debug line shader,
+    /// depth test OFF (overlay helper, never occluded by world geometry).</summary>
+    private static void Draw2DCullDebugBoxes(Camera camera, Matrix4x4 viewProj)
+    {
+        GL.Disable(Const.GL_DEPTH_TEST);
+        var red = new System.Numerics.Vector3(1f, 0.25f, 0.2f);
+        var green = new System.Numerics.Vector3(0.2f, 0.95f, 0.35f);
+        foreach (var obj in EditorObject.Debug2DCullObjects)
+        {
+            var (amin, amax) = obj.Get2DSpriteAABB();
+            DarkEngine3D_gl_csharp.Engine.Helpers.DebugDraw.DrawAABBWireframe(
+                new AABB(amin, amax),
+                EditorObject.Debug2DCullCulled.Contains(obj) ? red : green, camera);
+        }
+        // Camera origin behind the FAR plane (clip W ≤ 0) = everything culled while
+        // looking at the level — draw ONE amber box around the camera as the hint.
+        float camW = viewProj.M14 * camera.Position.X + viewProj.M24 * camera.Position.Y
+                   + viewProj.M34 * camera.Position.Z + viewProj.M44;
+        if (camW <= 0f)
+        {
+            var amber = new System.Numerics.Vector3(1f, 0.75f, 0.1f);
+            DarkEngine3D_gl_csharp.Engine.Helpers.DebugDraw.DrawAABBWireframe(
+                new AABB(camera.Position - new System.Numerics.Vector3(0.25f),
+                         camera.Position + new System.Numerics.Vector3(0.25f)), amber, camera);
+        }
+        GL.Enable(Const.GL_DEPTH_TEST);
+    }
+
         private readonly List<EditorObject> _objects = [];
         // Per-type counters for incremental default names
         private int _boxCounter = 1;
@@ -541,16 +604,57 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             // di belakang player (layer 0) ikut pass sprite dan MENUTUPI player. Satu
             // pass terurut RenderLayer membuat layer -1 benar-benar di belakang.
             // Tie di layer sama: Player2D dulu, sprite dekor di atasnya (perilaku lama).
+            //
+            // FRUSTUM CULLING (2D): hanya sprite yang menyentuh frustum kamera aktif
+            // yang digambar — yang di luar DIHAPUS dari draw call (perf: objek level
+            // besar tidak lagi digambar tak terlihat). Kamera = yang dipakai pass ini
+            // (viewport editor / kamera gameplay aktif). Jam animasi tetap dikelola
+            // DI DALAM DrawPlayer2D/DrawSprite2D masing-masing (player terus maju
+            // walau di luar layar; dekoratif *timed* sengaja membeku off-screen —
+            // animasinya diukur dalam waktu TAYANG, bukan waktu dunia). Portal
+            // digambar terpisah dari player yang ter-cull (host-nya DrawPlayer2D).
+            EditorObject.Cull2DCulled = 0;
+            EditorObject.Cull2DTotal = 0;
+            var viewProj = view * proj;
+            bool cullDebug = EditorObject.Show2DCullDebug;
+            EditorObject.Debug2DCullObjects.Clear();
+            EditorObject.Debug2DCullCulled.Clear();
+            List<EditorObject> culledPlayers = new(); // host portal yang dibuang culling
+
             foreach (var obj in _objects
                 .Where(o => o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D })
                 .OrderBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? o.Player2DRenderLayer : o.Sprite2DRenderLayer)
                 .ThenBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? 0 : 1))
             {
+                bool culled = Is2DSpriteCulled(obj, camera, viewProj);
+                if (culled) EditorObject.Cull2DCulled++;
+                EditorObject.Cull2DTotal++;
+                if (cullDebug)
+                {
+                    EditorObject.Debug2DCullObjects.Add(obj);
+                    if (culled) EditorObject.Debug2DCullCulled.Add(obj);
+                }
+
+                if (culled)
+                {
+                    // Portal ikut DrawPlayer2D — simpan hostnya agar portal 4-state
+                    // TETAP digambar walau player-nya off-screen (portal yang hilang
+                    // saat player keluar frame = bug, ini WAJIB di semua mode).
+                    if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
+                        culledPlayers.Add(obj);
+                    continue; // draw skip — debug box digambar pada tahap khusus di bawah
+                }
+
                 if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
                     obj.DrawPlayer2D(camera);
                 else
                     obj.DrawSprite2D(camera);
             }
+
+            foreach (var p in culledPlayers)
+                p.DrawPortalSpritesPublic(camera);
+
+            if (cullDebug) Draw2DCullDebugBoxes(camera, viewProj);
 
             // ── Effect2D particles (world-space quads, one draw call per texture run).
             // Rendered AFTER all sprite layers so the FX sit in front of sprites/portals.

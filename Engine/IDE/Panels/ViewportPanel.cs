@@ -5800,6 +5800,16 @@ ImGui.SameLine();
             }
         }
 
+        //  2D frustum cull debug (sprite mana yang kena culling) 
+        bool cullDbg = EditorObject.Show2DCullDebug;
+        if (ToolButton(cullDbg ? $"Cull: {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal}" : "Cull Debug",
+            cullDbg, new Vector4(0.78f, 0.28f, 0.22f, 0.95f),
+            "Debug frustum culling sprite 2D (Player2D/Sprite2D):\nAABB MERAH = di luar kamera aktif, TIDAK digambar (hemat draw call).\nAABB HIJAU = terlihat kamera, dirender.\nJudul tombol = ter-cull / total dari pass terakhir.", out y))
+        {
+            EditorObject.Show2DCullDebug = !cullDbg;
+            Console.WriteLine($"[Viewport] 2D cull debug {(EditorObject.Show2DCullDebug ? "ON" : "OFF")} — culled {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal} (pass terakhir)");
+        }
+
         //  Debug grid + shadow toggles 
         bool debugGrid = _bridge.ShowDebugGrid;
         if (ToolButton(debugGrid ? "Grid: On" : "Grid: Off", debugGrid, new Vector4(0.25f, 0.45f, 0.30f, 0.95f),

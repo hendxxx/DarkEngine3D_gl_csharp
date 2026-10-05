@@ -3973,6 +3973,70 @@ public unsafe class EditorObject
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
     }
 
+    // ── 2D sprite frustum culling (render HANYA yang terlihat kamera aktif) ──
+
+    /// <summary>Viewport-toolbar debug toggle: draw a wire AABB over each 2D sprite —
+    /// RED = culled this frame (draw skipped), GREEN = rendered. Also shows the
+    /// culled/total badge on the button.</summary>
+    public static bool Show2DCullDebug { get; set; }
+
+    /// <summary>Cull telemetry from the LAST 2D sprite pass — culled sprite count.
+    /// Both edit pass and per-camera gameplay passes overwrite; read right after
+    /// the viewport pass (the toolbar badge does exactly that).</summary>
+    public static int Cull2DCulled { get; internal set; }
+    /// <summary>Cull telemetry: total visible 2D sprites evaluated last pass.</summary>
+    public static int Cull2DTotal { get; internal set; }
+
+    /// <summary>Debug capture for <see cref="Show2DCullDebug"/>: every 2D sprite the
+    /// last pass evaluated + which of them were culled (red vs green wire).
+    /// Reference-keyed — culled objects are skipped, not destroyed.</summary>
+    internal static readonly List<EditorObject> Debug2DCullObjects = new();
+    internal static readonly HashSet<EditorObject> Debug2DCullCulled = new();
+
+    /// <summary>Portal 4-state animations live on the TRIGGER AREAS but are hosted by
+    /// DrawPlayer2D — exposed so the culled 2D pass can still render them when the
+    /// player object itself is off-screen (a portal must never disappear just because
+    /// its host player is culled).</summary>
+    public void DrawPortalSpritesPublic(Camera camera) => DrawPortalSprites(camera);
+
+    /// <summary>World AABB that covers the DRAWN 2D sprite quad — <see cref="WorldAABB"/>
+    /// is the CAPSULE box (radius/height fields, selection-sized) which is FAR narrower
+    /// than a wide repeated strip or a tall frame; culling from it would drop visible
+    /// sprites mid-screen. This measures the actual art: frame world size from the
+    /// resolved sheet/clip (same math as the draw sites), repeat width when
+    /// Sprite2DWorldWidth is set, feet at Position.Y, centered on Position.X, plus a
+    /// ±0.4 unit safety pad (equipment overlays, glow, frame offsets).</summary>
+    public (System.Numerics.Vector3 min, System.Numerics.Vector3 max) Get2DSpriteAABB()
+    {
+        float spriteW = 0f, spriteH = Player2DHeight;
+        if (TryGetPlayer2DClip(out var cSheet, out var cClip) && cSheet != null)
+        {
+            float cellH = cSheet.FrameHeight > 0 ? cSheet.FrameHeight : cSheet.ImageHeight;
+            if (cellH <= 0) cellH = 64;
+            float cellW = cSheet.FrameWidth > 0 ? cSheet.FrameWidth : cellH;
+            // Konservatif: extent TERBESAR dari semua custom frames (frame animasi
+            // bisa beda ukuran — frame attack lebih lebar dari idle; cull boleh
+            // kurang agresif, TIDAK boleh memotong frame yang sedang tayang).
+            if (cSheet.CustomFrames != null)
+                foreach (var fr in cSheet.CustomFrames)
+                {
+                    if (fr.Width > cellW) cellW = fr.Width;
+                    if (fr.Height > cellH) cellH = fr.Height;
+                }
+            float snapH = cClip?.MasterHeight ?? 0f;
+            float pxToWorld = snapH > 0f ? Player2DHeight / snapH : Player2DHeight / cellH;
+            spriteW = MathF.Max(0.05f, cellW * pxToWorld);
+            if (PrimitiveType == EditorPrimitiveType.Sprite2D && Sprite2DWorldWidth > 0.01f)
+                spriteW = MathF.Max(spriteW, Sprite2DWorldWidth);
+        }
+        float halfX = MathF.Max(Player2DCapsuleRadius, spriteW * 0.5f) + 0.4f;
+        float halfZ = Player2DCapsuleRadius + 0.4f;
+        float topY = MathF.Max(Player2DCapsuleHeight, spriteH) + 0.4f;
+        return (
+            Position + new System.Numerics.Vector3(-halfX, -0.4f, -halfZ),
+            Position + new System.Numerics.Vector3(halfX, topY, halfZ));
+    }
+
     // ── Player2D sprite rendering (animated sheet frame on an upright quad) ──
     private uint _player2dVAO, _player2dVBO;
     /// <summary>Name of the clip DrawPlayer2D played last frame — used to detect idle ↔
@@ -4401,6 +4465,24 @@ public unsafe class EditorObject
         // usually live on a different sheet than idle, and sampling run frame indices
         // against the idle sheet's texture renders the wrong (or no) animation.
         var drawSheet = actionClip != null && actionSheet != null ? actionSheet : sheet;
+        // ── Clock advance (pre-cull) ── every on-screen Player2D draws at least once
+        // per rendered frame, so the frame-gated blocks below fired for everyone and
+        // this early-out was unnecessary. With FRUSTUM CULLING a fully off-screen
+        // player SKIPS the rest of the method — without advancing here its animation
+        // clock would freeze and it would pop back in on a WRONG frame (visible time
+        // jump when scrolling back to it). Off-screen clocks keep ticking.
+        if (EditorObjectManager.Is2DSpriteCulled(this, camera))
+        {
+            if (_player2dLastClockFrame != Glfw.FrameId)
+            {
+                _player2dLastClockFrame = Glfw.FrameId;
+                if (actionActive)
+                    Player2DActionTime = MathF.Min(Player2DActionTime + Glfw.PeekDeltaTime(), actionClip!.Duration);
+                else
+                    Player2DAnimTime += Glfw.PeekDeltaTime();
+            }
+            return;
+        }
         if (!IDEBridge.TryGetSpriteSheetTexture(drawSheet.Name, out uint texId, out int imgW, out int imgH))
             return;
         if (texId == 0) return;
@@ -4643,6 +4725,14 @@ public unsafe class EditorObject
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return;
         if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
         if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int _, out int _))
+            return;
+        // ── Cull PRE-clock (final design): an off-screen decorative sprite freezes
+        // here, OFF-SCREEN — when it scrolls back in, the time spent outside the
+        // view is absent from its clock and its phase completes smoothly just
+        // off-frame. Advancing-before-cull would time decorations in WORLD time
+        // instead of ON-SCREEN time (water/wave strips visibly speeding up while
+        // the camera pans), so culling MUST gate this advance.
+        if (EditorObjectManager.Is2DSpriteCulled(this, camera))
             return;
         if (texId == 0) return;
 
