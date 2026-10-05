@@ -87,6 +87,16 @@ public static class Player2DSystem
                     // first time the player crosses each zone. Also resets any saved
                     // checkpoint so Load Checkpoint falls back to this start point.
                     TriggerEventSystem.BeginSession();
+                    // Seed the session paperdoll with the player's scene-authored
+                    // equipment — BeginSession above just RESET the session state, so
+                    // this runs after it. Empty slots only: an in-game Load restores
+                    // its own paperdoll via InventorySystem.RestoreState, but that
+                    // happens mid-session (spawn already consumed), so in practice the
+                    // paperdoll is empty here and the scene load-out applies whole.
+                    foreach (var seed in p.Equipment.Slots)
+                        if (!InventorySystem.PlayerEquipment.Slots.ContainsKey(seed.Key))
+                            InventorySystem.PlayerEquipment.Slots[seed.Key] = seed.Value;
+                    if (p.Equipment.Slots.Count > 0) InventorySystem.ApplyEquipmentBonuses();
                     TriggerEventSystem.ResetRuntime(activeMap);
                     // Multi-map: reset the trigger runtime on EVERY scene map so
                     // portals/doors on other levels start the session clean too.

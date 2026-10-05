@@ -1797,6 +1797,10 @@ public class InspectorPanel
         if (editorObj.PrimitiveType is EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Player2D)
             RenderNpcDialogueInspector(editorObj);
 
+        // ── Equipment Layers: paperdoll slots → sprite-art layers on this character ──
+        if (editorObj.PrimitiveType is EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Player2D)
+            RenderEquipmentLayersInspector(editorObj);
+
         //  Transform 
         if (ImGui.CollapsingHeader("Transform", ImGuiTreeNodeFlags.DefaultOpen))
         {
@@ -2914,6 +2918,48 @@ public class InspectorPanel
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
             Visual.DialogueSystem.StartConversation(editorObj.NpcDialogueId, editorObj);
+    }
+
+    /// <summary>Equipment layers (Sprite2D/Player2D): assign catalog items to this
+    /// object's paperdoll slots. Items with IsEquipment + Equip Art render as sprite
+    /// layers over the character (order = item EquipLayer). Persists with the scene
+    /// via EquipmentSlots; at runtime the session player shows the session paperdoll
+    /// (Inventory System) instead.</summary>
+    private void RenderEquipmentLayersInspector(EditorObject editorObj)
+    {
+        if (!ImGui.CollapsingHeader("Equipment Layers"))
+            return;
+
+        var equippable = InventorySystem.Items.Where(d => !string.IsNullOrEmpty(d.EquipSlot)).ToList();
+        if (equippable.Count == 0)
+        {
+            ImGui.TextDisabled("Belum ada item equippable — buat di Item Editor (set Equip Slot).");
+            return;
+        }
+
+        foreach (var slotName in InventorySystem.EquipSlots)
+        {
+            var cur = InventorySystem.Find(editorObj.Equipment.Get(slotName));
+            string preview = cur != null ? cur.Name : "(kosong)";
+            ImGui.PushID($"eqlayer_{slotName}");
+            if (ImGui.BeginCombo(slotName, preview))
+            {
+                if (ImGui.Selectable("(kosong)", cur == null))
+                    editorObj.Equipment.Unequip(slotName);
+                foreach (var d in equippable)
+                {
+                    if (d.EquipSlot != slotName) continue;
+                    if (ImGui.Selectable($"{d.Name}  [{d.EquipLayer:+0;-0;0}]", cur == d))
+                        editorObj.Equipment.Equip(d.Id);
+                }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Item yang dipakai karakter/NPC/enemy ini (paperdoll).\nItem dengan IsEquipment + Equip Art dirender sebagai LAYER sprite di\nkarakter (urutan = Equip Layer item). Tersimpan di file scene.");
+            ImGui.PopID();
+        }
+        if (editorObj.Equipment.Slots.Count > 0)
+            ImGui.TextDisabled("Runtime: PLAYER memakai paperdoll sesi (Inventory UI);\nNPC/enemy tetap memakai slot di atas.");
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)

@@ -49,10 +49,30 @@ public static class InventorySystem
         /// (same sheet/clip registry as portals/sprites). Empty = icon-only.</summary>
         public string EquipSheet = "";
         public string EquipClip = "";
-        /// <summary>Equipped-art size in world units (0 = player height × 0.9).</summary>
+        /// <summary>Equipped-art height in world units (0 = full base-sprite height —
+        /// full-canvas art aligns 1:1 with the character).</summary>
         public float EquipWorldHeight = 0f;
-        /// <summary>Render layer offset for the equipped art (bigger = in front).</summary>
+        /// <summary>Render layer offset for the equipped art (bigger = in front).
+        /// (Legacy field — superseded by <see cref="EquipLayer"/>; not consumed.)</summary>
         public float EquipZOffset = 0.09f;
+        /// <summary>Equipment LAYER system: when true (and Equip Art Sheet is set) the
+        /// item's sprite renders as a layer ON the character while equipped (baju,
+        /// celana, shield... follow the base animation). False = stat-only, no art.</summary>
+        public bool IsEquipment = true;
+        /// <summary>Stacking order among equipped art layers on one character — higher
+        /// draws IN FRONT (armor 1 over shirt 0); negative renders BEHIND the base
+        /// sprite (capes/back items). Two items on the same layer stack in paperdoll
+        /// order (Head→Body→Legs→Weapon→Shield→Accessory).</summary>
+        public int EquipLayer;
+        /// <summary>World-unit nudge for the equipped art from the character's
+        /// bottom-center (X mirrors with facing).</summary>
+        public float EquipOffsetX;
+        public float EquipOffsetY;
+        /// <summary>Frame SYNC with the base sprite: when true the overlay samples its
+        /// sheet at the BASE sprite's current sheet-frame index (clothing authored on
+        /// the same grid as the character follows every pose 1:1). False = the overlay
+        /// animates on its own clip FPS (independent loops like fire auras).</summary>
+        public bool EquipSyncFrame = true;
         /// <summary>Optional particle FX preset fired when the item is used/equipped.</summary>
         public string UseFxPreset = "";
         /// <summary>Use effect: "Heal" / "Mana" / "GiveGold" (UseAmount decides how
@@ -533,6 +553,11 @@ public static class InventorySystem
         public string EquipClip { get; set; } = "";
         public float EquipWorldHeight { get; set; }
         public float EquipZOffset { get; set; } = 0.09f;
+        public bool IsEquipment { get; set; } = true;
+        public int EquipLayer { get; set; }
+        public float EquipOffsetX { get; set; }
+        public float EquipOffsetY { get; set; }
+        public bool EquipSyncFrame { get; set; } = true;
         public string UseFxPreset { get; set; } = "";
         public string UseEffect { get; set; } = "";
         public float UseAmount { get; set; }
@@ -549,6 +574,9 @@ public static class InventorySystem
         BonusDefense = d.BonusDefense, BonusDamage = d.BonusDamage,
         EquipSheet = d.EquipSheet, EquipClip = d.EquipClip,
         EquipWorldHeight = d.EquipWorldHeight, EquipZOffset = d.EquipZOffset,
+        IsEquipment = d.IsEquipment, EquipLayer = d.EquipLayer,
+        EquipOffsetX = d.EquipOffsetX, EquipOffsetY = d.EquipOffsetY,
+        EquipSyncFrame = d.EquipSyncFrame,
         UseFxPreset = d.UseFxPreset, UseEffect = d.UseEffect, UseAmount = d.UseAmount,
         Price = d.Price, Notes = d.Notes,
     };
@@ -562,6 +590,9 @@ public static class InventorySystem
         BonusDefense = c.BonusDefense, BonusDamage = c.BonusDamage,
         EquipSheet = c.EquipSheet, EquipClip = c.EquipClip,
         EquipWorldHeight = c.EquipWorldHeight, EquipZOffset = c.EquipZOffset,
+        IsEquipment = c.IsEquipment, EquipLayer = c.EquipLayer,
+        EquipOffsetX = c.EquipOffsetX, EquipOffsetY = c.EquipOffsetY,
+        EquipSyncFrame = c.EquipSyncFrame,
         UseFxPreset = c.UseFxPreset, UseEffect = c.UseEffect, UseAmount = c.UseAmount,
         Price = c.Price, Notes = c.Notes,
     };

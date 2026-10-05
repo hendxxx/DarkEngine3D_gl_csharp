@@ -4462,6 +4462,7 @@ public unsafe class EditorObject
             if (gridFrames > 0 && frameIdx >= gridFrames)
                 frameIdx = gridFrames - 1;
         }
+        int baseFrameIdx = frameIdx; // equipment overlays frame-sync to THIS base frame
         var (uvMinRaw, uvMaxRaw) = drawSheet.GetFrameUV(frameIdx);
         // GetFrameUV assumes a flipped upload (v=0=image bottom), but textures upload
         // top-row-first (v=0=image TOP). Convert: v' = 1 - v_raw. Raw uvMin.Y is the
@@ -4609,6 +4610,12 @@ public unsafe class EditorObject
         GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), verts, Const.GL_DYNAMIC_DRAW);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
         GL.BindVertexArray(0);
+
+        // ── Equipment layers: composite equipped item art over the base sprite ──
+        // (session player renders the session paperdoll; NPC/editor preview renders
+        // the scene-authored Equipment — see CollectEquipmentLayersForDraw).
+        DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Player2DFacingRight, 1,
+            actionActive ? Player2DActionTime : Player2DAnimTime, baseFrameIdx);
 
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
@@ -4787,6 +4794,12 @@ public unsafe class EditorObject
         }
         GL.BindVertexArray(0);
 
+        // ── Equipment layers: composite equipped item art over every base tile ──
+        // (reps > 1: each tile carries its own overlay so a repeated outfit strip
+        // stays dressed across the full repeat width)
+        DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Sprite2DFacingRight, reps,
+            Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset), frameIdx);
+
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
         GL.Disable(Const.GL_BLEND);
@@ -4898,6 +4911,169 @@ public unsafe class EditorObject
         tr = new System.Numerics.Vector3(x1, y1, z);
         tl = new System.Numerics.Vector3(x0, y1, z);
         return true;
+    }
+
+    // ── Equipment sprite layers (composite equipped item art over the character) ──
+
+    private readonly List<InventorySystem.ItemDef> _equipLayerScratch = new();
+
+    /// <summary>Effective equipped items for THIS object during draw, ordered back→front
+    /// by each item's EquipLayer. Scene-authored Equipment always applies (editor preview
+    /// + NPC/enemy characters; persisted with the scene via EditorObjectData.EquipmentSlots).
+    /// While preview/in-game is active, the SESSION player (first visible Player2D) draws
+    /// the session paperdoll instead — InventorySystem.PlayerEquipment — so equipping
+    /// through the inventory UI shows on the sprite the same frame.</summary>
+    private void CollectEquipmentLayersForDraw(List<InventorySystem.ItemDef> into)
+    {
+        into.Clear();
+        InventorySystem.Equipment eq = Equipment;
+        var bridge = IDEBridge.Current;
+        if (bridge is { InGameActive: true } or { IsPreviewMode: true }
+            && PrimitiveType == EditorPrimitiveType.Player2D
+            && TriggerEventSystem.LastEditorObjectManager != null)
+        {
+            foreach (var o in TriggerEventSystem.LastEditorObjectManager.Objects)
+            {
+                if (o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D })
+                {
+                    if (o == this) eq = InventorySystem.PlayerEquipment;
+                    break;
+                }
+            }
+        }
+
+        void AddSlot(string slotName)
+        {
+            var def = InventorySystem.Find(eq.Get(slotName));
+            if (def != null && def.IsEquipment && !string.IsNullOrEmpty(def.EquipSheet))
+                into.Add(def);
+        }
+        foreach (var slotName in InventorySystem.EquipSlots)
+            AddSlot(slotName);
+        // Custom slot names beyond the paperdoll still render (union).
+        foreach (var kv in eq.Slots)
+            if (!InventorySystem.EquipSlots.Contains(kv.Key))
+                AddSlot(kv.Key);
+        // Draw order: lower EquipLayer first (behind), higher last (in front).
+        into.Sort(static (a, b) => a.EquipLayer.CompareTo(b.EquipLayer));
+    }
+
+    /// <summary>Composite every equipped item's sprite art over the just-drawn base
+    /// quad — the equipment layer system for Player2D/Sprite2D characters (baju,
+    /// celana, shield, ...). Runs INSIDE the caller's map2d shader session (same
+    /// VAO/VBO + blend state, sampler already bound): each layer is one extra
+    /// textured quad anchored bottom-center on the base tile. Overlay height = base
+    /// tile height unless the item sets EquipWorldHeight (width follows the art's
+    /// aspect). z = base + 0.002 + EquipLayer × 0.003 — every layer stays inside its
+    /// base render layer's band. Repeated strips (reps > 1) dress every tile. Mirror:
+    /// facing swap first, then the overlay sheet's own FlipX — two swaps cancel,
+    /// exactly like the base sprite path. FRAME SYNC: <paramref name="baseFrameIdx"/>
+    /// is the base sprite's current sheet-frame index — items with EquipSyncFrame
+    /// (default) sample THIS index on their own sheet so same-grid clothing follows
+    /// every pose 1:1; others animate on their own clip FPS.</summary>
+    private unsafe void DrawEquipmentSpriteOverlays(float x0, float y0, float tileW, float tileH,
+        float zBase, bool facingRight, int reps, float animTime, int baseFrameIdx)
+    {
+        CollectEquipmentLayersForDraw(_equipLayerScratch);
+        if (_equipLayerScratch.Count == 0 || _player2dVAO == 0 || reps < 1) return;
+
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        // Hoisted scratch quad (CA2014 — never stackalloc inside a loop).
+        Span<Map2DVertex> quad = stackalloc Map2DVertex[6];
+        float mirrorX = facingRight ? 1f : -1f;
+
+        foreach (var def in _equipLayerScratch)
+        {
+            if (!def.IsEquipment || string.IsNullOrEmpty(def.EquipSheet)) continue;
+            if (!IDEBridge.TryGetSpriteSheetTexture(def.EquipSheet, out uint otex, out int _, out int _)
+                || otex == 0) continue;
+            GL.BindTexture(Const.GL_TEXTURE_2D, otex);
+
+            // Resolve the overlay sheet + clip. No clip authored (or missing) →
+            // animate the sheet's implicit grid at 8 FPS (same fallback as portals).
+            SpriteSheet? osheet = null;
+            AnimationClip2D? oclip = null;
+            bool haveClip = !string.IsNullOrEmpty(def.EquipClip)
+                && IDEBridge.TryGetSpriteClip(def.EquipSheet, def.EquipClip, out osheet, out oclip)
+                && oclip != null && oclip.FrameIndices.Count > 0;
+            if (osheet == null && !IDEBridge.TryGetSpriteSheet(def.EquipSheet, out osheet)) continue;
+            if (osheet == null) continue;
+
+            int count;
+            if (haveClip && oclip != null)
+                count = oclip.FrameIndices.Count;
+            else
+                count = osheet.Columns > 0 && osheet.Rows > 0 ? osheet.Columns * osheet.Rows : 1;
+            if (count <= 0) continue;
+            // Frame source: SYNC (default) samples the base sprite's current sheet-frame
+            // index on the overlay sheet — same-grid clothing follows every pose 1:1.
+            // Unsynced overlays (EquipSyncFrame = false) run their own clip FPS (8 FPS
+            // grid fallback). Both clamp to the overlay sheet's own valid frame range
+            // (a shorter clothing sheet freezes on its last frame instead of sampling
+            // outside the texture).
+            int frameIdx;
+            if (def.EquipSyncFrame)
+            {
+                frameIdx = Math.Clamp(baseFrameIdx, 0, count - 1);
+            }
+            else
+            {
+                float frameDur = haveClip && oclip != null
+                    ? 1f / MathF.Max(0.01f, oclip.FPS * MathF.Max(0.01f, oclip.SpeedMultiplier))
+                    : 1f / 8f;
+                int f = (int)(animTime / frameDur);
+                f = ((f % count) + count) % count;
+                frameIdx = haveClip && oclip != null ? oclip.FrameIndices[f] : Math.Clamp(f, 0, count - 1);
+            }
+
+            var (ouvMin, ouvMax) = osheet.GetFrameUV(frameIdx);
+            // Same top-row-first upload fix as the base paths (v' = 1 − v_raw).
+            float su0 = ouvMin.X, su1 = ouvMax.X;
+            float svBot = 1f - ouvMin.Y;
+            float svTop = 1f - ouvMax.Y;
+            if (osheet.FlipY) (svBot, svTop) = (svTop, svBot);
+            if (!facingRight) (su0, su1) = (su1, su0);
+            if (osheet.FlipX) (su0, su1) = (su1, su0);
+
+            float ocellH = osheet.FrameHeight > 0 ? osheet.FrameHeight : osheet.ImageHeight;
+            if (ocellH <= 0) ocellH = 64;
+            float ocellW = osheet.FrameWidth > 0 ? osheet.FrameWidth : ocellH;
+            if (osheet.CustomFrames != null && frameIdx < osheet.CustomFrames.Count)
+            {
+                var ofr = osheet.CustomFrames[frameIdx];
+                ocellW = ofr.Width;
+                ocellH = ofr.Height > 0 ? ofr.Height : 1;
+            }
+            // Size: full-canvas overlays (authored on the same grid as the base) align
+            // 1:1 with the base quad; EquipWorldHeight overrides the height (width
+            // keeps the art's aspect so nothing stretches).
+            float oh = def.EquipWorldHeight > 0f ? def.EquipWorldHeight : tileH;
+            float ow = oh * (ocellW / MathF.Max(1f, ocellH));
+            // z: hair above the base (+0.002) + one 0.003 step per EquipLayer. All
+            // inside the base render layer's band (0.01 per render layer).
+            float z = zBase + 0.002f + def.EquipLayer * 0.003f;
+
+            for (int t = 0; t < reps; t++)
+            {
+                float cx = x0 + t * tileW + tileW * 0.5f + def.EquipOffsetX * mirrorX;
+                float by0 = y0 + def.EquipOffsetY;
+                float bx0 = cx - ow * 0.5f, bx1 = bx0 + ow, by1 = by0 + oh;
+                quad[0] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quad[1] = new Map2DVertex(bx1, by0, z, su1, svBot, 1f, 1f, 1f, 1f);
+                quad[2] = new Map2DVertex(bx1, by1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quad[3] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quad[4] = new Map2DVertex(bx1, by1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quad[5] = new Map2DVertex(bx0, by1, z, su0, svTop, 1f, 1f, 1f, 1f);
+                fixed (Map2DVertex* pQuad = quad)
+                {
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), pQuad, Const.GL_DYNAMIC_DRAW);
+                }
+                GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+            }
+        }
+        GL.BindVertexArray(0);
     }
 
     // ── Portal sprite rendering ──
