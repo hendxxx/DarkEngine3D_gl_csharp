@@ -79,7 +79,8 @@ public static class ShopSystem
         {
             string path = GetFilePath();
             if (!File.Exists(path)) return;
-            var data = JsonSerializer.Deserialize<ShopFileData>(File.ReadAllText(path));
+            var data = Engine.Helpers.BinaryObjectCache.TryLoad<ShopFileData>(path)
+                       ?? JsonSerializer.Deserialize<ShopFileData>(File.ReadAllText(path));
             if (data?.Shops != null) Shops.AddRange(data.Shops);
             Console.WriteLine($"[Shop] Loaded {Shops.Count} shop(s) → {path}");
         }
@@ -95,8 +96,11 @@ public static class ShopSystem
                 Console.WriteLine("[Shop] Save skipped: no project open");
                 return;
             }
-            File.WriteAllText(GetFilePath(),
-                JsonSerializer.Serialize(new ShopFileData { Shops = Shops }, new JsonSerializerOptions { WriteIndented = true }));
+            string shopPath = GetFilePath();
+            var shopData = new ShopFileData { Shops = Shops };
+            File.WriteAllText(shopPath,
+                JsonSerializer.Serialize(shopData, new JsonSerializerOptions { WriteIndented = true }));
+            Engine.Helpers.BinaryObjectCache.TryWrite(shopPath, shopData);
             Console.WriteLine($"[Shop] Saved {Shops.Count} shop(s) → {GetFilePath()}");
         }
         catch (Exception ex) { Console.WriteLine($"[Shop] Save failed: {ex.Message}"); }

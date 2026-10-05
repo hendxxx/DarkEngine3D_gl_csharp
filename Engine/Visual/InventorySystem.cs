@@ -609,6 +609,7 @@ public static class InventorySystem
             foreach (var d in Items) file.Items.Add(ToFile(d));
             var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             System.IO.File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(file, opts));
+            Helpers.BinaryObjectCache.TryWrite(path, file); // binary sidecar → next load skips the JSON parse
             Console.WriteLine($"[Inventory] Catalog saved: {Items.Count} items → {path}");
         }
         catch (Exception ex)
@@ -631,8 +632,11 @@ public static class InventorySystem
                 Console.WriteLine("[Inventory] No items.json in project — empty catalog.");
                 return;
             }
-            var file = System.Text.Json.JsonSerializer.Deserialize<CatalogFile>(
-                System.IO.File.ReadAllText(path));
+            // Binary sidecar fast path — falls back to the JSON parse on any
+            // miss/staleness/corruption (JSON remains the source of truth).
+            var file = Helpers.BinaryObjectCache.TryLoad<CatalogFile>(path)
+                ?? System.Text.Json.JsonSerializer.Deserialize<CatalogFile>(
+                    System.IO.File.ReadAllText(path));
             if (file?.Items != null)
                 foreach (var c in file.Items)
                 {

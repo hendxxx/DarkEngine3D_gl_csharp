@@ -360,4 +360,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# BinaryObjectCache sidecar cache (regenerable from JSON source of truth)
+.cache/
+
 /nul

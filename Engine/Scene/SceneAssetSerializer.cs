@@ -111,6 +111,22 @@ public static class SceneAssetSerializer
 
         try
         {
+            // Binary sidecar fast path (JSON stays the source of truth — the cache
+            // is validated against the JSON's length+hash+mtime and ANY mismatch or
+            // read error silently falls through to the normal JSON parse below).
+            var binManifest = Helpers.BinaryObjectCache.TryLoad<SceneManifest>(filePath);
+            if (binManifest != null && binManifest.Scenes.Count > 0)
+            {
+                if (isGameIng)
+                {
+                    _cachedGameIngManifest = binManifest;
+                    _gameIngCacheValid = true;
+                    try { _gameIngLastWriteTime = File.GetLastWriteTimeUtc(filePath); }
+                    catch { }
+                }
+                Console.WriteLine($"[SceneAsset] Binary cache hit ({binManifest.Scenes.Count} scenes) — JSON parse skipped");
+                return binManifest;
+            }
             string json = File.ReadAllText(filePath);
 
             // Try parsing as SceneManifest first (game.ing format, multiple scenes)
@@ -165,6 +181,7 @@ public static class SceneAssetSerializer
         string json = JsonSerializer.Serialize(asset, JsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         File.WriteAllText(filePath, json);
+        Helpers.BinaryObjectCache.TryWrite(filePath, asset);
         Console.WriteLine($"[SceneAsset] Saved: {filePath} ({asset.BackgroundObjects.Count} bg objects)");
     }
 
@@ -666,6 +683,7 @@ public static class SceneAssetSerializer
         string json = JsonSerializer.Serialize(manifest, JsonOptions);
         Directory.CreateDirectory(Path.GetDirectoryName(GameIngPath)!);
         File.WriteAllText(GameIngPath, json);
+        Helpers.BinaryObjectCache.TryWrite(GameIngPath, manifest);
         Console.WriteLine($"[SceneAsset] Saved {_registeredSceneRoots.Count} registered scenes to {GameIngPath} (fresh write)");
 
         // Invalidate cache so next read gets fresh data

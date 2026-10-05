@@ -2433,6 +2433,7 @@ public class MapEditorPanel
             var opts = new JsonSerializerOptions { WriteIndented = true };
             string json = JsonSerializer.Serialize(data, opts);
             File.WriteAllText(path, json);
+            Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
             Console.WriteLine($"[MapEditor] Saved map to: {path} (parallax layers: {ActiveTilemap.ParallaxLayers.Count})");
         Console.WriteLine($"[MapEditor] Save snapshot -> Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, path='{path}'");
 
@@ -2463,6 +2464,7 @@ public class MapEditorPanel
                 var opts = new JsonSerializerOptions { WriteIndented = true };
                 string json = JsonSerializer.Serialize(data, opts);
                 File.WriteAllText(_saveDialog.SelectedPath, json);
+                Engine.Helpers.BinaryObjectCache.TryWrite(_saveDialog.SelectedPath, data);
                 Console.WriteLine($"[MapEditor] Saved map to: {_saveDialog.SelectedPath} (parallax layers: {ActiveTilemap.ParallaxLayers.Count})");
             }
             catch (Exception ex)
@@ -2490,7 +2492,10 @@ public class MapEditorPanel
         try
         {
             string json = File.ReadAllText(path);
-            var data = JsonSerializer.Deserialize<MapSaveData>(json);
+            // Binary sidecar fast path (JSON is the source of truth; any cache
+            // miss/staleness/corruption silently falls back to this parse).
+            var data = Engine.Helpers.BinaryObjectCache.TryLoad<MapSaveData>(path)
+                       ?? JsonSerializer.Deserialize<MapSaveData>(json);
             if (data?.Tilemap == null)
             {
                 Console.WriteLine($"[MapEditor] Invalid map file: {path}");

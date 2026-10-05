@@ -71,7 +71,8 @@ public static class QuestSystem
         {
             string path = GetFilePath();
             if (!File.Exists(path)) return;
-            var data = JsonSerializer.Deserialize<QuestFileData>(File.ReadAllText(path));
+            var data = Engine.Helpers.BinaryObjectCache.TryLoad<QuestFileData>(path)
+                       ?? JsonSerializer.Deserialize<QuestFileData>(File.ReadAllText(path));
             if (data?.Quests != null) Quests.AddRange(data.Quests);
             Console.WriteLine($"[Quest] Loaded {Quests.Count} quest(s) → {path}");
         }
@@ -87,8 +88,11 @@ public static class QuestSystem
                 Console.WriteLine("[Quest] Save skipped: no project open");
                 return;
             }
-            File.WriteAllText(GetFilePath(),
-                JsonSerializer.Serialize(new QuestFileData { Quests = Quests }, new JsonSerializerOptions { WriteIndented = true }));
+            string questPath = GetFilePath();
+            var questData = new QuestFileData { Quests = Quests };
+            File.WriteAllText(questPath,
+                JsonSerializer.Serialize(questData, new JsonSerializerOptions { WriteIndented = true }));
+            Engine.Helpers.BinaryObjectCache.TryWrite(questPath, questData);
             Console.WriteLine($"[Quest] Saved {Quests.Count} quest(s) → {GetFilePath()}");
         }
         catch (Exception ex) { Console.WriteLine($"[Quest] Save failed: {ex.Message}"); }

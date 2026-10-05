@@ -1395,8 +1395,10 @@ public class SpriteEditorPanel
         try
         {
             var opts = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(CaptureSaveData(), opts);
+            var data = CaptureSaveData();
+            string json = JsonSerializer.Serialize(data, opts);
             File.WriteAllText(path, json);
+            Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
             Console.WriteLine($"[SpriteEditor] Saved {SpriteSheets.Count} sheets + {AnimationClips.Count} clips to: {path}");
         }
         catch (Exception ex)
@@ -1424,7 +1426,10 @@ public class SpriteEditorPanel
         try
         {
             string json = File.ReadAllText(path);
-            var data = JsonSerializer.Deserialize<SpriteSheetsSaveData>(json);
+            // Binary sidecar fast path — skips the JSON parse when the sidecar is
+            // fresh; any miss/staleness/corruption falls back to the parse below.
+            var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(path)
+                       ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(json);
             if (data?.Sheets == null)
             {
                 Console.WriteLine($"[SpriteEditor] Invalid save file: {path}");
@@ -1491,7 +1496,7 @@ public class SpriteEditorPanel
         {
             string path = Path.Combine(projectRoot, "Assets", "Sprites", "sprites.sheets.json");
             if (File.Exists(path))
-                LoadSheetsFromFile(path);
+                LoadSheetsFromFile(path); // TryLoad sidecar di dalam (JSON fallback tetap utuh)
         }
     }
 

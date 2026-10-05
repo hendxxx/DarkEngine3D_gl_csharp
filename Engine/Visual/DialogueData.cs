@@ -398,7 +398,8 @@ public static class DialogueLibrary
             if (File.Exists(path))
             {
                 var json = File.ReadAllText(path);
-                var data = JsonSerializer.Deserialize<DialogueFileData>(json);
+                var data = Engine.Helpers.BinaryObjectCache.TryLoad<DialogueFileData>(path)
+                           ?? JsonSerializer.Deserialize<DialogueFileData>(json);
                 if (data != null)
                 {
                     _assets.AddRange(data.Assets);
@@ -441,8 +442,10 @@ public static class DialogueLibrary
                 CurrentLanguage = CurrentLanguage,
                 Localizations = Localizations,
             };
-            File.WriteAllText(GetFilePath(),
+            string dlgPath = GetFilePath();
+            File.WriteAllText(dlgPath,
                 JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+            Engine.Helpers.BinaryObjectCache.TryWrite(dlgPath, data);
             Console.WriteLine($"[Dialogue] Saved {_assets.Count} asset(s) → {GetFilePath()}");
         }
         catch (Exception ex)
