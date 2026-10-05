@@ -8814,7 +8814,7 @@
             "width": 100,
             "height": 21,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Floor Tiles1.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Floor Tiles1.png",
             "tilesetColumns": 18,
             "tilesetRows": 36,
             "tilesetFlipV": false,
@@ -8835,7 +8835,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -0.6,
@@ -8850,7 +8850,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
                 "isVisible": true,
                 "scrollFactor": 0.8,
                 "zPosition": -0.2,
@@ -8865,7 +8865,7 @@
               },
               {
                 "name": "Parallax 2",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
                 "isVisible": true,
                 "scrollFactor": 0.6,
                 "zPosition": -0.3,
@@ -8880,7 +8880,7 @@
               },
               {
                 "name": "Parallax 3",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
                 "isVisible": true,
                 "scrollFactor": 0.39999998,
                 "zPosition": -0.4,
@@ -8895,7 +8895,7 @@
               },
               {
                 "name": "Parallax 5",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
                 "isVisible": true,
                 "scrollFactor": 0.1,
                 "zPosition": -0.5,
@@ -8910,7 +8910,7 @@
               },
               {
                 "name": "Parallax 4",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
                 "isVisible": true,
                 "scrollFactor": 0.19999999,
                 "zPosition": -0.6,
@@ -12628,8 +12628,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 14,
-          "posY": 3.1000001,
+          "posX": 6.5404577,
+          "posY": 6.4,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -12647,15 +12647,15 @@
           "npcDisplayName": "",
           "npcBadgeSize": 0,
           "npcBadgeLift": 0,
-          "player2DSpriteSheet": "Idle-Sheet",
-          "player2DAnimationClip": "Char A - Idle",
+          "player2DSpriteSheet": "Male Skin1",
+          "player2DAnimationClip": "Male Skin1-idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
-          "player2DHeight": 18,
+          "player2DHeight": 16,
           "player2DCapsuleRadius": 1.5,
           "player2DCapsuleHeight": 11.15,
           "player2DCapsuleOffsetX": 0,
-          "player2DCapsuleOffsetY": 3.3,
+          "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DGravity": 25,
           "player2DMoveSpeed": 10,
@@ -12704,8 +12704,8 @@
           "actions": [
             {
               "name": "Idle",
-              "spriteSheet": "Idle",
-              "clip": "Char A - Idle",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-idle",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12736,8 +12736,8 @@
             },
             {
               "name": "Walk",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-walk",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12768,8 +12768,8 @@
             },
             {
               "name": "Run",
-              "spriteSheet": "Run-Sheet",
-              "clip": "Char A - Run",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-attack",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12800,8 +12800,8 @@
             },
             {
               "name": "Jump",
-              "spriteSheet": "Jump-All-Sheet",
-              "clip": "Char A - Jump",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-jump start",
               "loop": false,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12832,8 +12832,8 @@
             },
             {
               "name": "Attach 1",
-              "spriteSheet": "Attack-01-Sheet",
-              "clip": "Char A - Attack 1",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-attack",
               "loop": false,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12864,8 +12864,8 @@
             },
             {
               "name": "Dead",
-              "spriteSheet": "Dead-Sheet",
-              "clip": "Char A - Dead",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-dead",
               "loop": false,
               "stopOnFrameEnd": true,
               "priority": 5,
@@ -12896,8 +12896,8 @@
             },
             {
               "name": "Action Magic 1",
-              "spriteSheet": "fireball",
-              "clip": "Fireball - Start",
+              "spriteSheet": "Male Skin1",
+              "clip": "Male Skin1-attack",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -12908,7 +12908,7 @@
               "fxScale": 1,
               "projectileEnabled": true,
               "projectileSheet": "fireball",
-              "projectileClip": "Fireball - Start",
+              "projectileClip": "Fireball",
               "projectileSpeed": 8,
               "projectileMaxDistance": 15,
               "projectileGravity": 0,
@@ -13998,7 +13998,7 @@
           "sprite2DSpeed": 1,
           "sprite2DStartOffset": 0,
           "sprite2DFacingRight": true,
-          "sprite2DGlow": 0.85,
+          "sprite2DGlow": 0,
           "player2DGlow": 0,
           "sprite2DGlowColorX": 1,
           "sprite2DGlowColorY": 1,
@@ -14006,7 +14006,7 @@
           "player2DGlowColorX": 1,
           "player2DGlowColorY": 1,
           "player2DGlowColorZ": 1,
-          "sprite2DGlowFlicker": true,
+          "sprite2DGlowFlicker": false,
           "player2DGlowFlicker": false,
           "effect2DPreset": "Fire",
           "effect2DEmitRate": -1,
@@ -14617,7 +14617,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 94,
+          "posX": 92,
           "posY": 6.5,
           "posZ": 0,
           "rotX": 0,
@@ -14677,7 +14677,10 @@
           "effect2DOffsetY": 0,
           "effect2DEnabled": true,
           "equipmentSlots": [
-            "Head=Male - Hair 1"
+            "Head=Male - Hair 1",
+            "Legs=Male - Pants Red",
+            "Body=Male - Shirt White",
+            "Weapon=Male - Sword"
           ],
           "sprite2DRenderLayer": 0,
           "sprite2DWorldWidth": 0,
@@ -15302,8 +15305,8 @@
           "npcDisplayName": "Budi",
           "npcBadgeSize": 32,
           "npcBadgeLift": 0.1,
-          "player2DSpriteSheet": "Male Skin1",
-          "player2DAnimationClip": "Man 1 - Idle",
+          "player2DSpriteSheet": "Female Skin1",
+          "player2DAnimationClip": "Woman 1 - Idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 16,
@@ -15342,6 +15345,11 @@
           "effect2DWindFactor": -1,
           "effect2DOffsetY": 0,
           "effect2DEnabled": true,
+          "equipmentSlots": [
+            "Head=Female - Hair 1",
+            "Legs=Female - Shite Skirt",
+            "Body=Female - Red Corset"
+          ],
           "sprite2DRenderLayer": 0,
           "sprite2DWorldWidth": 0,
           "player2DRenderLayer": 0,
@@ -16607,7 +16615,7 @@
             "width": 100,
             "height": 21,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Decor.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Decor.png",
             "tilesetColumns": 30,
             "tilesetRows": 34,
             "tilesetFlipV": false,
@@ -16628,7 +16636,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -0.6,
@@ -16643,7 +16651,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
                 "isVisible": true,
                 "scrollFactor": 0.8,
                 "zPosition": -0.2,
@@ -16658,7 +16666,7 @@
               },
               {
                 "name": "Parallax 2",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
                 "isVisible": true,
                 "scrollFactor": 0.6,
                 "zPosition": -0.3,
@@ -16673,7 +16681,7 @@
               },
               {
                 "name": "Parallax 3",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
                 "isVisible": true,
                 "scrollFactor": 0.39999998,
                 "zPosition": -0.4,
@@ -16688,7 +16696,7 @@
               },
               {
                 "name": "Parallax 5",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
                 "isVisible": true,
                 "scrollFactor": 0.1,
                 "zPosition": -0.5,
@@ -16703,7 +16711,7 @@
               },
               {
                 "name": "Parallax 4",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
                 "isVisible": true,
                 "scrollFactor": 0.19999999,
                 "zPosition": -0.6,
@@ -18403,7 +18411,7 @@
                   103,
                   -1,
                   -1,
-                  102,
+                  -1,
                   103,
                   -1,
                   -1,
@@ -19548,7 +19556,7 @@
             "width": 100,
             "height": 21,
             "tileSize": 32,
-            "tilesetImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
+            "tilesetImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Tiles\\Tiles.png",
             "tilesetColumns": 25,
             "tilesetRows": 25,
             "tilesetFlipV": false,
@@ -19569,7 +19577,7 @@
             "parallaxLayers": [
               {
                 "name": "Parallax 0",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 1.png",
                 "isVisible": true,
                 "scrollFactor": 1,
                 "zPosition": -0.6,
@@ -19584,7 +19592,7 @@
               },
               {
                 "name": "Parallax 1",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 2.png",
                 "isVisible": true,
                 "scrollFactor": 0.8,
                 "zPosition": -0.2,
@@ -19599,7 +19607,7 @@
               },
               {
                 "name": "Parallax 2",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 3.png",
                 "isVisible": true,
                 "scrollFactor": 0.6,
                 "zPosition": -0.3,
@@ -19614,7 +19622,7 @@
               },
               {
                 "name": "Parallax 3",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 4.png",
                 "isVisible": true,
                 "scrollFactor": 0.39999998,
                 "zPosition": -0.4,
@@ -19629,7 +19637,7 @@
               },
               {
                 "name": "Parallax 5",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\Background Castle .png",
                 "isVisible": true,
                 "scrollFactor": 0.1,
                 "zPosition": -0.5,
@@ -19644,7 +19652,7 @@
               },
               {
                 "name": "Parallax 4",
-                "imagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
+                "imagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Env\\GandalfHardcore Background layers\\Normal BG\\GandalfHardcore Background layers_layer 5.png",
                 "isVisible": true,
                 "scrollFactor": 0.19999999,
                 "zPosition": -0.6,
@@ -24495,14 +24503,14 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        78.99335,
+        63.6684,
         33.600002,
-        243.7996
+        307.03183
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
       "editorCameraOrtho": true,
-      "editorCameraOrthoSize": 50,
+      "editorCameraOrthoSize": 33.600002,
       "renderProperties": {
         "backgroundColor": [
           0.4962963,
@@ -25125,7 +25133,7 @@
                 "Y": 1,
                 "Z": 1
               },
-              "texturePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
+              "texturePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\Textures\\moon.png",
               "rotationSpeed": 0,
               "phaseOffset": 0.8370237
             },
