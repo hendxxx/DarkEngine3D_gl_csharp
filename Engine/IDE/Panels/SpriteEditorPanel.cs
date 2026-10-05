@@ -1731,6 +1731,11 @@ public class SpriteEditorPanel
                 var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(file)
                            ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(File.ReadAllText(file));
                 if (data == null || (data.Sheets == null && data.AnimationClips == null)) continue;
+                // Self-heal: a sidecar missed by TryLoad (stale v1 / layout mismatch)
+                // is rewritten from the freshly parsed object — the NEXT load is a
+                // binary hit instead of a JSON parse on every single load.
+                if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
+                    Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
                 bool touched = false;
 
                 // ── Sheet entry (row 1 of the request: autoload di sprite sheet) ──
@@ -1864,6 +1869,9 @@ public class SpriteEditorPanel
                 Console.WriteLine($"[SpriteEditor] Invalid save file: {path}");
                 return;
             }
+            // Self-heal a stale/missing sidecar after a successful JSON parse.
+            if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
+                Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
 
             SpriteSheets.Clear();
             foreach (var sheetData in data.Sheets)

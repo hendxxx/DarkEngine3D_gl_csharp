@@ -23,19 +23,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers;
 ///   3. Unsupported member types throw on the WRITE side → the cache file is simply
 ///      not produced (JSON-only behavior, exactly like before).
 ///
-/// Wire format v1: [u32 magic "DBIN"][u8 version][i64 jsonLen][u64 jsonHash]
+/// Wire format v2: [u32 magic "DBIN"][u8 version][u64 layoutId][i64 jsonLen][u64 jsonHash]
 /// [i64 jsonMtimeTicks][payload: typed member tree] — payload written with
 /// BinaryWriter in declared-type order (classes: cached public get+set properties
 /// with [JsonIgnore] skipped; structs: public instance fields — covers Vector2/3/4,
 /// ValueTuple; collections: List&lt;T&gt;/T[]/string-keyed Dictionary; enums as i32).
+///
+/// LAYOUT GUARD (why layoutId exists): the payload has NO per-member names — it is
+/// positional, in the alphabetical order of the CURRENT type. When an engine upgrade
+/// adds/renames/reorders a DTO member, an old sidecar decodes at the wrong offsets
+/// (e.g. a stale Int32 lands on a string property → ArgumentException on SetValue).
+/// layoutId = deterministic hash of the recursive member layout; ANY mismatch →
+/// silent miss → JSON parse, exactly like a stale stamp. Version bump to 2 rejects
+/// every v1 sidecar written before this guard existed (those warn-spammed forever).
 /// </summary>
 public static class BinaryObjectCache
 {
     private const uint Magic = 0x4E494244; // 'D''B''I''N' (little-endian read)
-    private const byte Version = 1;
+    private const byte Version = 2;
 
     private sealed record Members(FieldInfo[] Fields, PropertyInfo[] Props, bool IsClass);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, Members> _members = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, ulong> _layoutIds = new();
 
     private static bool _enabled = true;
     /// <summary>Global kill switch (settings can wire this later; ON by default).</summary>
@@ -70,6 +79,9 @@ public static class BinaryObjectCache
             // SceneManifest share one file) must never be decoded as this type — the
             // member ORDER would mismatch and produce silent garbage.
             if (br.ReadString() != typeof(T).Name) return null;
+            // Layout guard: sidecar written under a different member layout (engine
+            // build changed the DTO) can never decode correctly — silent miss.
+            if (br.ReadUInt64() != LayoutId(typeof(T))) return null;
             if (br.ReadInt64() != stamp.Value.len) return null;
             if (br.ReadUInt64() != stamp.Value.hash) return null;
             if (br.ReadInt64() != stamp.Value.ticks) return null;
@@ -112,6 +124,7 @@ public static class BinaryObjectCache
                 bw.Write(Magic);
                 bw.Write(Version);
                 bw.Write(typeof(T).Name);
+                bw.Write(LayoutId(typeof(T)));
                 bw.Write(stamp.Value.len);
                 bw.Write(stamp.Value.hash);
                 bw.Write(stamp.Value.ticks);
@@ -145,6 +158,74 @@ public static class BinaryObjectCache
 
     private static string CachePath(string jsonPath) =>
         Path.Combine(Path.GetDirectoryName(jsonPath) ?? ".", ".cache", Path.GetFileName(jsonPath) + ".bin");
+
+    // ═══════════════════════ Layout identity (member-order fingerprint) ═══════════════════
+
+    /// <summary>Deterministic 64-bit id of a type's SERIALIZED member layout: ordered
+    /// property names+types for classes (recursing into referenced object types,
+    /// collections and dictionaries; cycles cut with "ref"). Pure reflection → the
+    /// same across processes for one build; ANY DTO change between sidecar write and
+    /// read yields a different id → the reader takes the JSON path silently instead
+    /// of decoding at shifted offsets and throwing mid-graph.</summary>
+    private static ulong LayoutId(Type t) => _layoutIds.GetOrAdd(t, static root =>
+    {
+        var sb = new System.Text.StringBuilder();
+        var visited = new HashSet<Type>();
+
+        void Walk(Type type)
+        {
+            var key = Nullable.GetUnderlyingType(type) ?? type;
+            if (key == typeof(string) || key.IsPrimitive || key.IsEnum)
+            {
+                sb.Append(key.Name).Append(';');
+                return;
+            }
+            if (key.IsArray)
+            {
+                sb.Append('['); Walk(key.GetElementType()!); sb.Append(']');
+                return;
+            }
+            if (key.IsGenericType && typeof(System.Collections.IEnumerable).IsAssignableFrom(key))
+            {
+                // List<T> / Dictionary<K,V> — the element/value types shape the payload.
+                sb.Append(key.Name).Append('(');
+                foreach (var a in key.GetGenericArguments()) Walk(a);
+                sb.Append(')');
+                return;
+            }
+            if (!visited.Add(key))
+            {
+                sb.Append("ref;");
+                return;
+            }
+            sb.Append(key.FullName).Append('{');
+            var m = GetMembers(key);
+            if (m.IsClass)
+            {
+                foreach (var p in m.Props)
+                {
+                    sb.Append(p.Name).Append(':'); Walk(p.PropertyType); sb.Append(';');
+                }
+            }
+            else
+            {
+                foreach (var f in m.Fields)
+                {
+                    sb.Append(f.Name).Append(':'); Walk(f.FieldType); sb.Append(';');
+                }
+            }
+            sb.Append('}');
+        }
+
+        Walk(root);
+        ulong h = 14695981039346656037UL; // FNV-1a 64
+        foreach (byte b in System.Text.Encoding.UTF8.GetBytes(sb.ToString()))
+        {
+            h ^= b;
+            h *= 1099511628211UL;
+        }
+        return h;
+    });
 
     // ═══════════════════════ Typed value tree (declared-type driven) ═══════════════════════
 

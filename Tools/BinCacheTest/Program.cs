@@ -9,6 +9,10 @@ using DarkEngine3D_gl_csharp.Engine.Scene;
 // 3. Corrupt cache fallback (garbage sidecar never breaks the load).
 // 4. Type guard (SceneAsset sidecar rejected when reading SceneManifest).
 // 5. Collections/enums/nullable/Vectors round-trip.
+// 6. Benchmark (INFO, non-fatal).
+// 7. Wire format v2: legacy v1 sidecar rejected SILENTLY (no "cache invalid"
+//    spam) + self-heal TryWrite turns the next load into a binary hit.
+// 8. layoutId guard: tampered layout hash → silent miss → JSON path.
 // ═══════════════════════════════════════════════════════════════════════
 
 int fails = 0;
@@ -135,6 +139,85 @@ for (int i = 0; i < benchIters; i++) _ = BinaryObjectCache.TryLoad<SceneManifest
 sw.Stop();
 double binMs = sw.Elapsed.TotalMilliseconds / benchIters;
 Console.WriteLine($"INFO  benchmark: JSON {jsonMs:F2} ms vs binary {binMs:F2} ms per load = {jsonMs / Math.Max(binMs, 0.0001):F1}x faster | {new FileInfo(bigPath).Length / 1024.0:F0} KB json -> {new FileInfo(bigCachePath).Length / 1024.0:F0} KB sidecar");
+
+// ── 7. Legacy v1 sidecar: rejected SILENTLY + self-heal restores binary hit ──
+// This is the production spam case: sidecars written before the layoutId guard
+// (wire v1) decoded positionally at shifted offsets → ArgumentException on SetValue
+// → "[BinCache] ... cache invalid" on EVERY load. v2 rejects them at the version
+// byte, before any payload is touched → return null, no exception, no log.
+{
+    string legacyPath = Path.Combine(dir, "legacy.json");
+    File.WriteAllText(legacyPath, JsonSerializer.Serialize(manifest));
+    string legacyCache = Path.Combine(dir, ".cache", "legacy.json.bin");
+    Directory.CreateDirectory(Path.GetDirectoryName(legacyCache)!);
+
+    // Rebuild a REAL v1 header exactly as the old engine wrote it:
+    // [u32 magic][u8 ver=1][typeName][jsonLen][jsonHash][jsonMtime][positional payload].
+    using (var fs = new FileStream(legacyCache, FileMode.Create))
+    using (var bw = new BinaryWriter(fs))
+    {
+        bw.Write(0x4E494244u); // magic 'DBIN'
+        bw.Write((byte)1);     // wire v1 = before the layout guard
+        bw.Write(typeof(SceneManifest).Name);
+        var fi = new FileInfo(legacyPath);
+        bw.Write(fi.Length);
+        bw.Write(14695981039346656037UL);
+        bw.Write(fi.LastWriteTimeUtc.Ticks);
+        bw.Write(new byte[256]); // old positional payload (must never be reached)
+    }
+
+    var cap = new StringWriter();
+    var oldOut = Console.Out;
+    Console.SetOut(cap);
+    SceneManifest? legacy = null;
+    bool legacyThrew = false;
+    try { legacy = BinaryObjectCache.TryLoad<SceneManifest>(legacyPath); }
+    catch { legacyThrew = true; }
+    finally { Console.SetOut(oldOut); }
+    string log = cap.ToString();
+    Check(!legacyThrew, "v1 sidecar: TryLoad never throws");
+    Check(legacy is null && !BinaryObjectCache.LastLoadWasBinary, "v1 sidecar rejected (version bump to 2)");
+    Check(!log.Contains("[BinCache]"), "v1 sidecar rejected SILENTLY — no cache-invalid spam", log.Trim());
+
+    // Self-heal contract (SpriteEditorPanel after a JSON fallback): the caller
+    // rewrites the sidecar → the NEXT load is a binary hit, spam stays gone forever.
+    var parsed = JsonSerializer.Deserialize<SceneManifest>(File.ReadAllText(legacyPath));
+    BinaryObjectCache.TryWrite(legacyPath, parsed!);
+    var healed = BinaryObjectCache.TryLoad<SceneManifest>(legacyPath);
+    Check(healed is not null && BinaryObjectCache.LastLoadWasBinary,
+        "self-heal: TryWrite after fallback → next load is a binary hit");
+}
+
+// ── 8. layoutId guard: a sidecar written under a different DTO layout ──
+{
+    string layoutPath = Path.Combine(dir, "layout.json");
+    File.WriteAllText(layoutPath, JsonSerializer.Serialize(manifest));
+    BinaryObjectCache.TryWrite(layoutPath, manifest);
+    string layoutCache = Path.Combine(dir, ".cache", "layout.json.bin");
+
+    byte[] bytes = File.ReadAllBytes(layoutCache);
+    // v2 header: [u32 magic][u8 version][7-bit-len string typeName][u64 layoutId]...
+    int off = 4 + 1;                 // magic + version
+    int nameLen = bytes[off];         // 7-bit encoded length (13 < 128 → one byte)
+    off += 1 + nameLen;
+    bytes[off] ^= 0xFF;               // flip the first byte of layoutId
+    File.WriteAllBytes(layoutCache, bytes);
+
+    var cap = new StringWriter();
+    var oldOut = Console.Out;
+    Console.SetOut(cap);
+    var tampered = BinaryObjectCache.TryLoad<SceneManifest>(layoutPath);
+    Console.SetOut(oldOut);
+    Check(tampered is null && !BinaryObjectCache.LastLoadWasBinary,
+        "layoutId mismatch → silent miss → caller takes the JSON path");
+    Check(!cap.ToString().Contains("[BinCache]"),
+        "layoutId mismatch logs nothing (no spam)", cap.ToString().Trim());
+
+    BinaryObjectCache.TryWrite(layoutPath, manifest);
+    Check(BinaryObjectCache.TryLoad<SceneManifest>(layoutPath) is not null
+              && BinaryObjectCache.LastLoadWasBinary,
+        "rewrite after layout miss → binary hit again");
+}
 
 Console.WriteLine(fails == 0 ? "== ALL PASS ==" : $"== {fails} FAILURES ==");
 return fails == 0 ? 0 : 1;
