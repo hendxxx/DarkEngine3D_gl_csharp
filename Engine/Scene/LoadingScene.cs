@@ -477,6 +477,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         obj.Equipment.Slots[pair[..eq].Trim()] = pair[(eq + 1)..].Trim();
                     }
                 }
+                // ── Direct art layers (sheet/clip tanpa item) — runtime twin of the
+                // editor load path so in-game rendering matches the editor preview. ──
+                if (objData.DirectEquipLayers is { Count: > 0 } directLayersRuntime)
+                {
+                    obj.DirectEquipment.Clear();
+                    foreach (var dl in directLayersRuntime)
+                        if (!string.IsNullOrWhiteSpace(dl.Sheet))
+                            obj.DirectEquipment.Add(dl.Clone());
+                }
 
                 // Restore per-object gizmo pivot override (nullable).
                 if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)

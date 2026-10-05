@@ -2933,33 +2933,126 @@ public class InspectorPanel
         var equippable = InventorySystem.Items.Where(d => !string.IsNullOrEmpty(d.EquipSlot)).ToList();
         if (equippable.Count == 0)
         {
-            ImGui.TextDisabled("Belum ada item equippable — buat di Item Editor (set Equip Slot).");
-            return;
+            ImGui.TextDisabled("Belum ada item equippable — buat di Item Editor (set Equip Slot),\natau pakai direct layer di bawah (tanpa item).");
+        }
+        else
+        {
+            foreach (var slotName in InventorySystem.EquipSlots)
+            {
+                var cur = InventorySystem.Find(editorObj.Equipment.Get(slotName));
+                string preview = cur != null ? cur.Name : "(kosong)";
+                ImGui.PushID($"eqlayer_{slotName}");
+                if (ImGui.BeginCombo(slotName, preview))
+                {
+                    if (ImGui.Selectable("(kosong)", cur == null))
+                        editorObj.Equipment.Unequip(slotName);
+                    foreach (var d in equippable)
+                    {
+                        if (d.EquipSlot != slotName) continue;
+                        if (ImGui.Selectable($"{d.Name}  [{d.EquipLayer:+0;-0;0}]", cur == d))
+                            editorObj.Equipment.Equip(d.Id);
+                    }
+                    ImGui.EndCombo();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Item yang dipakai karakter/NPC/enemy ini (paperdoll).\nItem dengan IsEquipment + Equip Art dirender sebagai LAYER sprite di\nkarakter (urutan = Equip Layer item). Tersimpan di file scene.");
+                ImGui.PopID();
+            }
+            if (editorObj.Equipment.Slots.Count > 0)
+                ImGui.TextDisabled("Runtime: PLAYER memakai paperdoll sesi (Inventory UI);\nNPC/enemy tetap memakai slot di atas.");
         }
 
-        foreach (var slotName in InventorySystem.EquipSlots)
+        // ── Direct layers: attach sheet/clip art WITHOUT registering an item ──
+        ImGui.Separator();
+        ImGui.TextDisabled("Direct layers (attach sheet/clip tanpa item):");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Layer art yang menempel langsung di objek ini — TANPA daftar item di Item Editor.\nBerlaku di editor DAN in-game, digabung dengan paperdoll item (urut Layer).\nSheet/clip dari Sprite Editor (termasuk hasil auto-load *-sprite-anim.json).\nTersimpan di file scene.");
+
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        int removeIdx = -1;
+        for (int i = 0; i < editorObj.DirectEquipment.Count; i++)
         {
-            var cur = InventorySystem.Find(editorObj.Equipment.Get(slotName));
-            string preview = cur != null ? cur.Name : "(kosong)";
-            ImGui.PushID($"eqlayer_{slotName}");
-            if (ImGui.BeginCombo(slotName, preview))
+            var layer = editorObj.DirectEquipment[i];
+            ImGui.PushID($"dirlayer_{i}");
+
+            // Sheet combo (dropdown rule: show first sheet while empty).
+            string sheetShown = !string.IsNullOrEmpty(layer.Sheet) ? layer.Sheet
+                : (sheets.Count > 0 ? sheets[0] : "(no sheets — import in Sprite Editor)");
+            if (ImGui.BeginCombo("Sheet", sheetShown))
             {
-                if (ImGui.Selectable("(kosong)", cur == null))
-                    editorObj.Equipment.Unequip(slotName);
-                foreach (var d in equippable)
+                for (int s = 0; s < sheets.Count; s++)
                 {
-                    if (d.EquipSlot != slotName) continue;
-                    if (ImGui.Selectable($"{d.Name}  [{d.EquipLayer:+0;-0;0}]", cur == d))
-                        editorObj.Equipment.Equip(d.Id);
+                    bool sel = sheets[s] == layer.Sheet;
+                    if (ImGui.Selectable(sheets[s], sel))
+                    {
+                        layer.Sheet = sheets[s];
+                        // Auto-select the first clip of the new sheet (dropdown rule).
+                        var newClips = IDEBridge.GetClipNames(layer.Sheet);
+                        layer.Clip = newClips.Count > 0 ? newClips[0] : "";
+                    }
+                    if (sel) ImGui.SetItemDefaultFocus();
                 }
                 ImGui.EndCombo();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Item yang dipakai karakter/NPC/enemy ini (paperdoll).\nItem dengan IsEquipment + Equip Art dirender sebagai LAYER sprite di\nkarakter (urutan = Equip Layer item). Tersimpan di file scene.");
+                ImGui.SetTooltip("Sheet dari Sprite Editor (termasuk hasil auto-load *-sprite-anim.json)");
+
+            // Clip combo (empty = sheet's implicit grid animates at 8 FPS).
+            var clips = IDEBridge.GetClipNames(layer.Sheet);
+            string clipShown = !string.IsNullOrEmpty(layer.Clip) ? layer.Clip : "(grid 8 fps)";
+            if (ImGui.BeginCombo("Clip", clipShown))
+            {
+                if (ImGui.Selectable("(grid 8 fps)", string.IsNullOrEmpty(layer.Clip)))
+                    layer.Clip = "";
+                for (int s = 0; s < clips.Count; s++)
+                {
+                    bool sel = clips[s] == layer.Clip;
+                    if (ImGui.Selectable(clips[s], sel)) layer.Clip = clips[s];
+                    if (sel) ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
+            }
+
+            int lyr = layer.Layer;
+            if (ImGui.InputInt("Layer", ref lyr)) layer.Layer = lyr;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Urutan tumpuk: makin besar makin DEPAN; negatif = di belakang sprite dasar.");
+
+            float ox = layer.OffsetX;
+            if (ImGui.DragFloat("Offset X", ref ox, 0.05f, -32f, 32f, "%.2f")) layer.OffsetX = ox;
+            ImGui.SameLine();
+            float oy = layer.OffsetY;
+            if (ImGui.DragFloat("Offset Y##dl", ref oy, 0.05f, -32f, 32f, "%.2f")) layer.OffsetY = oy;
+
+            float wh = layer.WorldHeight;
+            if (ImGui.DragFloat("Height (0 = base)", ref wh, 0.05f, 0f, 50f, "%.2f")) layer.WorldHeight = wh;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Tinggi art dalam world unit (0 = ikut tinggi sprite dasar).\nX/Y mirror otomatis saat karakter menghadap kiri.");
+
+            bool sync = layer.SyncFrame;
+            if (ImGui.Checkbox("Frame sync", ref sync)) layer.SyncFrame = sync;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("ON: art sampling frame sprite dasar (art satu grid dengan karakter).\nOFF: clip sendiri jalan di FPS-nya (aura/api independen).");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Remove")) removeIdx = i;
+
             ImGui.PopID();
         }
-        if (editorObj.Equipment.Slots.Count > 0)
-            ImGui.TextDisabled("Runtime: PLAYER memakai paperdoll sesi (Inventory UI);\nNPC/enemy tetap memakai slot di atas.");
+        if (removeIdx >= 0)
+            editorObj.DirectEquipment.RemoveAt(removeIdx);
+
+        if (ImGui.Button("+ Add layer"))
+        {
+            string firstSheet = sheets.Count > 0 ? sheets[0] : "";
+            var firstClips = firstSheet.Length > 0 ? IDEBridge.GetClipNames(firstSheet) : new List<string>();
+            editorObj.DirectEquipment.Add(new DirectEquipLayerData
+            {
+                Sheet = firstSheet,
+                Clip = firstClips.Count > 0 ? firstClips[0] : ""
+            });
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Attach art baru langsung ke objek — tanpa buat item dulu.");
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)

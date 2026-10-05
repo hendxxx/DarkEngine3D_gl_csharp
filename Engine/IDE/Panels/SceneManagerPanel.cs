@@ -1001,6 +1001,9 @@ public class SceneManagerPanel
                         EquipmentSlots = obj.Equipment.Slots.Count > 0
                             ? obj.Equipment.Slots.Select(kv => $"{kv.Key}={kv.Value}").ToList()
                             : null,
+                        DirectEquipLayers = obj.DirectEquipment.Count > 0
+                            ? obj.DirectEquipment.Select(l => l.Clone()).ToList()
+                            : null,
                         Actions = obj.Actions.Count > 0
                             ? obj.Actions.Select(a => new Player2DActionData
                             {
@@ -1656,6 +1659,15 @@ public class SceneManagerPanel
                                 if (eq <= 0 || eq >= pair.Length - 1) continue;
                                 obj.Equipment.Slots[pair[..eq].Trim()] = pair[(eq + 1)..].Trim();
                             }
+                        }
+
+                        // ── Direct art layers (sheet/clip tanpa item) ──
+                        if (objData.DirectEquipLayers is { Count: > 0 } directLayers)
+                        {
+                            obj.DirectEquipment.Clear();
+                            foreach (var dl in directLayers)
+                                if (!string.IsNullOrWhiteSpace(dl.Sheet))
+                                    obj.DirectEquipment.Add(dl.Clone());
                         }
 
                         // 2D Map (level): rebind the tilemap payload saved in the scene file.

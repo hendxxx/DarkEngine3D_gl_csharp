@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Libs;
+using DarkEngine3D_gl_csharp.Engine.Scene;
 using ImGuiNET;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.IDE;
@@ -1976,6 +1977,11 @@ public unsafe class EditorObject
     /// Player2D and any NPC/enemy object; the HUD hotbar + stat bonuses read this.</summary>
     [JsonIgnore]
     public Visual.InventorySystem.Equipment Equipment { get; } = new();
+    /// <summary>Direct art layers attached to THIS object (sheet/clip, NO ItemDef) —
+    /// merged with the paperdoll items in CollectEquipmentLayersForDraw; persisted
+    /// via EditorObjectData.DirectEquipLayers.</summary>
+    [JsonIgnore]
+    public List<DirectEquipLayerData> DirectEquipment { get; } = new();
     /// <summary>RGBA color of the collision helper boxes (default: translucent green).</summary>
     public Vector4 Map2dCollisionColor { get; set; } = new(0.25f, 0.85f, 0.45f, 0.35f);
     /// <summary>Parallax background/foreground layers to render with this map. Each layer
@@ -5044,8 +5050,34 @@ public unsafe class EditorObject
         foreach (var kv in eq.Slots)
             if (!InventorySystem.EquipSlots.Contains(kv.Key))
                 AddSlot(kv.Key);
+
+        // ── Direct layers: art attached straight to this object (NO ItemDef) ──
+        // Synthetic defs live only in this scratch list — never registered anywhere.
+        for (int i = 0; i < DirectEquipment.Count; i++)
+        {
+            var dl = DirectEquipment[i];
+            if (string.IsNullOrEmpty(dl.Sheet)) continue;
+            into.Add(new InventorySystem.ItemDef
+            {
+                Id = $"__direct_{i}",
+                Name = string.IsNullOrEmpty(dl.Clip) ? dl.Sheet : $"{dl.Sheet} / {dl.Clip}",
+                IsEquipment = true,
+                EquipSheet = dl.Sheet,
+                EquipClip = dl.Clip,
+                EquipLayer = dl.Layer,
+                EquipOffsetX = dl.OffsetX,
+                EquipOffsetY = dl.OffsetY,
+                EquipWorldHeight = dl.WorldHeight,
+                EquipSyncFrame = dl.SyncFrame
+            });
+        }
+
         // Draw order: lower EquipLayer first (behind), higher last (in front).
-        into.Sort(static (a, b) => a.EquipLayer.CompareTo(b.EquipLayer));
+        // OrderBy is STABLE: same-layer keeps insertion order (paperdoll items in
+        // slot order first, then direct layers) — List.Sort was unstable here.
+        var ordered = into.OrderBy(static d => d.EquipLayer).ToList();
+        into.Clear();
+        into.AddRange(ordered);
     }
 
     /// <summary>Composite every equipped item's sprite art over the just-drawn base

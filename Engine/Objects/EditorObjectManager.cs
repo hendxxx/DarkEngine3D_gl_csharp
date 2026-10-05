@@ -502,6 +502,7 @@ public unsafe class EditorObjectManager
             foreach (var a in source.Actions) clone.Actions.Add(a.Clone());
             clone.Equipment.Slots.Clear();
             foreach (var kv in source.Equipment.Slots) clone.Equipment.Slots[kv.Key] = kv.Value;
+            foreach (var dl in source.DirectEquipment) clone.DirectEquipment.Add(dl.Clone());
             if (source.Map2dTilemap != null)
                 clone.Map2dTilemap = Tilemap2D.FromData(source.Map2dTilemap.ToData());
             clone.Map2dParallaxLayers = source.Map2dParallaxLayers == null ? null

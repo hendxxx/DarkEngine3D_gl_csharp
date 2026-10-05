@@ -273,6 +273,11 @@ public class EditorObjectData
     /// <summary>Flat "SlotName=ItemId" pairs so the dictionary survives JSON without
     /// a custom converter. Empty strings are skipped on load.</summary>
     public List<string>? EquipmentSlots { get; set; }
+    // ── Direct attachment layers: sheet/clip art on the object WITHOUT an item ──
+    /// <summary>Equipment-style art layers authored directly on the object (sheet +
+    /// clip from the Sprite Editor registry) — no ItemDef registration required.
+    /// Rows with an empty Sheet are skipped on load.</summary>
+    public List<DirectEquipLayerData>? DirectEquipLayers { get; set; }
     /// <summary>Render layer: higher layers draw on top (and 0.01 units nearer the camera per step).</summary>
     public int Sprite2DRenderLayer { get; set; } = 0;
     /// <summary>World width the sprite strip REPEATS across (0 = auto, single frame).</summary>
@@ -543,6 +548,26 @@ public class SceneManifest
 }
 
 /// <summary>Serializable form of <see cref="Player2DAction"/> (animation action binding).</summary>
+/// <summary>Direct equipment/attachment layer — sheet+clip art attached straight to
+/// an object (Sprite Editor registry), WITHOUT registering an item in the Item
+/// Editor first. Merged with paperdoll items in EditorObject's equipment draw and
+/// persisted per scene via EditorObjectData.DirectEquipLayers.</summary>
+public class DirectEquipLayerData
+{
+    public string Sheet { get; set; } = "";
+    public string Clip { get; set; } = "";
+    /// <summary>Stack order among art layers (bigger = in front; negative = behind the base sprite).</summary>
+    public int Layer { get; set; }
+    public float OffsetX { get; set; }
+    public float OffsetY { get; set; }
+    /// <summary>Overlay height in world units (0 = base sprite height).</summary>
+    public float WorldHeight { get; set; }
+    /// <summary>Sample the overlay at the base sprite's current frame (same-grid art).</summary>
+    public bool SyncFrame { get; set; } = true;
+
+    public DirectEquipLayerData Clone() => (DirectEquipLayerData)MemberwiseClone();
+}
+
 public class Player2DActionData
 {
     public string Name { get; set; } = "";
