@@ -619,7 +619,9 @@ public static class InventorySystem
     }
 
     /// <summary>Load the project's catalog (REPLACES the in-memory list — call on
-    /// project open). Creates nothing when the file is missing (fresh project).</summary>
+    /// project open). Creates nothing when the file is missing (fresh project).
+    /// After the main file, EVERY other *.json catalog in Assets/Items/ is
+    /// auto-merged (see MergeExtraCatalogs).</summary>
     public static void LoadCatalog()
     {
         Items.Clear();
@@ -627,28 +629,76 @@ public static class InventorySystem
         try
         {
             string path = CatalogPath;
-            if (!System.IO.File.Exists(path))
+            if (System.IO.File.Exists(path))
+            {
+                // Binary sidecar fast path — falls back to the JSON parse on any
+                // miss/staleness/corruption (JSON remains the source of truth).
+                var file = Helpers.BinaryObjectCache.TryLoad<CatalogFile>(path)
+                    ?? System.Text.Json.JsonSerializer.Deserialize<CatalogFile>(
+                        System.IO.File.ReadAllText(path));
+                if (file?.Items != null)
+                    foreach (var c in file.Items)
+                    {
+                        if (string.IsNullOrWhiteSpace(c.Id)) continue;
+                        Register(FromFile(c));
+                    }
+                Console.WriteLine($"[Inventory] Catalog loaded: {Items.Count} items.");
+            }
+            else
             {
                 Console.WriteLine("[Inventory] No items.json in project — empty catalog.");
-                return;
             }
-            // Binary sidecar fast path — falls back to the JSON parse on any
-            // miss/staleness/corruption (JSON remains the source of truth).
-            var file = Helpers.BinaryObjectCache.TryLoad<CatalogFile>(path)
-                ?? System.Text.Json.JsonSerializer.Deserialize<CatalogFile>(
-                    System.IO.File.ReadAllText(path));
-            if (file?.Items != null)
-                foreach (var c in file.Items)
-                {
-                    if (string.IsNullOrWhiteSpace(c.Id)) continue;
-                    Register(FromFile(c));
-                }
-            Console.WriteLine($"[Inventory] Catalog loaded: {Items.Count} items.");
+
+            MergeExtraCatalogs(path);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[Inventory] Catalog load FAILED: {ex.Message}");
         }
+    }
+
+    /// <summary>Auto-load: merge EVERY other *.json file in Assets/Items/ (top-level,
+    /// items.json excluded) as an extra item catalog — same idea as the sprite-anim
+    /// auto-load. Files whose Items array is missing/empty (or invalid JSON) are
+    /// skipped; ids already registered are KEPT as-is (the main items.json wins).
+    /// Saving the catalog writes the merged list back to items.json.</summary>
+    private static void MergeExtraCatalogs(string mainPath)
+    {
+        string dir;
+        try { dir = System.IO.Path.GetDirectoryName(mainPath) ?? ""; }
+        catch { return; }
+        if (dir.Length == 0 || !System.IO.Directory.Exists(dir)) return;
+
+        int files = 0, added = 0;
+        foreach (string f in System.IO.Directory.GetFiles(dir, "*.json",
+                     System.IO.SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                if (string.Equals(System.IO.Path.GetFullPath(f),
+                        System.IO.Path.GetFullPath(mainPath), StringComparison.OrdinalIgnoreCase))
+                    continue; // main catalog already loaded above
+
+                var file = Helpers.BinaryObjectCache.TryLoad<CatalogFile>(f)
+                    ?? System.Text.Json.JsonSerializer.Deserialize<CatalogFile>(
+                        System.IO.File.ReadAllText(f));
+                if (file?.Items == null || file.Items.Count == 0) continue; // not a catalog
+                files++;
+                foreach (var c in file.Items)
+                {
+                    if (string.IsNullOrWhiteSpace(c.Id)) continue;
+                    if (Find(c.Id) != null) continue; // already present — keep existing
+                    Register(FromFile(c));
+                    added++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Inventory] Auto-load skip {System.IO.Path.GetFileName(f)}: {ex.Message}");
+            }
+        }
+        if (files > 0 || added > 0)
+            Console.WriteLine($"[Inventory] Auto-loaded {added} items from {files} extra catalogs in Items folder.");
     }
 
     /// <summary>Drop the catalog (project closed).</summary>

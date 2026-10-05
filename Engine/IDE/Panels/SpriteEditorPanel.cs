@@ -39,7 +39,16 @@ public class SpriteEditorPanel
     /// <summary>Clip names currently merged from *-sprite-anim.json exports — a
     /// refresh removes this set before re-merging, so Save As Pattern re-runs update
     /// clips in place instead of duplicating them.</summary>
-    private readonly HashSet<string> _autoLoadedPatternClips = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Clip instances currently merged from *-sprite-anim.json exports — a
+    /// refresh removes this set before re-merging, so Save As Pattern re-runs update
+    /// clips in place instead of duplicating them. Tracked BY INSTANCE (not name):
+    /// a manually created clip with the same name must survive the refresh, and
+    /// snapshot-based undo rebuilds instances, which would orphan name tracking.</summary>
+    private readonly HashSet<AnimationClip2D> _autoLoadedPatternClips = new();
+    /// <summary>Sheet instances currently merged from *-sprite-anim.json exports —
+    /// the same refresh-in-place, instance-based contract as the clip set above
+    /// (a manual sheet sharing a name is never removed).</summary>
+    private readonly HashSet<SpriteSheet> _autoLoadedPatternSheets = new();
     /// <summary>Free-text action list for Save As Pattern — names per row separated
     /// by '|' (e.g. "effect" for a single-row sheet). Persisted in the save file.</summary>
     private string _patternActions = DefaultPatternActions;
@@ -1058,8 +1067,8 @@ public class SpriteEditorPanel
 
     private void RenderAnimationClips()
     {
-        if (_autoLoadedPatternClips.Count > 0)
-            ImGui.TextDisabled($"({_autoLoadedPatternClips.Count} pattern clips auto-loaded from *-sprite-anim.json)");
+        if (_autoLoadedPatternClips.Count > 0 || _autoLoadedPatternSheets.Count > 0)
+            ImGui.TextDisabled($"({_autoLoadedPatternSheets.Count} sheets + {_autoLoadedPatternClips.Count} clips auto-loaded from *-sprite-anim.json)");
         if (SelectedSheet == null) return;
 
         // ── Create clip from current animation preview range ──
@@ -1582,7 +1591,7 @@ public class SpriteEditorPanel
         Console.WriteLine($"[SpriteEditor] Save As Pattern: {saved}/{files.Length} files, {totalClips} clips -> {folder}");
 
         // Refresh the clip list right away — generated clips appear immediately.
-        LoadPatternAnimClips();
+        LoadPatternExports();
     }
 
     /// <summary>Parse the free-text action list: split on '|', trim, drop empties.
@@ -1688,41 +1697,73 @@ public class SpriteEditorPanel
         return true;
     }
 
-    // ── Auto-load *-sprite-anim.json (Animation Clips) ──
+    // ── Auto-load *-sprite-anim.json (SHEET + Animation Clips) ──
 
-    /// <summary>Merge every *-sprite-anim.json export into AnimationClips so clips
-    /// created by Save As Pattern appear WITHOUT a manual Load. Runs on project open,
-    /// after a manual Load, and after Save As Pattern. Previous auto-loaded entries
-    /// are dropped first (refresh-in-place); names already present (sheets file /
-    /// manual clips) are kept as-is.</summary>
-    private void LoadPatternAnimClips()
+    /// <summary>Merge every *-sprite-anim.json export (its SHEET entry AND its
+    /// clips) into the panel so both appear WITHOUT a manual Load. Runs on project
+    /// open, after a manual Load, and after Save As Pattern. Files are enumerated
+    /// FIRST (a folder reachable only through an auto-loaded sheet's ImagePath stays
+    /// reachable across refreshes), then the previous auto-loaded sets are dropped
+    /// and re-merged — refresh-in-place. Names already present (manual sheets/clips,
+    /// the sheets file) are kept as-is and never duplicated.</summary>
+    private void LoadPatternExports()
     {
-        // Remove the previous auto-loaded set so a re-run replaces, not duplicates.
+        // 1) Enumerate BEFORE removing: roots include auto-loaded sheet folders.
+        var files = EnumeratePatternAnimFiles().ToList();
+
+        // 2) Drop the previous auto-loaded sets so a re-run replaces, not duplicates.
+        if (_autoLoadedPatternSheets.Count > 0)
+        {
+            SpriteSheets.RemoveAll(s => _autoLoadedPatternSheets.Contains(s));
+            _autoLoadedPatternSheets.Clear();
+        }
         if (_autoLoadedPatternClips.Count > 0)
         {
-            AnimationClips.RemoveAll(c => _autoLoadedPatternClips.Contains(c.Name));
+            AnimationClips.RemoveAll(c => _autoLoadedPatternClips.Contains(c));
             _autoLoadedPatternClips.Clear();
         }
 
-        int files = 0, added = 0;
-        foreach (string file in EnumeratePatternAnimFiles())
+        int readFiles = 0, sheetsAdded = 0, clipsAdded = 0;
+        foreach (string file in files)
         {
             try
             {
                 var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(file)
                            ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(File.ReadAllText(file));
-                if (data?.AnimationClips == null) continue;
-                files++;
-                foreach (var clipData in data.AnimationClips)
+                if (data == null || (data.Sheets == null && data.AnimationClips == null)) continue;
+                bool touched = false;
+
+                // ── Sheet entry (row 1 of the request: autoload di sprite sheet) ──
+                foreach (var sd in data.Sheets ?? [])
                 {
-                    if (string.IsNullOrEmpty(clipData.Name)) continue;
+                    if (string.IsNullOrWhiteSpace(sd?.Name)) continue;
+                    if (SpriteSheets.Any(s =>
+                            string.Equals(s.Name, sd.Name, StringComparison.OrdinalIgnoreCase)
+                            || (!string.IsNullOrEmpty(sd.ImagePath) && !string.IsNullOrEmpty(s.ImagePath)
+                                && string.Equals(s.ImagePath, sd.ImagePath, StringComparison.OrdinalIgnoreCase))))
+                        continue; // manual sheet / already present — never duplicate
+                    var sheet = SpriteSheet.FromData(sd);
+                    SpriteSheets.Add(sheet);
+                    _autoLoadedPatternSheets.Add(sheet);
+                    sheetsAdded++; touched = true;
+                    if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(sheet.ImagePath))
+                        LoadPreviewTexture(sheet.ImagePath);
+                }
+
+                // ── Clips (row 2: auto make clip dari *-sprite-anim.json) ──
+                foreach (var clipData in data.AnimationClips ?? [])
+                {
+                    if (string.IsNullOrEmpty(clipData?.Name)) continue;
                     if (AnimationClips.Any(c => string.Equals(c.Name, clipData.Name,
                             StringComparison.OrdinalIgnoreCase)))
                         continue; // already present — never duplicate
-                    AnimationClips.Add(AnimationClip2D.FromData(clipData));
-                    _autoLoadedPatternClips.Add(clipData.Name);
-                    added++;
+                    var clip = AnimationClip2D.FromData(clipData);
+                    AnimationClips.Add(clip);
+                    _autoLoadedPatternClips.Add(clip);
+                    clipsAdded++; touched = true;
                 }
+
+                if (touched) readFiles++;
             }
             catch (Exception ex)
             {
@@ -1730,14 +1771,26 @@ public class SpriteEditorPanel
             }
         }
 
-        // Keep selection/edited clip valid after removals.
+        // 3) Keep sheet selection + preview range valid after removals/additions.
+        if (_selectedSheetIdx >= SpriteSheets.Count)
+            _selectedSheetIdx = SpriteSheets.Count - 1;
+        if (SelectedSheet != null)
+        {
+            LoadSheetSettings();
+            if (SelectedSheet.FrameCount > 0)
+            {
+                _animStartFrame = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
+                _animEndFrame = Math.Clamp(_animEndFrame, _animStartFrame, SelectedSheet.FrameCount - 1);
+            }
+        }
+        // Keep clip selection / edited clip valid after removals.
         _selectedClipIdx = AnimationClips.Count > 0
             ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
         if (_editingClip != null && !AnimationClips.Contains(_editingClip))
             _editingClip = null;
 
-        if (files > 0 || added > 0)
-            Console.WriteLine($"[SpriteEditor] Auto-loaded {added} pattern clips from {files} *-sprite-anim.json files");
+        if (sheetsAdded > 0 || clipsAdded > 0 || readFiles > 0)
+            Console.WriteLine($"[SpriteEditor] Auto-loaded {sheetsAdded} sheets + {clipsAdded} clips from {readFiles} *-sprite-anim.json files");
     }
 
     /// <summary>All *-sprite-anim.json files under the project's Assets folder (or the
@@ -1786,7 +1839,7 @@ public class SpriteEditorPanel
         {
             LoadSheetsFromFile(_loadSheetsDialog.SelectedPath);
             _loadSheetsDialog.Close();
-            LoadPatternAnimClips(); // manual Load wipes clips — re-merge pattern exports
+            LoadPatternExports(); // manual Load wipes clips — re-merge pattern exports
         }
     }
 
@@ -1869,6 +1922,7 @@ public class SpriteEditorPanel
         SpriteSheets.Clear();
         AnimationClips.Clear();
         _autoLoadedPatternClips.Clear();
+        _autoLoadedPatternSheets.Clear();
         _patternActions = DefaultPatternActions;
         _selectedSheetIdx = -1;
         _selectedFrameIdx = -1;
@@ -1881,7 +1935,7 @@ public class SpriteEditorPanel
             string path = Path.Combine(projectRoot, "Assets", "Sprites", "sprites.sheets.json");
             if (File.Exists(path))
                 LoadSheetsFromFile(path); // TryLoad sidecar di dalam (JSON fallback tetap utuh)
-            LoadPatternAnimClips(); // auto-load *-sprite-anim.json (pattern exports)
+            LoadPatternExports(); // auto-load *-sprite-anim.json (sheet + clips)
         }
     }
 
