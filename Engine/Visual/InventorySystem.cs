@@ -19,7 +19,15 @@ public static class InventorySystem
     // ═══════════════════════ Equipment slots (paperdoll) ═══════════════════════
 
     public static readonly string[] EquipSlots =
-        ["Head", "Body", "Legs", "Weapon", "Shield", "Accessory"];
+        ["Head", "Body", "Legs", "Weapon", "Shield", "Hair", "Shoes",
+         "Head Accessories 1", "Head Accessories 2",
+         "Body Accessories 1", "Body Accessories 2",
+         "Legs Accessories 1", "Legs Accessories 2"];
+
+    // NOTE: slot "Accessory" DIHAPUS (permintaan user — diganti slot accessories
+    // spesifik di atas). Item lama dengan EquipSlot="Accessory" TETAP berfungsi:
+    // Equipment.Equip tidak memvalidasi terhadap array ini (slot = custom key) dan
+    // CollectEquipmentLayersForDraw me-render slot di luar paperdoll via union.
 
     // ═══════════════════════ Item definition ═══════════════════════
 
@@ -62,7 +70,7 @@ public static class InventorySystem
         /// <summary>Stacking order among equipped art layers on one character — higher
         /// draws IN FRONT (armor 1 over shirt 0); negative renders BEHIND the base
         /// sprite (capes/back items). Two items on the same layer stack in paperdoll
-        /// order (Head→Body→Legs→Weapon→Shield→Accessory).</summary>
+        /// order (Head→Body→Legs→Weapon→Shield→Hair→Shoes→accessory slots).</summary>
         public int EquipLayer;
         /// <summary>World-unit nudge for the equipped art from the character's
         /// bottom-center (X mirrors with facing).</summary>
@@ -951,7 +959,10 @@ public static class InventorySystem
 
         float iconSize = MathF.Max(0.28f, playerHeight * 0.22f);
         float y = feetY + playerHeight + iconSize * 0.65f;
-        int shown = 0;
+        // Collect first, then center on the ACTUAL equipped count — the strip used
+        // to hardcode a 6-slot center AND a 6-icon cap, both wrong for the
+        // 13-slot paperdoll (slot 7+ would silently disappear).
+        _hotbarIcons.Clear();
         foreach (var slotName in EquipSlots)
         {
             string id = equip.Get(slotName);
@@ -961,7 +972,13 @@ public static class InventorySystem
             uint tex = GetIconTexture(def);
             if (tex == 0) continue;
             var (u0, vTop, u1, vBottom) = GetIconUV(def);
-            float x = feetX + (shown - 2.5f) * (iconSize * 1.15f) - iconSize * 0.5f;
+            _hotbarIcons.Add((tex, u0, vTop, u1, vBottom));
+        }
+        float centerOff = (_hotbarIcons.Count - 1) * 0.5f;
+        for (int i = 0; i < _hotbarIcons.Count; i++)
+        {
+            var (tex, u0, vTop, u1, vBottom) = _hotbarIcons[i];
+            float x = feetX + (i - centerOff) * (iconSize * 1.15f) - iconSize * 0.5f;
             // Slot-colored backing tile (slightly larger) + the icon over it.
             Effect2DSystem.PushQuad(Effect2DSystem.GetProceduralTexture(Effect2DSystem.TexSquare),
                 x - iconSize * 0.08f, y - iconSize * 0.08f, iconSize * 1.16f, iconSize * 1.16f,
@@ -969,8 +986,9 @@ public static class InventorySystem
             // World batch corners: BL/BR take the BOTTOM v, TL/TR the TOP v.
             Effect2DSystem.PushQuad(tex, x, y, iconSize, iconSize, u0, vBottom, u1, vTop,
                 new Vector4(1f, 1f, 1f, 1f), 0.09f);
-            shown++;
-            if (shown >= 6) break;
         }
     }
+
+    // Scratch strip for RenderEquippedHotbar (no per-frame allocation).
+    private static readonly List<(uint Tex, float U0, float VTop, float U1, float VBottom)> _hotbarIcons = new();
 }

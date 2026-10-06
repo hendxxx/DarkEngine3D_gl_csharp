@@ -271,7 +271,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                         ImGui.EndCombo();
                     }
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Bentuk fokus DoF:\nGeometric Circle = Lingkaran fokus manual/target.\nPlayer Sprite = Siluet presisi animasi Player (bukan bentuk geometri).\nSprite2D Layer = Siluet semua sprite di Render Layer terpilih.\nPlayer + Sprite2D Layer = Gabungan Player dan Sprite layer.\nHybrid = Lingkaran fokus + Siluet Player bersamaan.");
+                        ImGui.SetTooltip("DoF focus shape:\nGeometric Circle = manual/target focus circle.\nPlayer Sprite = precise silhouette of the Player's animation (not a geometric shape).\nSprite2D Layer = silhouette of all sprites on the selected Render Layer.\nPlayer + Sprite2D Layer = Player and sprite layers combined.\nHybrid = Focus circle + Player silhouette at the same time.");
 
                     if (ImGui.SliderFloat("Blur Strength", ref _dofMaxBlur, 0f, 24f, "%.1f"))
                     {
@@ -296,7 +296,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             PersistAndNotify(_dofInvertMask ? "DoF Inverted (Blur on sprite)" : "DoF Normal (Sprite sharp)");
                         }
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Normal (OFF): Sprite Player tajam, background sekelilingnya yang blur.\nInvert (ON): Sprite Player yang kena blur, background sekelilingnya tajam.");
+                            ImGui.SetTooltip("Normal (OFF): the Player sprite is sharp, the surrounding background is blurred.\nInvert (ON): the Player sprite gets blurred, the surrounding background stays sharp.");
 
                         if (_dofFocusShape == 2 || _dofFocusShape == 3)
                         {
@@ -336,7 +336,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                                     ImGui.EndCombo();
                                 }
                                 if (ImGui.IsItemHovered())
-                                    ImGui.SetTooltip("Pilih layer Map Editor yang tile-nya ikut masuk ke DoF mask.\nLayer yang sama di Map Editor dan Inspector akan membuat animasi sprite + tile tampak tajam bersamaan.");
+                                    ImGui.SetTooltip("Pick the Map Editor layer whose tiles join the DoF mask.\nThe same layer in Map Editor and Inspector keeps sprite animation + tiles sharp together.");
                             }
                             else
                             {
@@ -347,7 +347,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                                     PersistAndNotify();
                                 }
                                 if (ImGui.IsItemHovered())
-                                    ImGui.SetTooltip("Render Layer mana yang siluetnya dipakai.\nHarus sama dengan Render Layer objek Sprite2D di Inspector.\n(Muat tilemap di Map Editor untuk melihat nama layer.)");
+                                    ImGui.SetTooltip("Which Render Layer's silhouette is used.\nMust match the Sprite2D object's Render Layer in the Inspector.\n(Load the tilemap in the Map Editor to see the layer names.)");
                             }
                         }
 
@@ -357,7 +357,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             PersistAndNotify();
                         }
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Seberapa jauh siluet membesar dari alpha asli (mask texel ≈ 2px scene).\n0 = piksel sempurna, 2-3 = tepi sprite tetap tajam walau blur makan tepi.");
+                            ImGui.SetTooltip("How far the silhouette expands from the original alpha (mask texel ≈ 2px scene).\n0 = pixel perfect, 2-3 = sprite edges stay sharp even as the blur eats the edge.");
 
                         if (ImGui.SliderFloat("Alpha Bias", ref _dofSpriteAlphaBias, 0f, 0.5f, "%.2f"))
                         {
@@ -365,7 +365,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             PersistAndNotify();
                         }
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Menambah coverage alpha: pixel semi-transparan ikut dianggap dalam fokus.");
+                            ImGui.SetTooltip("Adds alpha coverage: semi-transparent pixels count as in focus too.");
 
                         if (ImGui.Checkbox("Debug: Mask Only", ref _dofSpriteMaskOnly))
                         {
@@ -373,7 +373,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             PersistAndNotify();
                         }
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Debug: Hanya gunakan mask siluet untuk memverifikasi bentuk mask.");
+                            ImGui.SetTooltip("Debug: use only the silhouette mask to verify the mask shape.");
                     }
 
                     // ── Geometric Circle controls (shown only when Circle or Hybrid is active) ──
@@ -399,7 +399,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             ImGui.EndCombo();
                         }
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Apa yang dikejar lingkaran tajam:\nManual = geser slider Focus X/Y sendiri.\nFollow Player = mengikuti Player2D (juga saat main).\nHovered Tile = tile di bawah kursor (edit mode).\nHovered Object = objek di bawah kursor (edit mode).\nSelected Object = objek terpilih (rata-rata kalau multi).");
+                            ImGui.SetTooltip("What the sharp circle chases:\nManual = move the Focus X/Y sliders yourself.\nFollow Player = follows Player2D (also while playing).\nHovered Tile = the tile under the cursor (edit mode).\nHovered Object = the object under the cursor (edit mode).\nSelected Object = the selected object (averaged when multi).");
 
                         if (_dofFocusTarget != 0)
                         {
@@ -409,11 +409,11 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                                 PersistAndNotify();
                             }
                             if (ImGui.IsItemHovered())
-                                ImGui.SetTooltip("Seberapa cepat fokus mengejar target yang bergerak.\n1 = santai mengalir, 30 = menempel kencang.");
+                                ImGui.SetTooltip("How fast the focus chases a moving target.\n1 = relaxed flow, 30 = glued on tight.");
 
                             ImGui.TextColored(new Vector4(0.7f, 0.8f, 0.95f, 1f),
                                 $"Live focus: {PostFxSettings.DofFocusX:F2}, {PostFxSettings.DofFocusY:F2}");
-                            ImGui.TextDisabled("Posisi dikendalikan target — slider manual disembunyikan.");
+                            ImGui.TextDisabled("Position driven by the target — the manual sliders are hidden.");
                         }
                         else
                         {

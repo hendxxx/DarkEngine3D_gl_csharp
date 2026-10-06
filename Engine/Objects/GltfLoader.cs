@@ -140,7 +140,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             if (R32(raw, 0) != 0x46546C67u) throw new Exception("Bukan file GLB valid!");
 
             uint jsonLen = R32(raw, 12);
-            if (R32(raw, 16) != 0x4E4F534Au) throw new Exception("Chunk JSON tidak ditemukan!");
+            if (R32(raw, 16) != 0x4E4F534Au) throw new Exception("JSON chunk not found!");
             string json = Encoding.UTF8.GetString(raw, 20, (int)jsonLen);
 
             // Cari chunk BIN

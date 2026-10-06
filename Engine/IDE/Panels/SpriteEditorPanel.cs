@@ -55,6 +55,25 @@ public class SpriteEditorPanel
 
     // ── Sprite sheets ──
     public List<SpriteSheet> SpriteSheets = new();
+
+    /// <summary>Sprite Sheets section new imports land in (Import / drag-and-drop /
+    /// pattern exports). Defaults to Base; moves to the selected sheet's category when
+    /// one is selected.</summary>
+    private SpriteSheetCategory _nextImportCategory = SpriteSheetCategory.Base;
+
+    /// <summary>Multi-selected sheet indexes (Sprite Sheets list). ALWAYS contains
+    /// `_selectedSheetIdx` (the primary selection drives Sheet Settings + the preview);
+    /// extra entries extend it: Ctrl+Click toggles, Shift+Click adds the range,
+    /// a plain click (or re-click on the primary) clears it. Enforced by the clamps in
+    /// OnProjectChanged / LoadSheetsFromFile / Delete Sheet / undo ApplyStateSnapshot —
+    /// NEVER cleared blindly there (that would flash the set empty every load) but
+    /// rebuilt from the surviving indexes.</summary>
+    private readonly HashSet<int> _multiSelectedSheets = new();
+
+    /// <summary>True when a Shift+Click extended the previous range (never shrink a
+    /// range) — a plain click runs AFTER it on the same list and must not drag the old
+    /// range into the new one.</summary>
+    private bool _sheetRangeAnchored;
     private int _selectedSheetIdx = -1;
     private SpriteSheet? SelectedSheet => _selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count
         ? SpriteSheets[_selectedSheetIdx] : null;
@@ -183,35 +202,49 @@ public class SpriteEditorPanel
             ImGui.SameLine();
             if (SelectedSheet != null && ImGui.Button("Delete Sheet"))
             {
-                SpriteSheets.RemoveAt(_selectedSheetIdx);
-                _selectedSheetIdx = Math.Min(_selectedFrameIdx, SpriteSheets.Count - 1);
+                // Delete EVERY selected sheet (multi-select): the highest index first so
+                // the remaining removes never shift an index still in the set.
+                var doomed = MultiSelectedSheetIndexes();
+                foreach (int idx in doomed.OrderByDescending(x => x))
+                    SpriteSheets.RemoveAt(idx);
+                int nearest = doomed.Min(); // smallest removed index = the slot that replaced them
+                _selectedSheetIdx = Math.Min(nearest, SpriteSheets.Count - 1);
+                _multiSelectedSheets.Clear(); // indexes shifted — a stale set would point at the wrong sheets
+                _sheetRangeAnchored = false;
             }
             ImGui.SameLine();
+            if (SelectedSheet != null)
+                ImGui.TextDisabled($"+ {_multiSelectedSheets.Count} selected (multi)");
             if (ImGui.Button("Save"))
                 SaveAllSheets();
             ImGui.SameLine();
             if (ImGui.Button("Load"))
                 LoadAllSheetsDialog();
             ImGui.SameLine();
-            ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips)");
+            if (ImGui.Button("Auto Load"))
+                AutoLoadProjectSheets();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Load sheets + clips from the project file (Assets/Sprites/sprites.sheets.json)\n+ merge sheets/clips from *-sprite-anim.json (pattern exports).\nAuto-load on project open was REMOVED — click this to load manually.\nRequires an open project.");
+            ImGui.SameLine();
+            ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips) — click = select, Ctrl+Click = toggle, Shift+Click = range");
 
             // ── Export row (new line): free-path JSON save + pattern batch auto-clip ──
             if (ImGui.Button("Save As JSON"))
                 SaveAsJsonDialog();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Simpan sheets + clips ke file JSON di PATH BEBAS (folder pilihanmu).\nFormat sama dengan Save (sprites.sheets.json) — bisa dibuka lagi lewat Load.");
+                ImGui.SetTooltip("Save sheets + clips to a JSON file at a FREE PATH (folder of your choice).\nSame format as Save (sprites.sheets.json) — can be reopened via Load.");
             ImGui.SameLine();
             ImGui.BeginDisabled(SelectedSheet == null);
             if (ImGui.Button("Save As Pattern"))
                 SaveAsPattern();
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip("Auto-clip per BARIS memakai pattern sheet ini (grid + padding/offset + flip + master box).\nAction per baris diambil dari kolom 'Pattern actions' (dipisah '|');\nbaris melebihi jumlah nama TIDAK disimpan.\nframe kosong (alpha 0) di-skip, FPS = jumlah frame, nama <sheet>-<clip>\nDijalankan untuk SEMUA file gambar di folder yang sama;\nhasil per file: <nama file>-sprite-anim.json");
+                ImGui.SetTooltip("Auto-clip per ROW using this pattern sheet (grid + padding/offset + flip + master box).\nAction per row comes from the 'Pattern actions' column (split by '|');\nrows beyond the number of names are NOT saved.\nempty frames (alpha 0) are skipped, FPS = frame count, name <sheet>-<clip>\nRuns for ALL image files in the same folder;\noutput per file: <file name>-sprite-anim.json");
 
             // ── Free-text action list (defines HOW MANY actions + their names) ──
             ImGui.Text("Pattern actions");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Nama action PER BARIS, dipisah '|', urut dari baris atas.\nDefault: idle|walk|run|jump start|jump end|attack|dead\nSheet 1 baris: cukup ketik 'effect' -> clip <sheet>-effect\nJumlah nama = jumlah action yang DISIMPAN (baris melebihi nama tidak dibuat).\nKosong = kembali ke default. jump start/jump end/attack/dead main SEKALI;\naction lain (termasuk custom seperti 'effect') LOOP.\nDipakai tombol Save As Pattern; tersimpan di file save (ikut Save/Load).");
+                ImGui.SetTooltip("Action names PER ROW, split by '|', ordered from the top row.\nDefault: idle|walk|run|jump start|jump end|attack|dead\nSingle-row sheet: just type 'effect' -> clip <sheet>-effect\nNumber of names = number of actions SAVED (rows beyond the names are not created).\nEmpty = back to the default. jump start/jump end/attack/dead play ONCE;\nother actions (including custom ones like 'effect') LOOP.\nUsed by the Save As Pattern button; stored in the save file (follows Save/Load).");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(-1f);
             ImGui.InputTextWithHint("##pattern_actions", "idle|walk|run|jump start|jump end|attack|dead",
@@ -219,25 +252,54 @@ public class SpriteEditorPanel
 
             ImGui.Separator();
 
-            // ── Sheet list ──
+            // ── Sheet list (grouped into 4 sections: Base / FX / Base Equipment / Items) ──
             if (ImGui.CollapsingHeader("Sprite Sheets", ImGuiTreeNodeFlags.DefaultOpen))
             {
-                for (int i = 0; i < SpriteSheets.Count; i++)
+                // Category combo first — it sets which section the NEXT import lands in.
+                ImGui.SetNextItemWidth(-ImGui.GetFrameHeightWithSpacing());
+                if (ImGui.BeginCombo("##sheet_category", CategoryLabel(
+                        _selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count
+                            ? SpriteSheets[_selectedSheetIdx].Category
+                            : _nextImportCategory)))
                 {
-                    bool isSelected = i == _selectedSheetIdx;
-                    if (ImGui.Selectable($"{SpriteSheets[i].Name}##{i}", isSelected))
+                    foreach (SpriteSheetCategory cat in Enum.GetValues<SpriteSheetCategory>())
                     {
-                        _selectedSheetIdx = i;
-                        _selectedFrameIdx = -1;
-                        LoadSheetSettings();
-                        // Reset the Animation Preview range to this sheet's frame count
-                        // (End = count-1) — the previous sheet's range is invalid here.
-                        _animStartFrame = 0;
-                        _animEndFrame = Math.Max(0, SpriteSheets[i].FrameCount - 1);
-                        _animTime = 0f;
-                        _currentPreviewFrame = 0;
-                        if (_selectedClipIdx >= AnimationClips.Count)
-                            _selectedClipIdx = AnimationClips.Count - 1;
+                        if (ImGui.Selectable(CategoryLabel(cat),
+                                cat == (_selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count
+                                    ? SpriteSheets[_selectedSheetIdx].Category
+                                    : _nextImportCategory)))
+                        {
+                            // Sheets are selected → re-categorize ALL of them (multi-select).
+                            // Nothing selected → set the section new imports land in.
+                            if (_selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count)
+                            {
+                                foreach (int mi in MultiSelectedSheetIndexes())
+                                    SpriteSheets[mi].Category = cat;
+                                _nextImportCategory = cat;
+                            }
+                            else
+                                _nextImportCategory = cat;
+                        }
+                    }
+                    ImGui.EndCombo();
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Sprite Sheets section: with a sheet selected this re-categorizes it\n(with nothing selected it sets the section new imports land in).\nSections are saved per sheet in sprites.sheets.json.");
+
+                foreach (SpriteSheetCategory cat in Enum.GetValues<SpriteSheetCategory>())
+                {
+                    int count = 0;
+                    for (int i = 0; i < SpriteSheets.Count; i++)
+                        if (SpriteSheets[i].Category == cat) count++;
+                    string header = $"{CategoryLabel(cat)} ({count})"; // count is DISPLAY ONLY — a section never owns its sheets
+                    bool open = ImGui.CollapsingHeader(header);
+                    if (!open) continue;
+                    for (int i = 0; i < SpriteSheets.Count; i++)
+                    {
+                        if (SpriteSheets[i].Category != cat) continue;
+                        bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
+                        if (ImGui.Selectable($"{SpriteSheets[i].Name}##{i}", isSelected))
+                            HandleSheetListClick(i);
                     }
                 }
             }
@@ -309,13 +371,13 @@ public class SpriteEditorPanel
                     if (ImGui.Checkbox("Flip Y (vertical mirror)", ref flipY))
                         SelectedSheet.FlipY = flipY;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Cermin vertikal (Flip Y) untuk semua frame sheet ini.\nDefault OFF. Art yang tergambar terbalik di file sumber\nakan tampil benar saat dirender (Player2D, Sprite2D, DoF mask,\ndan preview editor ini). Tersimpan di data sheet.");
+                        ImGui.SetTooltip("Vertical mirror (Flip Y) for all frames of this sheet.\nDefault OFF. Art drawn upside-down in the source file\nwill display correctly when rendered (Player2D, Sprite2D, DoF mask,\nand this editor preview). Stored in the sheet data.");
 
                     bool flipX = SelectedSheet.FlipX;
                     if (ImGui.Checkbox("Flip X (horizontal mirror)", ref flipX))
                         SelectedSheet.FlipX = flipX;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Cermin horizontal (Flip X / HFlip) untuk semua frame sheet ini.\nDefault OFF. Art yang menghadap arah salah di file sumber tampil\ntercermin saat dirender. Gabungan dengan facing object:\ndua cermin horizontal saling meniadakan (FlipX + hadap kiri = normal).\nTersimpan di data sheet.");
+                        ImGui.SetTooltip("Horizontal mirror (Flip X / HFlip) for all frames of this sheet.\nDefault OFF. Art facing the wrong way in the source file displays\nmirrored when rendered. Combined with the object's facing:\ntwo horizontal mirrors cancel out (FlipX + facing left = normal).\nStored in the sheet data.");
                 }
 
                 ImGui.Separator();
@@ -518,6 +580,7 @@ public class SpriteEditorPanel
 
             _selectedSheetIdx = SpriteSheets.Count > 0
                 ? Math.Clamp(_selectedSheetIdx, 0, SpriteSheets.Count - 1) : -1;
+            _multiSelectedSheets.RemoveWhere(i => i < 0 || i >= SpriteSheets.Count); // undo snapshot: keep the in-bounds extras
             _selectedClipIdx = AnimationClips.Count > 0
                 ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
             _selectedFrameIdx = -1;
@@ -1561,7 +1624,7 @@ public class SpriteEditorPanel
         {
             try
             {
-                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions);
+                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions, _nextImportCategory);
                 if (clips.Count == 0)
                 {
                     Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
@@ -1610,7 +1673,7 @@ public class SpriteEditorPanel
     /// + its per-row clips from the parsed action names. Frame emptiness comes from
     /// the image's alpha channel.</summary>
     private static (SpriteSheetData sheet, List<AnimationClip2DData> clips) BuildPatternForFile(
-        SpriteSheet pattern, string imagePath, string[] actionNames)
+        SpriteSheet pattern, string imagePath, string[] actionNames, SpriteSheetCategory category)
     {
         ImageResult image;
         using (var stream = File.OpenRead(imagePath))
@@ -1621,6 +1684,7 @@ public class SpriteEditorPanel
         {
             Name = name,
             ImagePath = imagePath,
+            Category = category,
             ImageWidth = image.Width,
             ImageHeight = image.Height,
             // Pattern = the source sheet's settings verbatim (grid + padding/offset
@@ -1779,6 +1843,7 @@ public class SpriteEditorPanel
         // 3) Keep sheet selection + preview range valid after removals/additions.
         if (_selectedSheetIdx >= SpriteSheets.Count)
             _selectedSheetIdx = SpriteSheets.Count - 1;
+        _multiSelectedSheets.RemoveWhere(i => i < 0 || i >= SpriteSheets.Count); // pattern refresh pruned sheets — drop dead indexes
         if (SelectedSheet != null)
         {
             LoadSheetSettings();
@@ -1891,6 +1956,7 @@ public class SpriteEditorPanel
             }
             ClearUndoHistory();
             _selectedSheetIdx = SpriteSheets.Count > 0 ? 0 : -1;
+            _multiSelectedSheets.Clear(); // a loaded file = a fresh list — no stale extras
             _selectedFrameIdx = -1;
             _selectedClipIdx = -1;
             if (SelectedSheet != null) LoadSheetSettings();
@@ -1924,7 +1990,9 @@ public class SpriteEditorPanel
         }
     }
 
-    /// <summary>Auto-load sprite sheets when a project is opened.</summary>
+    /// <summary>Reset the sprite editor when the project changes (close/open).
+    /// Sheets are NOT auto-loaded anymore (user request) — use the
+    /// "Auto Load" toolbar button instead.</summary>
     public void OnProjectChanged(string? projectRoot)
     {
         SpriteSheets.Clear();
@@ -1933,18 +2001,32 @@ public class SpriteEditorPanel
         _autoLoadedPatternSheets.Clear();
         _patternActions = DefaultPatternActions;
         _selectedSheetIdx = -1;
+        _multiSelectedSheets.Clear();
         _selectedFrameIdx = -1;
         _selectedClipIdx = -1;
         _previewTextures.Clear();
         ClearUndoHistory();
 
-        if (!string.IsNullOrEmpty(projectRoot))
+        // Auto-load saat project open DIHAPUS (permintaan user) — sheets + pattern
+        // exports kini dimuat manual lewat tombol "Auto Load" di toolbar.
+    }
+
+    /// <summary>Manual replacement of the removed project-open auto-load:
+    /// canonical sprites.sheets.json + *-sprite-anim.json pattern-export merge,
+    /// on demand. Same behavior the old OnProjectChanged auto-load had.</summary>
+    public void AutoLoadProjectSheets()
+    {
+        if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
-            string path = Path.Combine(projectRoot, "Assets", "Sprites", "sprites.sheets.json");
-            if (File.Exists(path))
-                LoadSheetsFromFile(path); // TryLoad sidecar di dalam (JSON fallback tetap utuh)
-            LoadPatternExports(); // auto-load *-sprite-anim.json (sheet + clips)
+            Console.WriteLine("[SpriteEditor] Auto Load skipped: no project open");
+            return;
         }
+        string path = GetDefaultSavePath();
+        if (File.Exists(path))
+            LoadSheetsFromFile(path); // TryLoad sidecar di dalam (JSON fallback tetap utuh)
+        else
+            Console.WriteLine($"[SpriteEditor] Auto Load: no sheets file at {path}");
+        LoadPatternExports(); // auto-load *-sprite-anim.json (sheet + clips)
     }
 
     /// <summary>Import a sprite sheet from a direct file path (used by drag-and-drop).</summary>
@@ -1956,6 +2038,7 @@ public class SpriteEditorPanel
         {
             Name = Path.GetFileNameWithoutExtension(path),
             ImagePath = path,
+            Category = _nextImportCategory,
             Columns = _editCols,
             Rows = _editRows,
             FrameWidth = _editFrameW,
@@ -2008,12 +2091,7 @@ public class SpriteEditorPanel
         sheet.BakeUniformFrames();
         SpriteSheets.Add(sheet);
         _selectedSheetIdx = SpriteSheets.Count - 1;
-        _newSheetName = sheet.Name;
-        // New sheet: Animation Preview defaults to the FULL frame range (End = count-1).
-        _animStartFrame = 0;
-        _animEndFrame = Math.Max(0, sheet.FrameCount - 1);
-        _animTime = 0f;
-        _currentPreviewFrame = 0;
+        _multiSelectedSheets.Clear(); // a fresh import = a single selection
         LoadPreviewTexture(path);
 
         Console.WriteLine($"[SpriteEditor] Imported via drag: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
@@ -2029,6 +2107,7 @@ public class SpriteEditorPanel
             {
                 Name = System.IO.Path.GetFileNameWithoutExtension(path),
                 ImagePath = path,
+                Category = _nextImportCategory,
                 Columns = _editCols,
                 Rows = _editRows,
                 FrameWidth = _editFrameW,
@@ -2082,6 +2161,7 @@ public class SpriteEditorPanel
             sheet.BakeUniformFrames();
             SpriteSheets.Add(sheet);
             _selectedSheetIdx = SpriteSheets.Count - 1;
+            _multiSelectedSheets.Clear(); // a fresh import = a single selection
             _newSheetName = sheet.Name;
             // New sheet: Animation Preview defaults to the FULL frame range (End = count-1).
             _animStartFrame = 0;
@@ -2125,6 +2205,103 @@ public class SpriteEditorPanel
         {
             Console.WriteLine($"[SpriteEditor] Failed to load preview texture: {ex.Message}");
         }
+    }
+
+    /// <summary>Display label for a Sprite Sheets section (the sheet-list grouping).
+    /// Plain ASCII — these labels are also serialized in the JSON file.</summary>
+    private static string CategoryLabel(SpriteSheetCategory cat) => cat switch
+    {
+        SpriteSheetCategory.FX => "FX",
+        SpriteSheetCategory.BaseEquipment => "Base Equipment",
+        SpriteSheetCategory.Items => "Items",
+        _ => "Base"
+    };
+
+    /// <summary>All currently selected sheet indexes, ascending, always valid and
+    /// always containing the primary `_selectedSheetIdx`. The one accessor the delete /
+    /// re-categorize / hint paths use — keeps the multi-set and the primary in sync.</summary>
+    private List<int> MultiSelectedSheetIndexes()
+    {
+        var result = new List<int>();
+        if (_selectedSheetIdx < 0 || _selectedSheetIdx >= SpriteSheets.Count)
+            return result;
+        result.Add(_selectedSheetIdx);
+        foreach (int i in _multiSelectedSheets)
+            if (i >= 0 && i < SpriteSheets.Count && i != _selectedSheetIdx)
+                result.Add(i);
+        result.Sort();
+        return result;
+    }
+
+    /// <summary>One Sprite Sheets list click (multi-select): plain click = select only
+    /// this sheet; Ctrl+Click = toggle it in/out around the current primary; Shift+Click
+    /// = extend the range from the previous primary to here (never shrinks — afterwards a
+    /// plain click must NOT drag the old range along, see `_sheetRangeAnchored`). The
+    /// clicked sheet always becomes the primary: Sheet Settings + the preview follow it
+    /// exactly like a single-selection click always did.</summary>
+    private void HandleSheetListClick(int i)
+    {
+        bool ctrl = ImGui.GetIO().KeyCtrl;
+        bool shift = ImGui.GetIO().KeyShift;
+        int previousPrimary = _selectedSheetIdx;
+
+        if (shift && previousPrimary >= 0 && previousPrimary < SpriteSheets.Count)
+        {
+            _selectedSheetIdx = i;
+            AddMultiSelectedSheetRange(previousPrimary, i);
+            _sheetRangeAnchored = true;
+        }
+        else if (ctrl)
+        {
+            _selectedSheetIdx = i;
+            if (!_multiSelectedSheets.Add(i))
+            {
+                // Already in the set: if this was the PRIMARY, the click removes it from
+                // the selection — promote another member so Sheet Settings keep a sheet.
+                _multiSelectedSheets.Remove(i);
+                _selectedSheetIdx = _multiSelectedSheets.Count > 0 ? _multiSelectedSheets.Min() : i;
+                if (_selectedSheetIdx != i)
+                    _multiSelectedSheets.Add(i); // demote the old primary to a normal member
+            }
+            _sheetRangeAnchored = false;
+        }
+        else
+        {
+            // Plain click: previously a Shift+Click ran → EXTEND (keep the range); the
+            // plain click right after a plain click (anchor down) = fresh single select.
+            if (_sheetRangeAnchored)
+            {
+                _selectedSheetIdx = i;
+                _multiSelectedSheets.Add(i);
+                _sheetRangeAnchored = false;
+            }
+            else
+            {
+                _multiSelectedSheets.Clear();
+                _selectedSheetIdx = i;
+            }
+        }
+
+        _selectedFrameIdx = -1;
+        LoadSheetSettings();
+        _nextImportCategory = SpriteSheets[i].Category; // next import lands in the clicked sheet's section
+        // Reset the Animation Preview range to this sheet's frame count
+        // (End = count-1) — the previous sheet's range is invalid here.
+        _animStartFrame = 0;
+        _animEndFrame = Math.Max(0, SpriteSheets[i].FrameCount - 1);
+        _animTime = 0f;
+        _currentPreviewFrame = 0;
+        if (_selectedClipIdx >= AnimationClips.Count)
+            _selectedClipIdx = AnimationClips.Count - 1;
+    }
+
+    /// <summary>Add every index between a and b (inclusive) to the multi-selection set
+    /// without touching the primary. Works across sections — a range is a list range.</summary>
+    private void AddMultiSelectedSheetRange(int a, int b)
+    {
+        int lo = Math.Min(a, b), hi = Math.Max(a, b);
+        for (int k = lo; k <= hi && k < SpriteSheets.Count; k++)
+            _multiSelectedSheets.Add(k);
     }
 
     private void LoadSheetSettings()

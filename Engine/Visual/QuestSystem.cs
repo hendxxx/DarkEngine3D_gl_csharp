@@ -125,11 +125,11 @@ public static class QuestSystem
         var def = GetQuest(questId);
         if (def == null)
         {
-            def = new QuestDef { Id = questId, Name = questId, Description = "(belum diatur - tambahkan di Assets/Quests/quests.json)" };
+            def = new QuestDef { Id = questId, Name = questId, Description = "(not set up yet - add it in Assets/Quests/quests.json)" };
             Quests.Add(def);
             Console.WriteLine($"[Quest] Auto-registered placeholder for '{questId}'");
         }
-        InventoryHud.PushFlash($"Quest baru: {def.Name}");
+        InventoryHud.PushFlash($"New quest: {def.Name}");
         Console.WriteLine($"[Quest] Tracker → '{def.Name}' active");
     }
 
@@ -138,7 +138,7 @@ public static class QuestSystem
     {
         var def = GetQuest(questId);
         string name = def?.Name ?? questId;
-        InventoryHud.PushFlash($"[OK] Quest selesai: {name}");
+        InventoryHud.PushFlash($"[OK] Quest complete: {name}");
         Console.WriteLine($"[Quest] Tracker → '{name}' done");
     }
 }
@@ -318,12 +318,12 @@ public static class QuestHud
         float ty = by + bannerH + pad * 0.6f;
 
         // ── AKTIF ──
-        hud.DrawText("== AKTIF ==", tx, ty, InkBrown, null, 0f, lf);
+        hud.DrawText("== ACTIVE ==", tx, ty, InkBrown, null, 0f, lf);
         ty += lineStep;
         if (active.Count == 0)
         {
-            hud.DrawText("Belum ada quest aktif. Bicara dengan NPC bertanda \"!\".", tx, ty, InkSoft, null, 0f, lf);
-            HUD.TextOut(tx, ty, "Belum ada quest aktif. Bicara dengan NPC bertanda \"!\".", InkSoft, fontSizePx: 14f);
+            hud.DrawText("No active quest yet. Talk to NPCs marked with \"!\".", tx, ty, InkSoft, null, 0f, lf);
+            HUD.TextOut(tx, ty, "No active quest yet. Talk to NPCs marked with \"!\".", InkSoft, fontSizePx: 14f);
             ty += lineStep;
         }
         foreach (var q in active)
@@ -358,8 +358,8 @@ public static class QuestHud
             ty += lineStep * 0.4f;
             hud.DrawBox(tx, ty, bw - pad * 1.2f, 1.5f, WoodMid);
             ty += lineStep * 0.6f;
-            hud.DrawText("== SELESAI ==", tx, ty, InkSoft, null, 0f, lf);
-            HUD.TextOut(tx, ty, "== SELESAI ==", InkSoft, fontSizePx: 14f);
+            hud.DrawText("== DONE ==", tx, ty, InkSoft, null, 0f, lf);
+            HUD.TextOut(tx, ty, "== DONE ==", InkSoft, fontSizePx: 14f);
             ty += lineStep;
             foreach (var q in done)
             {

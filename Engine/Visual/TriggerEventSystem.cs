@@ -1164,7 +1164,7 @@ public static class TriggerEventSystem
                 int total = unitPrice * amount;
                 if (InventorySystem.Gold < total)
                 {
-                    InventoryHud.PushFlash($"Gold kurang! Butuh {total} Gold.");
+                    InventoryHud.PushFlash($"Not enough gold! Need {total} Gold.");
                     Console.WriteLine($"[Trigger] '{triggerName}' → Buy Item '{itemId}' ×{amount} FAILED: {InventorySystem.Gold}/{total} gold");
                     break;
                 }
@@ -1209,7 +1209,7 @@ public static class TriggerEventSystem
                 if (InventorySystem.Count(itemId) < amount)
                 
                 {
-                    Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item FAILED: '{itemId}' ×{amount} tidak tersedia");
+                    Console.WriteLine($"[Trigger] '{triggerName}' → Sell Item FAILED: '{itemId}' ×{amount} not in stock");
                     break;
                 }
                 int sold = InventorySystem.RemoveItem(itemId, amount);

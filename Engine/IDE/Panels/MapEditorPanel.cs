@@ -649,12 +649,12 @@ public class MapEditorPanel
             ImGui.EndCombo();
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Semua tilemap di scene ini. Pilih untuk berganti target edit.\nTilemap AKTIF dipakai untuk melukis tile, collision, trigger,\ndan fisika player (preview/in-game). Map lain tetap dirender.");
+            ImGui.SetTooltip("All tilemaps in this scene. Pick one to switch the edit target.\nThe ACTIVE tilemap is used for painting tiles, collision, triggers,\nand player physics (preview/in-game). Other maps still render.");
          
         if (ImGui.Button("+ Add Tilemap"))
             CreateNewMap();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Tambah tilemap BARU sebagai level tambahan\n(level lama tidak dihapus). Nama dibuat unik otomatis.");
+            ImGui.SetTooltip("Add a NEW tilemap as an extra level\n(existing levels are untouched). The name is made unique automatically.");
 
         if (ActiveTilemap == null) return;
 
@@ -664,7 +664,7 @@ public class MapEditorPanel
             _showDeleteMapPopup = true;
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Hapus tilemap AKTIF dari scene: objek Map2D-nya dihapus\n(dan tilemap lain tidak tersentuh). File .tilemap.json di\nAssets/Maps ikut dihapus melalui popup konfirmasi.");
+            ImGui.SetTooltip("Remove the ACTIVE tilemap from the scene: its Map2D object is deleted\n(other tilemaps are untouched). The .tilemap.json file in\nAssets/Maps is also deleted via the confirmation popup.");
 
         ImGui.SameLine();
         if (ImGui.Button("Focus"))
@@ -684,13 +684,13 @@ public class MapEditorPanel
             if (owner != null) owner.Name = name;
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Nama tilemap aktif (juga dipakai sebagai nama file save\ndan nama objek Map2D di scene).");
+            ImGui.SetTooltip("Active tilemap name (also used as the save file name\nand the Map2D object name in the scene).");
 
         int palCols = ActiveTilemap.PaletteColumns;
         if (ImGui.SliderInt("Palette Columns##permap", ref palCols, 1, 32))
             ActiveTilemap.PaletteColumns = palCols;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Kolom palet tile khusus tilemap INI\n(tiap map punya tileset ukuran berbeda).");
+            ImGui.SetTooltip("Tile palette columns for THIS tilemap\n(each map has its own tileset size).");
 
         float palCell = ActiveTilemap.PaletteCellSize;
         if (ImGui.SliderFloat("Palette Cell##permap", ref palCell, 16f, 64f, "%.0f px"))
@@ -714,7 +714,7 @@ public class MapEditorPanel
         if (ImGui.ColorEdit4("##mapgridcolpermap", ref gCol, ImGuiColorEditFlags.NoInputs))
             ActiveTilemap.GridColor = gCol;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Grid peta + warnanya khusus tilemap INI\n(ditampilkan di viewport saat map aktif).");
+            ImGui.SetTooltip("Map grid + its color for THIS tilemap\n(shown in the viewport while the map is active).");
 
         // Keep the panel's live editing vars on the ACTIVE tilemap's values so the
         // toolbar checkboxes + palette below stay in perfect sync (two-way binding).
@@ -766,9 +766,9 @@ public class MapEditorPanel
         var target = ActiveTilemap;
         if (target == null) { ImGui.EndPopup(); return; }
 
-        ImGui.Text($"Hapus tilemap '{target.Name}' dari scene?");
-        ImGui.TextDisabled("Objek Map2D-nya dihapus; tilemap lain tidak tersentuh.");
-        ImGui.Checkbox("Juga hapus file Assets/Maps/<nama>.tilemap.json", ref _deleteTilemapFileToo);
+        ImGui.Text($"Delete tilemap '{target.Name}' from the scene?");
+        ImGui.TextDisabled("Its Map2D object is deleted; other tilemaps are untouched.");
+        ImGui.Checkbox("Also delete the Assets/Maps/<name>.tilemap.json file", ref _deleteTilemapFileToo);
         ImGui.Separator();
 
         if (ImGui.Button("Delete", new Vector2(120, 0)))
@@ -1494,7 +1494,7 @@ public class MapEditorPanel
         // Multi-tilemap: map grid + palette settings are PER-TILEMAP now (edited in the
         // tilemap section at the top of the panel) — tileset sizes differ per map.
         ImGui.TextDisabled("Map grid & palette: PER-TILEMAP —");
-        ImGui.TextDisabled("edit di bagian pilihan tilemap di atas.");
+        ImGui.TextDisabled("edit them in the tilemap section above.");
 
         ImGui.Separator();
         ImGui.Text("Viewport Grid (global editor):");
@@ -1655,42 +1655,42 @@ public class MapEditorPanel
         bool skipDone = trig.SkipWhenDone;
         if (ImGui.Checkbox("Skip When Done (chest pattern)", ref skipDone)) trig.SkipWhenDone = skipDone;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Setelah action 'Change Sprite' trigger ini terjalankan, SEMUA action SETELAHNYA di-skip\n\n(Chest: buka + drop item hanya SEKALI — masuk lagi tidak drop item lagi.\nAction SEBELUM Change Sprite tetap jalan setiap fire.)");
+            ImGui.SetTooltip("After this trigger's 'Change Sprite' action has run, ALL actions AFTER it are skipped\n\n(Chest: open + drop item only ONCE — re-entering does not drop items again.\nActions BEFORE Change Sprite still run on every fire.)");
 
         bool needKey = trig.RequireInteractKey;
-        if (ImGui.Checkbox("Perlu tekan tombol (interact)", ref needKey)) trig.RequireInteractKey = needKey;
+        if (ImGui.Checkbox("Requires a key press (interact)", ref needKey)) trig.RequireInteractKey = needKey;
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("ON: masuk area hanya meng-ARM trigger (badge [E] muncul seperti portal);\ntrigger FIRE saat pemain di dalam area menekan tombolnya. Cocok untuk chest:\njalan menembus area TIDAK otomatis membuka. On Enter harus tetap dicentang.");
+            ImGui.SetTooltip("ON: entering the area only ARMS the trigger (an [E] badge appears like portals);\nthe trigger FIRES while the player is inside the area and presses its key. Good for chests:\nwalking through the area does NOT auto-open. On Enter must stay checked.");
         if (trig.RequireInteractKey)
         {
             string keyBuf = trig.InteractKey;
             ImGui.SetNextItemWidth(70);
-            if (ImGui.InputText("Tombol##ikey", ref keyBuf, 16))
+            if (ImGui.InputText("Key##ikey", ref keyBuf, 16))
                 trig.InteractKey = keyBuf.Trim();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Nama ImGuiKey (default: E). Hanya tombol pertama yang dipakai runtime.");
+                ImGui.SetTooltip("ImGuiKey name (default: E). Only the first key is used at runtime.");
             ImGui.SameLine();
             ImGui.TextDisabled("(default: E)");
         }
 
         // ── Item-key lock (kondisi awal): chest terkunci sampai player punya itemnya ──
         string reqItem = trig.RequireItemId;
-        if (ImGui.InputText("Butuh Item (kunci)##reqitem", ref reqItem, 64))
+        if (ImGui.InputText("Requires Item (key)##reqitem", ref reqItem, 64))
             trig.RequireItemId = reqItem.Trim();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Item ID yang HARUS ada di inventory sebelum trigger boleh jalan\n(chest terkunci). Kosong = tidak terkunci. Contoh: 'key_gold'.");
+            ImGui.SetTooltip("Item ID that MUST be in the inventory before the trigger can run\n(locked chest). Empty = unlocked. Example: 'key_gold'.");
         var reqDef = Visual.InventorySystem.Find(trig.RequireItemId);
         if (!string.IsNullOrWhiteSpace(trig.RequireItemId))
         {
             if (reqDef != null)
                 ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {reqDef.Name} required");
             else
-                ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"? '{trig.RequireItemId}' belum terdaftar (Item Editor)");
+                ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), $"? '{trig.RequireItemId}' not registered (Item Editor)");
             string reqMsg = trig.RequireItemMessage;
-            if (ImGui.InputText("Pesan Terkunci##reqmsg", ref reqMsg, 96))
+            if (ImGui.InputText("Locked Message##reqmsg", ref reqMsg, 96))
                 trig.RequireItemMessage = reqMsg;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Pesan flash HUD saat player mencoba buka tanpa kunci.\nKosongkan untuk tanpa pesan (hanya log console).");
+                ImGui.SetTooltip("HUD flash message shown when the player tries to open without the key.\nLeave empty for no message (console log only).");
         }
 
         ImGui.SeparatorText($"Actions ({trig.Actions.Count})");
@@ -1728,16 +1728,16 @@ public class MapEditorPanel
                 case TriggerActionTypes.Portal:
                 case TriggerActionTypes.PortalOneWay:
                     if (ImGui.InputText("Portal tujuan", ref p1, 128)) act.Param = p1;
-                    ImGui.TextDisabled("'x,y' = koordinat world (kaki player), atau nama\nportal/trigger tujuan (dicari di semua tilemap).");
+                    ImGui.TextDisabled("'x,y' = world coordinates (player's feet), or the name\nof the target portal/trigger (searched across all tilemaps).");
                     if (act.Type == TriggerActionTypes.PortalOneWay)
-                        ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "1 arah: portal MENGHILANG (animasi Out lalu\nNotActive) setelah dipakai (muncul lagi saat reload).");
+                        ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "1-way: the portal VANISHES (an Out animation then\nNotActive) after use (reappears on reload).");
                     else
-                        ImGui.TextColored(new Vector4(0.5f, 0.9f, 0.6f, 1f), "2 arah: portal tetap ada — masuk lagi untuk kembali\nke asal (pasangkan dengan portal tujuannya).\nTujuan berupa nama portal: pemain tiba di tengah portal itu.");
+                        ImGui.TextColored(new Vector4(0.5f, 0.9f, 0.6f, 1f), "2-way: the portal stays — enter again to return\nto the origin (pair it with the destination portal).\nDestination = a portal name: the player arrives at that portal's center.");
                     break;
                 case TriggerActionTypes.EnablePortal:
                 case TriggerActionTypes.DisablePortal:
-                    if (ImGui.InputText("Nama portal", ref p1, 128)) act.Param = p1;
-                    ImGui.TextDisabled("Portal/trigger bernama ini diaktifkan/dinonaktifkan\n(nama sama di semua map ikut — pasangan portal mudah di-gate).\nPortal nonaktif: animasi NotActive + abaikan player.");
+                    if (ImGui.InputText("Portal name", ref p1, 128)) act.Param = p1;
+                    ImGui.TextDisabled("Portals/triggers with this name get enabled/disabled\n(same-name entries on all maps switch together — easy portal-pair gating).\nInactive portal: NotActive animation + ignores the player.");
                     break;
 
                 // ── Simple gameplay scripts + weather + inventory ──
@@ -1760,7 +1760,7 @@ public class MapEditorPanel
                     if (ImGui.Combo("Stat", ref statIdx, statOpts, statOpts.Length))
                         act.Param = statVals[statIdx];
                     if (ImGui.InputText("Delta", ref p2, 32)) act.Param2 = p2;
-                    ImGui.TextDisabled("HP -1, MP -1, +5, -10.5 … (positif = tambah).\nHasil di-clamp ke [0, Max] otomatis.");
+                    ImGui.TextDisabled("HP -1, MP -1, +5, -10.5 … (positive = add).\nThe result is clamped to [0, Max] automatically.");
                     break;
                 }
                 case TriggerActionTypes.Rain:
@@ -1773,12 +1773,12 @@ public class MapEditorPanel
                     if (ImGui.Combo("Mode", ref rainIdx, rainOpts, rainOpts.Length))
                         act.Param = rainVals[rainIdx];
                     if (ImGui.InputText("Intensity (0-1)", ref p2, 32)) act.Param2 = p2;
-                    ImGui.TextDisabled("Hujan global dengan arah angin (Set Wind).\nIntensity kosong = tetap seperti sebelumnya.");
+                    ImGui.TextDisabled("Global rain with a wind direction (Set Wind).\nEmpty intensity = keep the previous value.");
                     break;
                 }
                 case TriggerActionTypes.SetWind:
                     if (ImGui.InputText("Wind (u/s)", ref p1, 32)) act.Param = p1;
-                    ImGui.TextDisabled("Kecepatan angin dunia. Positif = ke kanan,\nnegatif = ke kiri. Miringkan hujan + dorong partikel.");
+                    ImGui.TextDisabled("World wind speed. Positive = to the right,\nnegative = to the left. Slants rain + pushes particles.");
                     break;
                 case TriggerActionTypes.SpawnEffect:
                 {
@@ -1789,14 +1789,14 @@ public class MapEditorPanel
                     if (ImGui.Combo("Preset", ref fxIdx, fxOpts, fxOpts.Length))
                         act.Param = fxOpts[fxIdx];
                     if (ImGui.InputText("Scale", ref p2, 32)) act.Param2 = p2;
-                    ImGui.TextDisabled("Ledakan partikel sekali di posisi player\n(Scale kosong/1 = normal, 2 = dua kali lipat).");
+                    ImGui.TextDisabled("One-shot particle explosion at the player's position\n(empty/1 Scale = normal, 2 = twice as big).");
                     break;
                 }
                 case TriggerActionTypes.SpawnProjectile:
                 {
                     if (ImGui.InputText("Sheet|Clip", ref p1, 160)) act.Param = p1;
                     if (ImGui.InputText("Speed,Dist,Gravity", ref p2, 80)) act.Param2 = p2;
-                    ImGui.TextDisabled("Projectile sprite terbang dari trigger ke arah player.\nParam: 'Sheet|Clip' (nama Sprite Editor).\nParam2: 'speed,maxDist,gravity' (kosong = 8,15,0).");
+                    ImGui.TextDisabled("A projectile sprite flies from the trigger toward the player.\nParam: 'Sheet|Clip' (Sprite Editor names).\nParam2: 'speed,maxDist,gravity' (empty = 8,15,0).");
                     break;
                 }
                 case TriggerActionTypes.GiveItem:
@@ -1809,12 +1809,12 @@ public class MapEditorPanel
                     if (ImGui.Checkbox("Drop (Magnet)##givedrop", ref asDrop))
                         act.Param3 = asDrop ? "Drop" : "";
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Drop: item muncul di dunia di dekat player lalu tersedot otomatis\ndengan animasi magnet (pickup klasik). Direct: langsung masuk inventory.");
+                        ImGui.SetTooltip("Drop: the item spawns in the world near the player and is auto-vacuumed\nwith a magnet animation (classic pickup). Direct: goes straight into the inventory.");
                     var def = Visual.InventorySystem.Find(p1.Trim());
                     if (def != null)
                         ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {def.Name} (max stack {def.MaxStack})");
                     else
-                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor.");
+                        ImGui.TextDisabled("Item ID not registered — create it in the Item Editor menu.");
                     break;
                 }
                 case TriggerActionTypes.RemoveItem:
@@ -1825,8 +1825,8 @@ public class MapEditorPanel
                     if (rdef != null)
                         ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {rdef.Name} (max stack {rdef.MaxStack})");
                     else
-                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor.");
-                    ImGui.TextDisabled("Mengambil item dari inventory (hand-in quest). Taruh di cabang dialogue\nyang sudah digate condition 'item:<id>>=N' supaya item hanya dipotong saat cukup.");
+                        ImGui.TextDisabled("Item ID not registered — create it in the Item Editor menu.");
+                    ImGui.TextDisabled("Takes the item from the inventory (quest hand-in). Put it on the dialogue branch\nalready gated by 'item:<id>>=N' so items are only removed when there are enough.");
                     break;
                 }
                 case TriggerActionTypes.BuyItem:
@@ -1836,13 +1836,13 @@ public class MapEditorPanel
                     if (ImGui.InputText("Amount##buyamt", ref p2, 32)) act.Param2 = p2;
                     if (ImGui.InputText("Harga (kosong = Price item)##buyprice", ref p3b, 32)) act.Param3 = p3b;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Harga per item. Kosong = pakai kolom Price di Item Editor.\n\"0\" = gratis. Pembayaran all-or-nothing: gold kurang = tidak jadi.");
+                        ImGui.SetTooltip("Price per item. Empty = uses the Price column in the Item Editor.\n\"0\" = free. Payment is all-or-nothing: not enough gold = cancelled.");
                     var bdef = Visual.InventorySystem.Find(p1.Trim());
                     if (bdef != null)
                         ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {bdef.Name} — Price {bdef.Price} Gold (max stack {bdef.MaxStack})");
                     else
-                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor (set Price!).");
-                    ImGui.TextDisabled("Pakai di choice dialogue dengan condition 'gold:<total>' supaya opsi beli\nhanya muncul saat gold cukup (contoh: beli 2 @30 → condition gold:60).");
+                        ImGui.TextDisabled("Item ID not registered — create it in the Item Editor menu (set its Price!).");
+                    ImGui.TextDisabled("Use on a dialogue choice with the 'gold:<total>' condition so the buy option\nonly appears when the gold is enough (e.g. buy 2 @30 → condition gold:60).");
                     break;
                 }
                 case TriggerActionTypes.SellItem:
@@ -1852,20 +1852,20 @@ public class MapEditorPanel
                     if (ImGui.InputText("Amount##sellamt", ref p2, 32)) act.Param2 = p2;
                     if (ImGui.InputText("Payout (kosong = Price/payout item)##sellprice", ref p3s, 32)) act.Param3 = p3s;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Gold yang diterima per item. Kosong = pakai kolom Price di Item Editor.\n\"0\" = tidak dibayar. Semua amount harus ada di inventory.");
+                        ImGui.SetTooltip("Gold received per item. Empty = uses the Price column in the Item Editor.\n\"0\" = no payout. The full amount must be in the inventory.");
                     var sdef = Visual.InventorySystem.Find(p1.Trim());
                     if (sdef != null)
                         ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {sdef.Name} — Payout {sdef.Price} Gold/pcs");
                     else
-                        ImGui.TextDisabled("Item ID belum terdaftar — buat di menu Item Editor (set Price!).");
-                    ImGui.TextDisabled("Pakai di choice dialogue dengan condition 'item:<id>>=N' supaya opsi jual\nhanya muncul saat stok cukup (contoh: jual 3 → condition item:Ember>=3).");
+                        ImGui.TextDisabled("Item ID not registered — create it in the Item Editor menu (set its Price!).");
+                    ImGui.TextDisabled("Use on a dialogue choice with the 'item:<id>>=N' condition so the sell option\nonly appears when the stock is enough (e.g. sell 3 → condition item:Ember>=3).");
                     break;
                 }
                 case TriggerActionTypes.OpenShop:
                 {
                     if (ImGui.InputText("Shop ID##shopid", ref p1, 64)) act.Param = p1;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Id shop dari panel Shop Editor (Assets/Shops/shops.json).\nPanel belanja terbuka di atas dialogue; Esc menutupnya.");
+                        ImGui.SetTooltip("Shop id from the Shop Editor panel (Assets/Shops/shops.json).\nThe shop panel opens on top of the dialogue; Esc closes it.");
                     if (Visual.ShopSystem.Shops.Count > 0)
                     {
                         foreach (var sh in Visual.ShopSystem.Shops)
@@ -1877,10 +1877,10 @@ public class MapEditorPanel
                         if (sel != null)
                             ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {sel.Name} — {sel.Stock.Count} item, sell {sel.SellPercent}%");
                         else
-                            ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), "Shop ID belum ada — buat di panel Shop Editor.");
+                            ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), "Shop ID doesn't exist — create it in the Shop Editor panel.");
                     }
                     else
-                        ImGui.TextDisabled("Belum ada shop terdaftar — buat di menu Shop Editor.");
+                        ImGui.TextDisabled("No shops registered yet — create one in the Shop Editor menu.");
                     break;
                 }
                 case TriggerActionTypes.ActivateQuest:
@@ -1895,10 +1895,10 @@ public class MapEditorPanel
                 {
                     if (ImGui.InputText("Object Name##csobj", ref p1, 64)) act.Param = p1;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Nama objek di Hierarchy (Sprite2D/Player2D) yang spritenya diganti.\nKosong = objek terdekat dari trigger (chest di dalam area trigger-nya).");
+                        ImGui.SetTooltip("Name of the Hierarchy object (Sprite2D/Player2D) whose sprite is swapped.\nEmpty = the nearest object from the trigger (the chest inside the trigger area).");
                     if (ImGui.InputText("New Sheet|Clip##csart", ref p2, 160)) act.Param2 = p2;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Format 'Sheet|Clip' — nama di Sprite Editor. Contoh: 'chest|open'.\nIni mengganti BASE sprite objek (chest tertutup → terbuka), bukan sekadar\nmemutar animasi: art-nya MENEMPEL sampai action 'Revert' dijalankan.");
+                        ImGui.SetTooltip("'Sheet|Clip' format — names from the Sprite Editor. Example: 'chest|open'.\nThis swaps the object's BASE sprite (closed chest → open), not just\nplaying an animation: the art STICKS until the 'Revert' action runs.");
                     var (csSheetName, csClipName) = MapEditorTriggerHelpers.SplitPipe(act.Param2);
                     if (!string.IsNullOrWhiteSpace(csSheetName))
                     {
@@ -1915,27 +1915,27 @@ public class MapEditorPanel
                             }
                         }
                         else
-                            ImGui.TextDisabled($"Sheet '{csSheetName.Trim()}' tidak ada / belum punya clip (cek Sprite Editor).");
+                            ImGui.TextDisabled($"Sheet '{csSheetName.Trim()}' missing / has no clips yet (check the Sprite Editor).");
                     }
                     // Mode: Swap (default) / Revert.
                     bool csRevert = (act.Param3 ?? "").Trim().Equals("Revert", StringComparison.OrdinalIgnoreCase);
-                    if (ImGui.Checkbox("Revert (kembalikan sprite awal)##csrev", ref csRevert))
+                    if (ImGui.Checkbox("Revert (restore the original sprite)##csrev", ref csRevert))
                         act.Param3 = csRevert ? "Revert" : "";
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Off = Swap: ganti base sprite ke Sheet|Clip (chest tertutup → terbuka).\nOn = Revert: kembalikan art yang objek punya SEBELUM di-swap (tutup chest lagi).");
+                        ImGui.SetTooltip("Off = Swap: replace the base sprite with Sheet|Clip (closed chest → open).\nOn = Revert: restore the art the object had BEFORE the swap (close the chest again).");
                     // Loop mode of the swapped art (action field LoopAnim — serialized).
                     bool csLoop = act.LoopAnim;
-                    if (ImGui.Checkbox("Loop Animasi (off = main sekali, tahan frame terakhir)##csloop", ref csLoop))
+                    if (ImGui.Checkbox("Loop Animation (off = play once, hold the last frame)##csloop", ref csLoop))
                         act.LoopAnim = csLoop;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("ON: clip swap diputar berulang (idle loop).\nOFF: clip main SEKALI lalu menahan frame terakhir — untuk\nchest terbuka / tuas / pintu yang tidak boleh mengulang animasinya.");
+                        ImGui.SetTooltip("ON: the swapped clip plays on repeat (idle loop).\nOFF: the clip plays ONCE then holds its last frame — for\nopen chests / levers / doors that must not replay their animation.");
                     // Quick-pick object names BELOW the inputs (user: they were cut off
                     // when rendered on the same line as the Object Name field).
                     if (_bridge.EditorObjectManager != null)
                     {
                         bool any = false;
                         ImGui.NewLine(); // own row — first SameLine would stick to the Loop checkbox
-                        ImGui.TextDisabled("Isi cepat Object Name:");
+                        ImGui.TextDisabled("Quick-fill Object Name:");
                         foreach (var o in _bridge.EditorObjectManager.Objects)
                         {
                             if (o is not { IsVisible: true } ||
@@ -1946,9 +1946,9 @@ public class MapEditorPanel
                             if (ImGui.SmallButton($"{o.Name}##cs{a}"))
                                 act.Param = o.Name;
                         }
-                        if (any) ImGui.TextDisabled("< klik untuk isi");
+                        if (any) ImGui.TextDisabled("< click to fill");
                     }
-                    ImGui.TextDisabled("Chest: OnEnter + [Change Sprite Swap] → [Give Item Drop].\nCentang 'Skip When Done' supaya masuk kedua kali tidak drop item lagi.");
+                    ImGui.TextDisabled("Chest: OnEnter + [Change Sprite Swap] → [Give Item Drop].\nCheck 'Skip When Done' so re-entering doesn't drop items again.");
                     break;
                 }
                 default:
@@ -1994,19 +1994,19 @@ public class MapEditorPanel
             {
                 // ── Enter mode: auto (touch) or button (interact key) ──
                 bool autoEnter = trig.PortalAutoEnter;
-                if (ImGui.RadioButton("Auto enter (masuk saat menyentuh)", autoEnter))
+                if (ImGui.RadioButton("Auto enter (on touch)", autoEnter))
                     trig.PortalAutoEnter = true;
                 ImGui.SameLine();
-                if (ImGui.RadioButton("Tekan tombol", !autoEnter))
+                if (ImGui.RadioButton("Press a key", !autoEnter))
                     trig.PortalAutoEnter = false;
                 if (!autoEnter)
                 {
                     string keyBuf = trig.PortalEnterKey;
                     ImGui.SetNextItemWidth(70);
-                    if (ImGui.InputText("Tombol##pkey", ref keyBuf, 16))
+                    if (ImGui.InputText("Key##pkey", ref keyBuf, 16))
                         trig.PortalEnterKey = keyBuf.Trim();
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Nama ImGuiKey untuk masuk portal (default: E).\nHanya tombol pertama yang dipakai runtime.");
+                        ImGui.SetTooltip("ImGuiKey name to enter the portal (default: E).\nOnly the first key is used at runtime.");
                     ImGui.SameLine();
                     ImGui.TextDisabled("(default: E)");
                 }
@@ -2024,7 +2024,7 @@ public class MapEditorPanel
                     trig.PortalAnimEnter = ""; trig.PortalAnimOut = "";
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Sheet sprite portal (dibuat di Sprite Editor).\nGunakan SATU sheet dengan clip: NotActive, Active, Enter, Out.");
+                    ImGui.SetTooltip("Portal sprite sheet (made in the Sprite Editor).\nUse ONE sheet with the clips: NotActive, Active, Enter, Out.");
 
                 var clips = sheets.Count > 0 ? IDEBridge.GetClipNames(sheets[sheetIdx]) : new List<string>();
                 if (clips.Count > 0)
@@ -2035,7 +2035,7 @@ public class MapEditorPanel
                     PortalAnimCombo("Anim Out (pakai)", clips, trig, PortalAnimTarget.Out);
                 }
                 else
-                    ImGui.TextDisabled("Sheet belum punya clip — buat 4 clip di Sprite Editor:");
+                    ImGui.TextDisabled("The sheet has no clips yet — create 4 clips in the Sprite Editor:");
                 ImGui.TextDisabled("NotActive (nonaktif), Active (aktif), Enter (masuk), Out (terpakai)");
 
                 // ── Visual size (sprite boleh beda dari area deteksi) ──
@@ -2044,7 +2044,7 @@ public class MapEditorPanel
                     trig.PortalVisualWidthPx = MathF.Max(0f, vw);
                 if (ImGui.DragFloat("Visual H (px, 0=area)", ref vh, 1f, 0f, 512f, "%.0f"))
                     trig.PortalVisualHeightPx = MathF.Max(0f, vh);
-                ImGui.TextDisabled("Ukuran sprite portal (px). 0 = ikut ukuran area trigger.");
+                ImGui.TextDisabled("Portal sprite size (px). 0 = follow the trigger area's size.");
             }
         }
         float l = trig.LeftPx, t = trig.TopPx, w = trig.WidthPx, h = trig.HeightPx;
@@ -2102,7 +2102,7 @@ public class MapEditorPanel
             }
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Clip animasi untuk state ini (looping untuk\nNotActive/Active; sekali jalan untuk Enter/Out).");
+            ImGui.SetTooltip("Animation clip for this state (looping for\nNotActive/Active; plays once for Enter/Out).");
     }
 
     private bool IsCurrentSceneGameScene()
@@ -2349,13 +2349,13 @@ public class MapEditorPanel
         var map = ActiveTilemap;
         if (map == null) { ImGui.EndPopup(); return; }
 
-        ImGui.Text($"Ukuran baru untuk '{map.Name}' (tiles):");
+        ImGui.Text($"New size for '{map.Name}' (tiles):");
         ImGui.SetNextItemWidth(120);
         ImGui.InputInt("Width##rsz", ref _resizeW);
         ImGui.SameLine();
         ImGui.SetNextItemWidth(120);
         ImGui.InputInt("Height##rsz", ref _resizeH);
-        ImGui.TextDisabled("Tile lama dipertahankan (anchor kiri-atas grid).\nTrigger/spawn yang keluar batas baru di-clamp.");
+        ImGui.TextDisabled("Existing tiles are kept (grid top-left anchor).\nTriggers/spawns outside the new bounds are clamped.");
 
         if (ImGui.Button("Resize", new Vector2(120, 0)))
         {

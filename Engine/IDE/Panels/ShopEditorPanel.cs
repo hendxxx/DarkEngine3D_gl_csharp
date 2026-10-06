@@ -56,7 +56,7 @@ public class ShopEditorPanel
         }
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
-            ImGui.TextDisabled("Buka project dulu — shop tersimpan di Assets/Shops/shops.json.");
+            ImGui.TextDisabled("Open a project first — shops are saved to Assets/Shops/shops.json.");
             ImGui.End();
             return;
         }
@@ -74,7 +74,7 @@ public class ShopEditorPanel
                 _newShopId = "";
                 _dirty = true;
             }
-            else ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "ID sudah dipakai!");
+            else ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "ID already in use!");
         }
         ImGui.SameLine();
         ImGui.TextColored(new Vector4(0.6f, 0.9f, 0.6f, 1f), _dirty ? "* unsaved" : "");
@@ -95,20 +95,20 @@ public class ShopEditorPanel
             _selectedIndex = Math.Clamp(_selectedIndex, 0, ShopSystem.Shops.Count - 1);
 
         string name = shop.Name;
-        if (ImGui.InputText("Nama##shopname", ref name, 64)) { shop.Name = name; _dirty = true; }
+        if (ImGui.InputText("Name##shopname", ref name, 64)) { shop.Name = name; _dirty = true; }
         string id2 = shop.Id;
-        if (ImGui.InputText("Id (dipakai action Open Shop)##shopid", ref id2, 64))
+        if (ImGui.InputText("Id (used by the Open Shop action)##shopid", ref id2, 64))
         { shop.Id = id2.Trim(); _dirty = true; }
         int sell = shop.SellPercent;
         if (ImGui.DragInt("Sell Percent (payout jual)", ref sell, 1, 0, 200))
         { shop.SellPercent = Math.Clamp(sell, 0, 200); _dirty = true; }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Payout jual = Price item x SellPercent / 100.\n50 = toko membeli setengah harga (klasik).");
+            ImGui.SetTooltip("Sell payout = item Price x SellPercent / 100.\n50 = the shop buys at half price (classic).");
 
         ImGui.Separator();
 
         // ── Stock list ──
-        ImGui.Text($"Stock ({shop.Stock.Count}) — id item, harga (kosong = Price item), stok (kosong = tak terbatas)");
+        ImGui.Text($"Stock ({shop.Stock.Count}) — item id, price (empty = item Price), stock (empty = unlimited)");
         for (int i = 0; i < shop.Stock.Count; i++)
         {
             var e = shop.Stock[i];
@@ -121,11 +121,11 @@ public class ShopEditorPanel
             if (def != null)
                 ImGui.TextColored(new Vector4(0.5f, 1f, 0.5f, 1f), $"✓ {def.Name} (Price {def.Price})");
             else
-                ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), "ID tidak terdaftar");
+                ImGui.TextColored(new Vector4(1f, 0.55f, 0.3f, 1f), "ID not registered");
 
             ImGui.SetNextItemWidth(110);
             string price = e.PriceOverride?.ToString() ?? "";
-            if (ImGui.InputText("Harga (kosong=Price)##price", ref price, 16))
+            if (ImGui.InputText("Price (empty=Price)##price", ref price, 16))
             {
                 e.PriceOverride = string.IsNullOrWhiteSpace(price) ? null : int.TryParse(price.Trim(), out int p) ? Math.Max(0, p) : null;
                 _dirty = true;
@@ -133,7 +133,7 @@ public class ShopEditorPanel
             ImGui.SameLine();
             ImGui.SetNextItemWidth(120);
             string stock = e.Stock < 0 ? "" : e.Stock.ToString();
-            if (ImGui.InputText("Stok (kosong=tak terbatas)##stock", ref stock, 16))
+            if (ImGui.InputText("Stock (empty=unlimited)##stock", ref stock, 16))
             {
                 e.Stock = string.IsNullOrWhiteSpace(stock) ? -1 : int.TryParse(stock.Trim(), out int s) ? s : -1;
                 _dirty = true;
@@ -151,14 +151,14 @@ public class ShopEditorPanel
         }
 
         ImGui.Separator();
-        ImGui.TextDisabled("NPC memakai shop ini lewat action 'Open Shop' (Param = shop Id).\nPanel belanja terbuka di atas dialogue; Esc menutupnya balik ke dialogue.");
+        ImGui.TextDisabled("NPCs use this shop via the 'Open Shop' action (Param = shop Id).\nThe shop panel opens on top of the dialogue; Esc closes it back to the dialogue.");
         if (ImGui.Button("Save Shops##saves"))
         {
             ShopSystem.Save();
             _dirty = false;
         }
         ImGui.SameLine();
-        ImGui.TextDisabled("(juga tersimpan oleh Ctrl+S / Close Project / Exit)");
+        ImGui.TextDisabled("(also saved by Ctrl+S / Close Project / Exit)");
         ImGui.End();
     }
 }

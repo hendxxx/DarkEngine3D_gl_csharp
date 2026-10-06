@@ -1,7 +1,52 @@
 using System.Numerics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DarkEngine3D_gl_csharp.Engine.Visual;
+
+/// <summary>Sprite Editor sheet-list SECTION. Persisted per sheet in
+/// sprites.sheets.json ("Category"); files saved before the field existed load as
+/// Base. The sheet list groups sheets under these 4 collapsible sections.</summary>
+[JsonConverter(typeof(SpriteSheetCategoryJsonConverter))]
+public enum SpriteSheetCategory
+{
+    /// <summary>Character/world animation sheets (the default section).</summary>
+    Base = 0,
+    /// <summary>Effect sheets — particles, auras, fire, smoke, sparks…</summary>
+    FX = 1,
+    /// <summary>Equipment overlay art drawn ON characters (equipment sprite layers).</summary>
+    BaseEquipment = 2,
+    /// <summary>Item icons and pickups (inventory/shop art).</summary>
+    Items = 3
+}
+
+/// <summary>Forgiving JSON converter for SpriteSheetCategory: an unknown name in a
+/// hand-edited file falls back to Base instead of throwing a JsonException that
+/// would kill the whole sheets-file parse. Accepts names (case-insensitive) and
+/// numbers.</summary>
+public sealed class SpriteSheetCategoryJsonConverter : JsonConverter<SpriteSheetCategory>
+{
+    public override SpriteSheetCategory Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var s = reader.GetString();
+            if (s != null && Enum.TryParse(s, ignoreCase: true, out SpriteSheetCategory parsed)
+                          && Enum.IsDefined(parsed))
+                return parsed;
+            return SpriteSheetCategory.Base;
+        }
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            int v = reader.GetInt32();
+            return Enum.IsDefined(typeof(SpriteSheetCategory), v) ? (SpriteSheetCategory)v : SpriteSheetCategory.Base;
+        }
+        return SpriteSheetCategory.Base;
+    }
+
+    public override void Write(Utf8JsonWriter writer, SpriteSheetCategory value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
+}
 
 /// <summary>
 /// Manages a sprite sheet: slicing a single texture into frames,
@@ -11,6 +56,9 @@ public class SpriteSheet
 {
     /// <summary>Display name (usually filename without extension).</summary>
     public string Name = "SpriteSheet";
+
+    /// <summary>Sprite Editor list section this sheet is grouped under.</summary>
+    public SpriteSheetCategory Category = SpriteSheetCategory.Base;
 
     /// <summary>Absolute path to the source image file.</summary>
     public string ImagePath = "";
@@ -167,6 +215,7 @@ public class SpriteSheet
     public SpriteSheetData ToData() => new()
     {
         Name = Name,
+        Category = Category,
         ImagePath = ImagePath,
         ImageWidth = ImageWidth,
         ImageHeight = ImageHeight,
@@ -198,6 +247,10 @@ public class SpriteSheet
     public static SpriteSheet FromData(SpriteSheetData data) => new()
     {
         Name = data.Name,
+        // Clamp out-of-range values (hand-edited JSON) so the sheet always shows
+        // up in one of the 4 sections.
+        Category = Enum.IsDefined(typeof(SpriteSheetCategory), data.Category)
+            ? data.Category : SpriteSheetCategory.Base,
         ImagePath = data.ImagePath,
         ImageWidth = data.ImageWidth,
         ImageHeight = data.ImageHeight,
@@ -259,6 +312,9 @@ public class SpriteFrame
 public class SpriteSheetData
 {
     public string Name { get; set; } = "";
+    /// <summary>Sprite Editor list section (Base / FX / Base Equipment / Items).
+    /// Default = Base so older files load unchanged.</summary>
+    public SpriteSheetCategory Category { get; set; } = SpriteSheetCategory.Base;
     public string ImagePath { get; set; } = "";
     public int ImageWidth { get; set; }
     public int ImageHeight { get; set; }

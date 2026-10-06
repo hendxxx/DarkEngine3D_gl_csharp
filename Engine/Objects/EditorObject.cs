@@ -4175,7 +4175,7 @@ public unsafe class EditorObject
         {
             // NEVER silent: an unregistered art name used to resolve to nothing and
             // quietly fall back to the base sprite (log said success, art unchanged).
-            Console.WriteLine($"[ChangeSprite] art '{effSheet}|{clip}' tidak terdaftar di Sprite Editor — sprite TIDAK akan berubah (cek ejaan sheet/clip)");
+            Console.WriteLine($"[ChangeSprite] art '{effSheet}|{clip}' is not registered in the Sprite Editor — the sprite will NOT change (check the sheet/clip spelling)");
         }
         if (!Sprite2DStateOverrideActive)
         {
@@ -4518,8 +4518,14 @@ public unsafe class EditorObject
         }
 
         // Frame index: from the action clock (honoring the ACTION's loop flag without
-        // mutating the shared clip) or the base locomotion clock.
+        // mutating the shared clip) or the base locomotion clock. The ACTIVE CLIP NAME +
+        // POSITION-IN-CLIP are captured for the equipment overlays: synced layers auto-
+        // match a clip with the same action token on their own sheet ('baju-run' follows
+        // base 'run') and sample the same pose POSITION, so the clothing sheet may use a
+        // different grid layout than the base sheet.
         int frameIdx;
+        string baseClipName;
+        int baseClipLocalFrame;
         if (actionClip != null)
         {
             float frameDur = 1f / MathF.Max(0.01f, actionClip.FPS * actionClip.SpeedMultiplier);
@@ -4530,10 +4536,15 @@ public unsafe class EditorObject
             else
                 f = Math.Clamp(f, 0, Math.Max(0, count - 1));
             frameIdx = count > 0 ? actionClip.FrameIndices[f] : 0;
+            baseClipName = actionClip.Name;
+            baseClipLocalFrame = count > 0 ? f : -1;
         }
         else
         {
-            frameIdx = clip.GetSpriteFrameAtTime(Player2DAnimTime, Sprite2DEffectiveLoop);
+            baseClipLocalFrame = clip.GetFrameAtTime(Player2DAnimTime, Sprite2DEffectiveLoop);
+            frameIdx = baseClipLocalFrame < clip.FrameIndices.Count
+                ? clip.FrameIndices[baseClipLocalFrame] : 0;
+            baseClipName = clip.Name;
         }
         // Past-sheet clamp: a frame index beyond the sheet's own frame list/grid would
         // sample UVs OUTSIDE the texture (empty space → the sprite silently VANISHES,
@@ -4703,7 +4714,8 @@ public unsafe class EditorObject
         // (session player renders the session paperdoll; NPC/editor preview renders
         // the scene-authored Equipment — see CollectEquipmentLayersForDraw).
         DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Player2DFacingRight, 1,
-            actionActive ? Player2DActionTime : Player2DAnimTime, baseFrameIdx);
+            actionActive ? Player2DActionTime : Player2DAnimTime, baseFrameIdx,
+            baseClipName, baseClipLocalFrame);
 
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
@@ -4757,6 +4769,8 @@ public unsafe class EditorObject
         int f = (int)(t / frameDur);
         f = Sprite2DEffectiveLoop ? ((f % count) + count) % count : Math.Clamp(f, 0, count - 1);
         int frameIdx = clip.FrameIndices[f];
+        string baseClipName = clip.Name;      // equipment overlays auto-match THIS clip
+        int baseClipLocalFrame = f;           // position-in-clip for per-clip synced layers
 
         var (uvMinRaw, uvMaxRaw) = sheet.GetFrameUV(frameIdx);
         // Same flip fix as DrawPlayer2D (textures upload top-row-first).
@@ -4894,7 +4908,8 @@ public unsafe class EditorObject
         // (reps > 1: each tile carries its own overlay so a repeated outfit strip
         // stays dressed across the full repeat width)
         DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Sprite2DFacingRight, reps,
-            Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset), frameIdx);
+            Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset), frameIdx,
+            baseClipName, baseClipLocalFrame);
 
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
@@ -5089,12 +5104,15 @@ public unsafe class EditorObject
     /// aspect). z = base + 0.002 + EquipLayer × 0.003 — every layer stays inside its
     /// base render layer's band. Repeated strips (reps > 1) dress every tile. Mirror:
     /// facing swap first, then the overlay sheet's own FlipX — two swaps cancel,
-    /// exactly like the base sprite path. FRAME SYNC: <paramref name="baseFrameIdx"/>
-    /// is the base sprite's current sheet-frame index — items with EquipSyncFrame
-    /// (default) sample THIS index on their own sheet so same-grid clothing follows
-    /// every pose 1:1; others animate on their own clip FPS.</summary>
+    /// exactly like the base sprite path. FRAME SYNC (two tiers): <paramref name="baseClipName"/>
+    /// is the base sprite's ACTIVE clip and <paramref name="baseClipLocalFrame"/> its
+    /// position-in-clip — synced items first AUTO-MATCH a clip with the same action token
+    /// on their own sheet ('baju-run' follows base 'run', any grid layout) and sample that
+    /// position; no match falls back to the raw sheet-frame index <paramref name="baseFrameIdx"/>
+    /// (same-grid clothing follows every pose 1:1). Unsynced items animate on their own clip FPS.</summary>
     private unsafe void DrawEquipmentSpriteOverlays(float x0, float y0, float tileW, float tileH,
-        float zBase, bool facingRight, int reps, float animTime, int baseFrameIdx)
+        float zBase, bool facingRight, int reps, float animTime, int baseFrameIdx,
+        string baseClipName, int baseClipLocalFrame)
     {
         CollectEquipmentLayersForDraw(_equipLayerScratch);
         if (_equipLayerScratch.Count == 0 || _player2dVAO == 0 || reps < 1) return;
@@ -5129,14 +5147,28 @@ public unsafe class EditorObject
             else
                 count = osheet.Columns > 0 && osheet.Rows > 0 ? osheet.Columns * osheet.Rows : 1;
             if (count <= 0) continue;
-            // Frame source: SYNC (default) samples the base sprite's current sheet-frame
-            // index on the overlay sheet — same-grid clothing follows every pose 1:1.
+            // Frame source, AUTO ANIMATION CLIP MATCH first (user: "the clips already
+            // exist as -idle/-walk/-run — can they auto-load?"): when the base sprite is
+            // playing clip X, find the overlay clip following X on the item's own sheet
+            // (exact name or action token — 'baju-run' follows base 'run' AND base
+            // 'hero-run') and sync by POSITION-IN-CLIP, so the clothing sheet may use a
+            // DIFFERENT grid layout than the base sheet (its Save As Pattern exports give
+            // clips like <sheet>-idle/-walk/-run for free). No match → the authored
+            // EquipClip + raw sheet-frame sync (old same-grid behavior, unchanged).
             // Unsynced overlays (EquipSyncFrame = false) run their own clip FPS (8 FPS
-            // grid fallback). Both clamp to the overlay sheet's own valid frame range
-            // (a shorter clothing sheet freezes on its last frame instead of sampling
-            // outside the texture).
+            // grid fallback) — for auras/fire, not for clothing. Everything clamps to the
+            // overlay clip's own frame range (a shorter clothing clip freezes on its last
+            // frame instead of sampling outside the texture).
+            AnimationClip2D? syncClip = def.EquipSyncFrame && baseClipLocalFrame >= 0
+                ? IDEBridge.FindAnimationClipForBase(def.EquipSheet, baseClipName)
+                : null;
             int frameIdx;
-            if (def.EquipSyncFrame)
+            if (syncClip != null)
+            {
+                int sc = syncClip.FrameIndices.Count;
+                frameIdx = syncClip.FrameIndices[Math.Clamp(baseClipLocalFrame, 0, sc - 1)];
+            }
+            else if (def.EquipSyncFrame)
             {
                 frameIdx = Math.Clamp(baseFrameIdx, 0, count - 1);
             }

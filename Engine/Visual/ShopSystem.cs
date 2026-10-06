@@ -117,10 +117,10 @@ public static class ShopSystem
     {
         if (amount <= 0) amount = 1;
         var def = InventorySystem.Find(itemId);
-        if (def == null) return (false, $"Item tidak dikenal: {itemId}");
+        if (def == null) return (false, $"Unknown item: {itemId}");
         int unit = priceHint ?? Math.Max(0, def.Price);
         int total = unit * amount;
-        if (InventorySystem.Gold < total) return (false, $"Gold kurang! Butuh {total} Gold.");
+        if (InventorySystem.Gold < total) return (false, $"Not enough gold! Need {total} Gold.");
         int added = InventorySystem.AddItem(itemId, amount);
         if (added <= 0) return (false, "Inventory penuh!");
         InventorySystem.Gold -= unit * added; // partial add → charge proportionally
@@ -136,8 +136,8 @@ public static class ShopSystem
     {
         if (amount <= 0) amount = 1;
         var def = InventorySystem.Find(itemId);
-        if (def == null) return (false, $"Item tidak dikenal: {itemId}");
-        if (InventorySystem.Count(itemId) < amount) return (false, $"Kamu tidak punya {amount} {def.Name}.");
+        if (def == null) return (false, $"Unknown item: {itemId}");
+        if (InventorySystem.Count(itemId) < amount) return (false, $"You don't have {amount} {def.Name}.");
         int unit = payoutHint ?? (Math.Max(0, def.Price) * (shop?.SellPercent ?? 50) / 100);
         int sold = InventorySystem.RemoveItem(itemId, amount);
         InventorySystem.Gold += unit * sold;
@@ -415,10 +415,10 @@ public static class ShopHud
         }
         else
         {
-            hud.DrawText("Pilih barang di toko (kiri) untuk membeli,", dTextX, dTextY, InkSoft, null, 0f, lf);
-            hud.DrawText("atau barang di tas (kanan) untuk menjual.", dTextX, dTextY + lineStep, InkSoft, null, 0f, lf);
-            HUD.TextOut(dTextX, dTextY, "Pilih barang di toko (kiri) untuk membeli,", InkSoft, fontSizePx: 14f);
-            HUD.TextOut(dTextX, dTextY + lineStep, "atau barang di tas (kanan) untuk menjual.", InkSoft, fontSizePx: 14f);
+            hud.DrawText("Pick an item in the shop (left) to buy,", dTextX, dTextY, InkSoft, null, 0f, lf);
+            hud.DrawText("or an item in the bag (right) to sell.", dTextX, dTextY + lineStep, InkSoft, null, 0f, lf);
+            HUD.TextOut(dTextX, dTextY, "Pick an item in the shop (left) to buy,", InkSoft, fontSizePx: 14f);
+            HUD.TextOut(dTextX, dTextY + lineStep, "or an item in the bag (right) to sell.", InkSoft, fontSizePx: 14f);
         }
 
         float btnY = dY + descH + pad * 0.4f;
@@ -576,10 +576,10 @@ public static class ShopHud
         }
         else
         {
-            lines.Add("Klik untuk memilih, lalu tekan Jual (S)");
+            lines.Add("Click to select, then press Sell (S)");
         }
         if (!string.IsNullOrEmpty(def.Notes)) lines.Add(def.Notes);
-        lines.Add(buy ? "Klik untuk memilih, lalu tekan Beli (B)" : "Item tas - hanya bisa dijual di toko ini");
+        lines.Add(buy ? "Click to select, then press Buy (B)" : "Bag item - sellable only in this shop");
         return string.Join('\n', lines);
     }
 

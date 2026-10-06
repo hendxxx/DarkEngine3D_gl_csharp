@@ -5804,10 +5804,10 @@ ImGui.SameLine();
         bool cullDbg = EditorObject.Show2DCullDebug;
         if (ToolButton(cullDbg ? $"Cull: {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal}" : "Cull Debug",
             cullDbg, new Vector4(0.78f, 0.28f, 0.22f, 0.95f),
-            "Debug frustum culling sprite 2D (Player2D/Sprite2D):\nAABB MERAH = di luar kamera aktif, TIDAK digambar (hemat draw call).\nAABB HIJAU = terlihat kamera, dirender.\nJudul tombol = ter-cull / total dari pass terakhir.", out y))
+            "Debug 2D sprite frustum culling (Player2D/Sprite2D):\nRED AABB = outside the active camera, NOT drawn (saves draw calls).\nGREEN AABB = seen by the camera, rendered.\nButton title = culled / total from the last pass.", out y))
         {
             EditorObject.Show2DCullDebug = !cullDbg;
-            Console.WriteLine($"[Viewport] 2D cull debug {(EditorObject.Show2DCullDebug ? "ON" : "OFF")} — culled {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal} (pass terakhir)");
+            Console.WriteLine($"[Viewport] 2D cull debug {(EditorObject.Show2DCullDebug ? "ON" : "OFF")} — culled {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal} (last pass)");
         }
 
         //  Debug grid + shadow toggles 

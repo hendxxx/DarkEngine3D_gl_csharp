@@ -42,11 +42,11 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             // ── Per-action effects for the selected character ──
             if (obj == null)
             {
-                ImGui.TextDisabled("Pilih karakter (Player2D) untuk mengatur effect aksinya.");
+                ImGui.TextDisabled("Pick a character (Player2D) to configure its action effects.");
             }
             else if (obj.Actions.Count == 0)
             {
-                ImGui.TextDisabled($"'{obj.Name}' belum punya action (atur di Inspector).");
+                ImGui.TextDisabled($"'{obj.Name}' has no actions yet (set them in the Inspector).");
             }
             else
             {
@@ -86,7 +86,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip(wp switch
                     {
-                        "Clear Day" => "Langit cerah: semua lapisan cuaca mati (tint hangat tipis).",
+                        "Clear Day" => "Clear sky: all weather layers off (a thin warm tint).",
                         "Sunset" => "Wash jingga senja di seluruh view.",
                         "Rain" => "Hujan + kabut tanah + tint biru-gelap.",
                         "Storm" => "Hujan lebat + kabut tebal + angin kencang + tint badai.",
@@ -98,7 +98,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (ImGui.SmallButton("Clear##wx"))
                 Effect2DSystem.ClearWeather();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Matikan SEMUA lapisan cuaca (rain/snow/fog/tint) sekaligus.");
+                ImGui.SetTooltip("Turn OFF all weather layers (rain/snow/fog/tint) at once.");
             ImGui.TextDisabled($"Partikel aktif: {Effect2DSystem.ParticleCount}");
 
             bool rain = Effect2DSystem.RainEnabled;
@@ -111,7 +111,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.SliderFloat("Rain Intensity", ref ri, 0f, 100f, "%.1f"))
                     Effect2DSystem.RainIntensity = Math.Clamp(ri, 0f, 100f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("0.7 = hujan jarang (referensi). Naikkan sampai 100 untuk badai super lebat.");
+                    ImGui.SetTooltip("0.7 = light rain (reference). Raise up to 100 for a super heavy storm.");
                 float rw = Effect2DSystem.RainWindFactor;
                 if (ImGui.SliderFloat("Rain Wind Slant", ref rw, -2f, 2f, "%.2f"))
                     Effect2DSystem.RainWindFactor = rw;
@@ -124,12 +124,12 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.DragFloat("Rain Offset Y", ref ry, 0.25f))
                     Effect2DSystem.RainOffsetY = ry;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Geser area spawn hujan dari tengah kamera (positif = kanan/atas). Negatif Y = hujan turun lebih rendah.");
+                    ImGui.SetTooltip("Shift the rain spawn area from the camera center (positive = right/up). Negative Y = rain lands lower.");
                 float rs = Effect2DSystem.RainSizeMul;
                 if (ImGui.SliderFloat("Rain Size", ref rs, 0.25f, 4f, "%.2f x"))
                     Effect2DSystem.RainSizeMul = Math.Clamp(rs, 0.25f, 4f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Besar-kecil tetesan (panjang + lebar garis). 1 = default.");
+                    ImGui.SetTooltip("Drop size (line length + width). 1 = default.");
             }
 
             bool snow = Effect2DSystem.SnowEnabled;
@@ -141,7 +141,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.SliderFloat("Snow Intensity", ref si, 0f, 100f, "%.1f"))
                     Effect2DSystem.SnowIntensity = Math.Clamp(si, 0f, 100f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("0.7 = salju ringan. Naikkan sampai 100 untuk badai salju.");
+                    ImGui.SetTooltip("0.7 = light snow. Raise up to 100 for a blizzard.");
                 float sx = Effect2DSystem.SnowOffsetX;
                 if (ImGui.DragFloat("Snow Offset X", ref sx, 0.25f))
                     Effect2DSystem.SnowOffsetX = sx;
@@ -152,18 +152,18 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.SliderFloat("Snow Size", ref ss, 0.25f, 4f, "%.2f x"))
                     Effect2DSystem.SnowSizeMul = Math.Clamp(ss, 0.25f, 4f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Besar-kecil kepingan salju. 1 = default.");
+                    ImGui.SetTooltip("Snowflake size. 1 = default.");
                 float sr = Effect2DSystem.SnowRestSeconds;
                 if (ImGui.SliderFloat("Snow Rest on Ground", ref sr, 0f, 20f, "%.1f s"))
                     Effect2DSystem.SnowRestSeconds = Math.Clamp(sr, 0f, 20f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Berapa lama kepingan DIAM di atas obstacle/collision yang kena (tanah, platform, kotak) sebelum memudar. 0 = langsung hilang.");
+                    ImGui.SetTooltip("How long flakes STAY still on top of the obstacle/collision they hit (ground, platform, box) before fading. 0 = vanish instantly.");
                 // "Detect ALL tile layers" toggle REMOVED (user: buat selalu ON) —
                 // every drawn tile on any visible layer/map is always a weather surface.
             }
 
             bool fog = Effect2DSystem.FogEnabled;
-            if (ImGui.Checkbox("Fog (kabut tanah)", ref fog)) Effect2DSystem.FogEnabled = fog;
+            if (ImGui.Checkbox("Fog (ground fog)", ref fog)) Effect2DSystem.FogEnabled = fog;
             if (fog)
             {
                 float fh = Effect2DSystem.FogHeight;
@@ -175,7 +175,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
 
             bool tint = Effect2DSystem.TintEnabled;
-            if (ImGui.Checkbox("Tint (warna ambien)", ref tint)) Effect2DSystem.TintEnabled = tint;
+            if (ImGui.Checkbox("Tint (ambient color)", ref tint)) Effect2DSystem.TintEnabled = tint;
             if (tint)
             {
                 var tc = Effect2DSystem.TintColor;
@@ -190,7 +190,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (ImGui.DragFloat("Wind X (angin global)", ref wind, 0.05f, -10f, 10f, "%.2f"))
                 Effect2DSystem.WindX = wind;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Angin dunia (world units/s). Hujan miring, kabut drift, partikel tergeser (WindFactor). Preset Storm menaikkan ini.");
+                ImGui.SetTooltip("World wind (world units/s). Slants rain, drifts fog, pushes particles (WindFactor). The Storm preset raises this.");
 
             ImGui.End();
         }
@@ -212,7 +212,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.DragFloat("Hit Scale", ref hs, 0.05f, 0.05f, 10f, "%.2f x"))
                     act.ProjectileHitScale = Math.Clamp(hs, 0.05f, 10f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Besar-kecil animasi hit: 1 = sebesar projectile (World Height), 0.5 = setengah, 2 = dobel.");
+                    ImGui.SetTooltip("Hit animation size: 1 = the projectile's size (World Height), 0.5 = half, 2 = double.");
 
                 ImGui.Separator();
                 ImGui.Text("Hit FX (partikel, opsional):");
@@ -232,23 +232,23 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.EndCombo();
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Default (none) = impact HANYA Hit Clip. Pilih preset bila mau partikel tambahan.");
+                    ImGui.SetTooltip("Default (none) = the impact plays ONLY the Hit Clip. Pick a preset if you want extra particles.");
                 if (!string.IsNullOrWhiteSpace(act.ProjectileHitFx))
                 {
                     float fxs = act.ProjectileHitFxScale <= 0f ? 1f : act.ProjectileHitFxScale;
                     if (ImGui.DragFloat("Hit FX Scale", ref fxs, 0.05f, 0.05f, 8f, "%.2f x"))
                         act.ProjectileHitFxScale = Math.Clamp(fxs, 0.05f, 8f);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Besar-kecil burst partikel (jumlah + ukuran ikut skala).");
+                        ImGui.SetTooltip("Particle burst size (count + size scale together).");
                 }
             }
             else
             {
-                ImGui.TextDisabled("Projectile OFF — aktifkan di Inspector bagian Projectile untuk pakai Hit Clip/FX.");
+                ImGui.TextDisabled("Projectile OFF — enable it in the Inspector's Projectile section to use Hit Clip/FX.");
             }
 
             ImGui.Separator();
-            ImGui.Text("Action FX (partikel dari karakter):");
+            ImGui.Text("Action FX (particles from the character):");
             var presets = Effect2DSystem.Presets;
             string[] aCfg = ["", .. presets];
             string[] aLabel = ["(none)", .. presets];
@@ -270,12 +270,12 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 bool follow = act.FxFollow;
                 if (ImGui.Checkbox("Follow (aliran terus)", ref follow)) act.FxFollow = follow;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("ON = partikel mengalir dari karakter selama aksi main (jejak fireball). OFF = sekali burst saat aksi mulai.");
+                    ImGui.SetTooltip("ON = particles stream from the character while the action plays (fireball trail). OFF = a single burst when the action starts.");
                 float fs = act.FxScale <= 0f ? 1f : act.FxScale;
                 if (ImGui.DragFloat("FX Scale", ref fs, 0.05f, 0.05f, 8f, "%.2f x"))
                     act.FxScale = Math.Clamp(fs, 0.05f, 8f);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Besar-kecil FX aksi ini: burst mengatur jumlah+ukuran, follow mengatur ukuran partikel.");
+                    ImGui.SetTooltip("Size of this action's FX: burst scales count+size, follow scales particle size.");
             }
         }
 

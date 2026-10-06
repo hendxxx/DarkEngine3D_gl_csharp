@@ -154,6 +154,15 @@ public class IDEBridge
     private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<(string sheet, string clip), AnimationClip2D> _spriteClips = new();
 
+    /// <summary>Bumped on every SyncSpriteRegistry — sprite-data caches (e.g. the
+    /// equipment auto-clip match) invalidate themselves by comparing this.</summary>
+    public static int SpriteRegistryVersion { get; private set; }
+
+    /// <summary>Auto-clip-match cache: (overlay sheet, base animation name) → the clip
+    /// on that sheet which follows the base animation (null = none). The equipment
+    /// renderer asks per layer per FRAME, so the scan must not re-run every frame.</summary>
+    private static readonly Dictionary<(string sheet, string baseName), (AnimationClip2D? clip, int ver)> _autoClipMatchCache = new();
+
     /// <summary>Replace the static registry contents (called by SpriteEditorPanel every
     /// frame with its live sheet/clip lists + preview textures).</summary>
     public static void SyncSpriteRegistry(
@@ -169,6 +178,56 @@ public class IDEBridge
         _spriteClips.Clear();
         foreach (var c in clips)
             _spriteClips[(c.SpriteSheetName, c.Name)] = c;
+        _autoClipMatchCache.Clear(); // sheet/clip lists changed — cached matches are stale
+        SpriteRegistryVersion++;
+    }
+
+    /// <summary>Find the clip on <paramref name="sheetName"/> that follows the base
+    /// animation <paramref name="baseName"/>: an EXACT name match first (case-insensitive),
+    /// then the ACTION-TOKEN match — the '-'-suffix segment, so 'baju-run' matches both a
+    /// base clip 'run' and a pattern-style base 'hero-run' (tokens: run == run). Used by
+    /// the equipment sprite layers so an outfit authored as &lt;sheet&gt;-idle/-walk/-run
+    /// (Save As Pattern naming) auto-follows every base animation without hand-assigning
+    /// one clip per action. Cached per (sheet, baseName) + registry version.</summary>
+    public static AnimationClip2D? FindAnimationClipForBase(string sheetName, string baseName)
+    {
+        if (string.IsNullOrEmpty(sheetName) || string.IsNullOrEmpty(baseName)) return null;
+        var key = (sheetName, baseName);
+        if (_autoClipMatchCache.TryGetValue(key, out var cached) && cached.ver == SpriteRegistryVersion)
+            return cached.clip;
+
+        AnimationClip2D? found = null;
+        var names = GetClipNames(sheetName); // sorted, allocations acceptable: cached below
+        // Pass 1: exact name.
+        foreach (var n in names)
+            if (string.Equals(n, baseName, StringComparison.OrdinalIgnoreCase))
+            {
+                TryGetSpriteClip(sheetName, n, out _, out found);
+                break;
+            }
+        // Pass 2: action-token match ('<something>-<action>' vs '<something else>-<action>').
+        if (found == null)
+        {
+            string baseToken = ActionToken(baseName);
+            foreach (var n in names)
+                if (string.Equals(ActionToken(n), baseToken, StringComparison.OrdinalIgnoreCase))
+                {
+                    TryGetSpriteClip(sheetName, n, out _, out found);
+                    break;
+                }
+        }
+        if (found != null && found.FrameIndices.Count == 0) found = null; // empty clip = no match
+
+        _autoClipMatchCache[key] = (found, SpriteRegistryVersion);
+        return found;
+    }
+
+    /// <summary>The action token of a clip name: everything after the LAST '-' (a name
+    /// without '-' is its own token). 'baju-run' → 'run', 'hero-walk-cycle' → 'cycle'.</summary>
+    private static string ActionToken(string clipName)
+    {
+        int dash = clipName.LastIndexOf('-');
+        return dash >= 0 && dash < clipName.Length - 1 ? clipName[(dash + 1)..] : clipName;
     }
 
     public static bool TryGetSpriteSheetTexture(string sheetName, out uint texId, out int imgW, out int imgH)

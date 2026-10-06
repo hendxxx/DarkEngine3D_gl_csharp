@@ -2744,7 +2744,7 @@ public class InspectorPanel
         if (ImGui.DragFloat(wLabel, ref wpx, 0.25f, 0f, float.MaxValue, wpx <= 0f ? "off" : "%.2f u"))
             editorObj.Sprite2DWorldWidth = wpx < 0.005f ? 0f : MathF.Max(0.01f, wpx);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Ulangi frame (beserta animasinya) melebar sampai width ini — air, semak, pagar.\n0 = off (satu frame lebar asli). Strip center di Position.X, dasar di Position.Y.\nNilai BEBAS — ketik langsung atau drag. Tile di-batch satu draw call, ribuan tile tetap ringan.");
+            ImGui.SetTooltip("Repeat the frame (with its animation) horizontally up to this width — water, bushes, fences.\n0 = off (single frame at native width). Strip centers on Position.X, base at Position.Y.\nFREE value — type it directly or drag. Tiles batch into one draw call, thousands of tiles stay cheap.");
         if (wpx > 0f)
         {
             int rc = editorObj.Sprite2DRepeatCount;
@@ -2804,7 +2804,7 @@ public class InspectorPanel
                 ImGui.EndCombo();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Pilih layer Map Editor tempat sprite ini ditempatkan.\nSprite animasi pada layer yang sama akan mendapatkan perlakuan DoF yang sama dengan layer map tersebut.");
+                ImGui.SetTooltip("Pick the Map Editor layer this sprite is placed on.\nAnimated sprites on the same layer get the same DoF treatment as that map layer.");
 
             if (ImGui.SliderInt("Layer Offset", ref layer, -10, 10))
                 editorObj.Sprite2DRenderLayer = layer;
@@ -2901,19 +2901,19 @@ public class InspectorPanel
         if (ImGui.InputText("Display Name", ref dispName, 64))
             editorObj.NpcDisplayName = dispName.Trim();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Nama yang digambar DI ATAS badge [E] interaksi.\nKosong = pakai nama objek di Hierarchy.");
+            ImGui.SetTooltip("Name drawn ABOVE the [E] interact badge.\nEmpty = uses the object name in the Hierarchy.");
 
         float badgeSize = editorObj.NpcBadgeSize > 0f ? editorObj.NpcBadgeSize : Visual.DialogueSystem.DefaultNpcBadgeSize;
         if (ImGui.DragFloat("Badge Size (px)", ref badgeSize, 0.5f, 8f, 64f, "%.0f"))
             editorObj.NpcBadgeSize = MathF.Max(8f, badgeSize);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Ukuran teks badge [E] + nama NPC dalam piksel layar (default 15).\nJuga men-scale gambar Alert Image (2× nilai ini).");
+            ImGui.SetTooltip("Text size of the [E] badge + NPC name in screen pixels (default 15).\nAlso scales the Alert Image (2× this value).");
 
         float badgeLift = editorObj.NpcBadgeLift > 0f ? editorObj.NpcBadgeLift : Visual.DialogueSystem.DefaultNpcBadgeLift;
         if (ImGui.DragFloat("Badge Lift", ref badgeLift, 0.01f, 0f, 3f, "%.2f"))
             editorObj.NpcBadgeLift = MathF.Max(0f, badgeLift);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Seberapa TINGGI badge melayang di atas kepala NPC (unit dunia, default 0.15 — nempel di atas kepala).\n0 = pakai default. Naikkan kalau badge menutupi topi/rambut.");
+            ImGui.SetTooltip("How HIGH the badge floats above the NPC's head (world units, default 0.15 — hugging the top of the head).\n0 = use the default. Raise it if the badge covers a hat/hair.");
 
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
@@ -2933,7 +2933,7 @@ public class InspectorPanel
         var equippable = InventorySystem.Items.Where(d => !string.IsNullOrEmpty(d.EquipSlot)).ToList();
         if (equippable.Count == 0)
         {
-            ImGui.TextDisabled("Belum ada item equippable — buat di Item Editor (set Equip Slot),\natau pakai direct layer di bawah (tanpa item).");
+            ImGui.TextDisabled("No equippable items yet — create one in the Item Editor (set its Equip Slot),\nor use the direct layers below (no item needed).");
         }
         else
         {
@@ -2944,7 +2944,7 @@ public class InspectorPanel
                 ImGui.PushID($"eqlayer_{slotName}");
                 if (ImGui.BeginCombo(slotName, preview))
                 {
-                    if (ImGui.Selectable("(kosong)", cur == null))
+                    if (ImGui.Selectable("(none)", cur == null))
                         editorObj.Equipment.Unequip(slotName);
                     foreach (var d in equippable)
                     {
@@ -2955,18 +2955,18 @@ public class InspectorPanel
                     ImGui.EndCombo();
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Item yang dipakai karakter/NPC/enemy ini (paperdoll).\nItem dengan IsEquipment + Equip Art dirender sebagai LAYER sprite di\nkarakter (urutan = Equip Layer item). Tersimpan di file scene.");
+                    ImGui.SetTooltip("Items worn by this character/NPC/enemy (paperdoll).\nItems with IsEquipment + Equip Art render as sprite LAYERS on the\ncharacter (order = the item's Equip Layer). Stored in the scene file.");
                 ImGui.PopID();
             }
             if (editorObj.Equipment.Slots.Count > 0)
-                ImGui.TextDisabled("Runtime: PLAYER memakai paperdoll sesi (Inventory UI);\nNPC/enemy tetap memakai slot di atas.");
+                ImGui.TextDisabled("Runtime: the PLAYER wears the session paperdoll (Inventory UI);\nNPCs/enemies keep the slots above.");
         }
 
         // ── Direct layers: attach sheet/clip art WITHOUT registering an item ──
         ImGui.Separator();
         ImGui.TextDisabled("Direct layers (attach sheet/clip tanpa item):");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Layer art yang menempel langsung di objek ini — TANPA daftar item di Item Editor.\nBerlaku di editor DAN in-game, digabung dengan paperdoll item (urut Layer).\nSheet/clip dari Sprite Editor (termasuk hasil auto-load *-sprite-anim.json).\nTersimpan di file scene.");
+            ImGui.SetTooltip("Art layers attached directly to this object — WITHOUT registering items in the Item Editor.\nWorks in the editor AND in-game, merged with paperdoll items (sorted by Layer).\nSheets/clips come from the Sprite Editor (including *-sprite-anim.json auto-loads).\nStored in the scene file.");
 
         var sheets = IDEBridge.GetSpriteSheetNames();
         int removeIdx = -1;
@@ -2995,7 +2995,7 @@ public class InspectorPanel
                 ImGui.EndCombo();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Sheet dari Sprite Editor (termasuk hasil auto-load *-sprite-anim.json)");
+                ImGui.SetTooltip("Sheet from the Sprite Editor (including *-sprite-anim.json auto-loads)");
 
             // Clip combo (empty = sheet's implicit grid animates at 8 FPS).
             var clips = IDEBridge.GetClipNames(layer.Sheet);
@@ -3016,7 +3016,7 @@ public class InspectorPanel
             int lyr = layer.Layer;
             if (ImGui.InputInt("Layer", ref lyr)) layer.Layer = lyr;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Urutan tumpuk: makin besar makin DEPAN; negatif = di belakang sprite dasar.");
+                ImGui.SetTooltip("Stacking order: higher = more IN FRONT; negative = behind the base sprite.");
 
             float ox = layer.OffsetX;
             if (ImGui.DragFloat("Offset X", ref ox, 0.05f, -32f, 32f, "%.2f")) layer.OffsetX = ox;
@@ -3027,12 +3027,12 @@ public class InspectorPanel
             float wh = layer.WorldHeight;
             if (ImGui.DragFloat("Height (0 = base)", ref wh, 0.05f, 0f, 50f, "%.2f")) layer.WorldHeight = wh;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Tinggi art dalam world unit (0 = ikut tinggi sprite dasar).\nX/Y mirror otomatis saat karakter menghadap kiri.");
+                ImGui.SetTooltip("Art height in world units (0 = follows the base sprite's height).\nX/Y mirror automatically when the character faces left.");
 
             bool sync = layer.SyncFrame;
             if (ImGui.Checkbox("Frame sync", ref sync)) layer.SyncFrame = sync;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("ON: art sampling frame sprite dasar (art satu grid dengan karakter).\nOFF: clip sendiri jalan di FPS-nya (aura/api independen).");
+                ImGui.SetTooltip("ON: the art samples the base sprite's frame (art on the same grid as the character).\nOFF: the clip runs on its own FPS (independent aura/fire).");
             ImGui.SameLine();
             if (ImGui.SmallButton("Remove")) removeIdx = i;
 
@@ -3052,7 +3052,7 @@ public class InspectorPanel
             });
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Attach art baru langsung ke objek — tanpa buat item dulu.");
+            ImGui.SetTooltip("Attach new art directly to the object — no item creation needed.");
     }
 
     private void RenderPlayer2DInspector(EditorObject editorObj)
@@ -3218,7 +3218,7 @@ public class InspectorPanel
                 ImGui.EndCombo();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Pilih layer Map Editor tempat player berada.\nPlayer digambar satu urutan dengan NPC/sprite:\nlayer lebih tinggi tampil DI ATAS yang lebih rendah.");
+                ImGui.SetTooltip("Pick the Map Editor layer the player is on.\nThe player draws in ONE pass with NPCs/sprites:\nhigher layers appear ABOVE lower ones.");
 
             if (ImGui.SliderInt("Layer Offset##player", ref pLayer, -10, 10))
                 editorObj.Player2DRenderLayer = pLayer;
@@ -3228,7 +3228,7 @@ public class InspectorPanel
             if (ImGui.SliderInt("Render Layer##player", ref pLayer, -10, 10))
                 editorObj.Player2DRenderLayer = pLayer;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Draw order antara player dan NPC/sprite yang tumpang tindih:\nlayer lebih tinggi digambar DI ATAS yang lebih rendah.\nDefault 0 = layer dasar (sama dengan NPC/sprite).");
+                ImGui.SetTooltip("Draw order between the player and overlapping NPCs/sprites:\nhigher layers draw ABOVE lower ones.\nDefault 0 = base layer (same as NPCs/sprites).");
         }
 
         // ── Gameplay physics ──

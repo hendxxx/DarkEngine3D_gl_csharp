@@ -4,9 +4,9 @@ OpenGL/C# game engine with ImGui-based IDE editor.
 
 ## Quick Start
 
-1. Pastikan `glfw3.dll` berada di folder yang sama dengan executable Anda.
-2. Jika belum ada bisa didownload dari https://www.glfw.org/download.html
-3. Pastikan folder `Artifacts` berada di folder yang sama dengan executable Anda.
+1. Make sure `glfw3.dll` sits next to the executable.
+2. If missing, download it from https://www.glfw.org/download.html
+3. Make sure the `Artifacts` folder sits next to the executable.
 4. Build: `dotnet build`
 5. Run: `dotnet run`
 

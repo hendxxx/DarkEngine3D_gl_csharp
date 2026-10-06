@@ -357,15 +357,15 @@ public class ItemEditorPanel
 
         // ── Equipment layer system: sprite art composited on the character ──
         bool isEq = def.IsEquipment;
-        if (ImGui.Checkbox("IsEquipment (render art di karakter)##eq", ref isEq))
+        if (ImGui.Checkbox("IsEquipment (render art on character)##eq", ref isEq))
         { def.IsEquipment = isEq; _dirty = true; }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("ON: Equip Art dirender sebagai LAYER di karakter saat item dipakai\n(baju/celana/shield mengikuti animasi dasar).\nOFF: item tetap bisa dipakai (stat saja) tanpa art layer.");
+            ImGui.SetTooltip("ON: the Equip Art renders as a LAYER on the character while equipped\n(shirt/pants/shield follow the base animation).\nOFF: the item can still be equipped (stats only) without the art layer.");
         int lay = def.EquipLayer;
         if (ImGui.DragInt("Equip Layer", ref lay))
         { def.EquipLayer = lay; _dirty = true; }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Urutan tumpuk layer di karakter: lebih besar = makin DEPAN\n(armor 1 di atas baju 0). Negatif = di BELAKANG sprite dasar (jubah/back).\nDua item satu layer → urutan paperdoll yang menentukan.");
+            ImGui.SetTooltip("Layer stacking order on the character: higher = more IN FRONT\n(armor 1 over shirt 0). Negative = BEHIND the base sprite (cape/back).\nTwo items on one layer → the paperdoll order decides.");
 
         float bh = def.BonusHealth, bm = def.BonusMana, bd = def.BonusDefense, bdm = def.BonusDamage;
         if (ImGui.DragFloat("Bonus HP", ref bh, 0.5f)) { def.BonusHealth = bh; _dirty = true; }
@@ -405,19 +405,19 @@ public class ItemEditorPanel
             if (ImGui.DragFloat("Equip Art Height", ref wh, 0.05f, 0f, 10f))
             { def.EquipWorldHeight = Math.Max(0f, wh); _dirty = true; }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("0 = tinggi sprite karakter penuh (art satu kanvas align 1:1).\nLebih kecil = art lebih pendek dari karakter.");
+                ImGui.SetTooltip("0 = full character sprite height (single-canvas art aligns 1:1).\nSmaller = the art is shorter than the character.");
             float eox = def.EquipOffsetX, eoy = def.EquipOffsetY;
             if (ImGui.DragFloat("Equip Offset X", ref eox, 0.02f))
             { def.EquipOffsetX = eox; _dirty = true; }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Geser art dari tengah-bawah karakter (world unit).\nX otomatis termirror saat karakter hadap kiri.");
+                ImGui.SetTooltip("Offset the art from the character's bottom-center (world units).\nX mirrors automatically when the character faces left.");
             if (ImGui.DragFloat("Equip Offset Y", ref eoy, 0.02f))
             { def.EquipOffsetY = eoy; _dirty = true; }
             bool sync = def.EquipSyncFrame;
             if (ImGui.Checkbox("Sync Frame with Base Sprite##eq", ref sync))
             { def.EquipSyncFrame = sync; _dirty = true; }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("ON (default): frame overlay mengikuti frame sprite utama\n(art digambar di grid yang sama = pose nyambung 1:1,\nkaki/tangan baju ikut gerak dasar).\nOFF: overlay beranimasi sendiri sesuai FPS clip-nya\n(aura/api/efek berulang).\nSheet overlay lebih pendek dari dasar → freeze di frame terakhir.");
+                ImGui.SetTooltip("ON (default): the overlay frame follows the base sprite's frame\n(art authored on the same grid = poses match 1:1,\nshirt arms/legs follow the base motion).\nOFF: the overlay animates on its own clip FPS\n(aura/fire/repeating effects).\nOverlay sheet shorter than the base → freezes on its last frame.");
         }
     }
 

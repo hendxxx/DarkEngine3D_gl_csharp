@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 /// viewport texture, not an ImGui window.
 ///
 /// Visual style follows the cozy pixel-art reference: warm PARCHMENT panels with
-/// WOODEN brown frames, an "Inventory" title banner, a 2×3 paperdoll column with a
+/// WOODEN brown frames, an "Inventory" title banner, a 3×5 paperdoll column with a
 /// name plate on the left, a 6×6 item grid on the right, and gamepad-style hint
 /// chips ([I] Close, right-click hints).
 ///
@@ -69,6 +69,20 @@ public static class InventoryHud
     public static bool AcceptMirrored(HUD.TextOutItem item)
         => item.Source == null || ReferenceEquals(item.Source, SharedHud);
 
+    /// <summary>Compact paperdoll display label — the cell labels are drawn at a
+    /// 16px font under narrow cells, so "Head Accessories 1" would overlap its
+    /// neighbours. The REAL slot name still drives equip/unequip logic + tooltips.</summary>
+    private static string DollLabel(string slotName) => slotName switch
+    {
+        "Head Accessories 1" => "Head Acc 1",
+        "Head Accessories 2" => "Head Acc 2",
+        "Body Accessories 1" => "Body Acc 1",
+        "Body Accessories 2" => "Body Acc 2",
+        "Legs Accessories 1" => "Legs Acc 1",
+        "Legs Accessories 2" => "Legs Acc 2",
+        _ => slotName
+    };
+
     // ── Palette (cozy parchment + wood, from the reference) ──
     private static readonly Vector3 Parchment = new(0.855f, 0.775f, 0.610f); // panel bg
     private static readonly Vector3 ParchmentDim = new(0.745f, 0.650f, 0.495f); // slot cells
@@ -85,7 +99,7 @@ public static class InventoryHud
     private static float Slot => Math.Clamp(Glfw.WindowHeight * 0.075f, 50f, 72f);
     private static float Gap => Slot * 0.16f;
     private const int GridCols = 6, GridRows = 6;   // 36 slots shown 6×6 (like the ref)
-    private const int DollCols = 2, DollRows = 3;   // 6 paperdoll slots 2×3
+    private const int DollCols = 3, DollRows = 5;   // 13 paperdoll slots in a 3×5 grid (15 cells)
 
     // ── Input edge state (per physical press) ──
     private static bool _iWasDown, _escWasDown;
@@ -474,9 +488,11 @@ public static class InventoryHud
                 // (the grid/hotbar carry the quantity info).
                 bool hover = DrawSlot(hud, x, dy, slot, def, 0,
                     highlighted: false, dragging: false);
-                // Label under the cell.
-                var labExt = hud.GetTextExtents(slotName, LabelFont(hud));
-                hud.DrawText(slotName, x + (slot - labExt.Width) * 0.5f, dy + slot + 2f, InkSoft, null, 0f, LabelFont(hud));
+                // Label under the cell (compact display label — the real slot name
+                // still drives the unequip logic and tooltip below).
+                string dollLabel = DollLabel(slotName);
+                var labExt = hud.GetTextExtents(dollLabel, LabelFont(hud));
+                hud.DrawText(dollLabel, x + (slot - labExt.Width) * 0.5f, dy + slot + 2f, InkSoft, null, 0f, LabelFont(hud));
 
                 if (hover)
                 {
