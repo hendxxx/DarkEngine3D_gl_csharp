@@ -2,7 +2,7 @@
   "Sheets": [
     {
       "Name": "Basket",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Basket.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Basket.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -1144,7 +1144,7 @@
     },
     {
       "Name": "Bronze Axe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Axe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Axe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -2286,7 +2286,7 @@
     },
     {
       "Name": "Bronze Pickaxe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Pickaxe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Pickaxe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -3428,7 +3428,7 @@
     },
     {
       "Name": "Bronze Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Bronze Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -4570,7 +4570,7 @@
     },
     {
       "Name": "Diamond Axe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Axe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Axe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -5712,7 +5712,7 @@
     },
     {
       "Name": "Diamond Pickaxe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Pickaxe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Pickaxe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -6854,7 +6854,7 @@
     },
     {
       "Name": "Diamond Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Diamond Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -7996,7 +7996,7 @@
     },
     {
       "Name": "Flower",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Flower.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Flower.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -9138,7 +9138,7 @@
     },
     {
       "Name": "Golden Axe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Axe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Axe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -10280,7 +10280,7 @@
     },
     {
       "Name": "Golden Pickaxe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Pickaxe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Pickaxe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -11422,7 +11422,7 @@
     },
     {
       "Name": "Golden Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Golden Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -12564,7 +12564,7 @@
     },
     {
       "Name": "Hoe F",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Hoe F.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Hoe F.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -13706,7 +13706,7 @@
     },
     {
       "Name": "Iron Axe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Axe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Axe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -14848,7 +14848,7 @@
     },
     {
       "Name": "Iron Pickaxe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Pickaxe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Pickaxe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -15990,7 +15990,7 @@
     },
     {
       "Name": "Iron Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Iron Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -17132,7 +17132,7 @@
     },
     {
       "Name": "Stick",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Stick.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Stick.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -18274,7 +18274,7 @@
     },
     {
       "Name": "Wooden Axe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Axe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Axe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -19416,7 +19416,7 @@
     },
     {
       "Name": "Wooden Pickaxe",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Pickaxe.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Pickaxe.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -20558,7 +20558,7 @@
     },
     {
       "Name": "Wooden Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Female Hand\\Wooden Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -21700,7 +21700,7 @@
     },
     {
       "Name": "Hoe M",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Male Hand\\Hoe M.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 35x Hand Items\\Male Hand\\Hoe M.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -22842,7 +22842,7 @@
     },
     {
       "Name": "Bunny ears1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -23984,7 +23984,7 @@
     },
     {
       "Name": "Bunny ears2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -25126,7 +25126,7 @@
     },
     {
       "Name": "Bunny ears3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -26268,7 +26268,7 @@
     },
     {
       "Name": "Bunny ears4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -27410,7 +27410,7 @@
     },
     {
       "Name": "Bunny ears5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Bunny ears5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -28552,7 +28552,7 @@
     },
     {
       "Name": "Farming Hat F",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Farming Hat F.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Farming Hat F.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -29694,7 +29694,7 @@
     },
     {
       "Name": "Female Blue cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Blue cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Blue cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -30836,7 +30836,7 @@
     },
     {
       "Name": "Female Green cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Green cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Green cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -31978,7 +31978,7 @@
     },
     {
       "Name": "Female Hat1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -33120,7 +33120,7 @@
     },
     {
       "Name": "Female Hat2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -34262,7 +34262,7 @@
     },
     {
       "Name": "Female Hat3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -35404,7 +35404,7 @@
     },
     {
       "Name": "Female Hat4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -36546,7 +36546,7 @@
     },
     {
       "Name": "Female Hat5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Hat5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -37688,7 +37688,7 @@
     },
     {
       "Name": "Female Mining Helmet",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Mining Helmet.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Mining Helmet.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -38830,7 +38830,7 @@
     },
     {
       "Name": "Female Orange cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Orange cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Orange cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -39972,7 +39972,7 @@
     },
     {
       "Name": "Female Purple cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Purple cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Purple cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -41114,7 +41114,7 @@
     },
     {
       "Name": "Female Red cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Red cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Red cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -42256,7 +42256,7 @@
     },
     {
       "Name": "Female Santa hat",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Santa hat.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Female Santa hat.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -43398,7 +43398,7 @@
     },
     {
       "Name": "Witch hat",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Witch hat.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Female Hat\\Witch hat.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -44540,7 +44540,7 @@
     },
     {
       "Name": "Farming Hat M",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Farming Hat M.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Farming Hat M.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -45682,7 +45682,7 @@
     },
     {
       "Name": "Guard Helmet",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Guard Helmet.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Guard Helmet.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -46824,7 +46824,7 @@
     },
     {
       "Name": "Male Blue cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Blue cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Blue cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -47966,7 +47966,7 @@
     },
     {
       "Name": "Male Green cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Green cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Green cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -49108,7 +49108,7 @@
     },
     {
       "Name": "Male Hat1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -50250,7 +50250,7 @@
     },
     {
       "Name": "Male Hat10",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat10.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat10.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -51392,7 +51392,7 @@
     },
     {
       "Name": "Male Hat2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -52534,7 +52534,7 @@
     },
     {
       "Name": "Male Hat3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -53676,7 +53676,7 @@
     },
     {
       "Name": "Male Hat4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -54818,7 +54818,7 @@
     },
     {
       "Name": "Male Hat5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -55960,7 +55960,7 @@
     },
     {
       "Name": "Male Hat6",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat6.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat6.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -57102,7 +57102,7 @@
     },
     {
       "Name": "Male Hat7",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat7.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat7.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -58244,7 +58244,7 @@
     },
     {
       "Name": "Male Hat8",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat8.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat8.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -59386,7 +59386,7 @@
     },
     {
       "Name": "Male Hat9",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat9.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Hat9.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -60528,7 +60528,7 @@
     },
     {
       "Name": "Male Mining Helmet",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Mining Helmet.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Mining Helmet.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -61670,7 +61670,7 @@
     },
     {
       "Name": "Male Orange cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Orange cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Orange cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -62812,7 +62812,7 @@
     },
     {
       "Name": "Male Purple cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Purple cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Purple cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -63954,7 +63954,7 @@
     },
     {
       "Name": "Male Red cap",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Red cap.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Red cap.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -65096,7 +65096,7 @@
     },
     {
       "Name": "Male Santa hat",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Santa hat.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Male Santa hat.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -66238,7 +66238,7 @@
     },
     {
       "Name": "Pumpkin hat",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Pumpkin hat.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Pumpkin hat.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -67380,7 +67380,7 @@
     },
     {
       "Name": "Viking Helmet with horns",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Viking Helmet with horns.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Viking Helmet with horns.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -68522,7 +68522,7 @@
     },
     {
       "Name": "Viking Helmet",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Viking Helmet.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 39x Hats\\Male Hat\\Viking Helmet.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -69664,7 +69664,7 @@
     },
     {
       "Name": "Armored Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Armored Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Armored Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -70806,7 +70806,7 @@
     },
     {
       "Name": "Black Thigh-High Boots",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Black Thigh-High Boots.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Black Thigh-High Boots.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -71948,7 +71948,7 @@
     },
     {
       "Name": "Blue bikini",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue bikini.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue bikini.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -73090,7 +73090,7 @@
     },
     {
       "Name": "Blue Bodice Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -74232,7 +74232,7 @@
     },
     {
       "Name": "Blue Bodice Mid Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice Mid Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice Mid Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -75374,7 +75374,7 @@
     },
     {
       "Name": "Blue Bodice",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Bodice.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -76516,7 +76516,7 @@
     },
     {
       "Name": "Blue Corset Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Corset Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Corset Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -77658,7 +77658,7 @@
     },
     {
       "Name": "Blue Corset v2 Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Corset v2 Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue Corset v2 Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -78800,7 +78800,7 @@
     },
     {
       "Name": "Blue dress",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue dress.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Blue dress.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -79942,7 +79942,7 @@
     },
     {
       "Name": "Brown Thigh-High Boots",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Brown Thigh-High Boots.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Brown Thigh-High Boots.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -81084,7 +81084,7 @@
     },
     {
       "Name": "Corset Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Corset Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Corset Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -82226,7 +82226,7 @@
     },
     {
       "Name": "Corset v2 Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Corset v2 Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Corset v2 Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -83368,7 +83368,7 @@
     },
     {
       "Name": "Fancy Blue Dress",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Fancy Blue Dress.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Fancy Blue Dress.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -84510,7 +84510,7 @@
     },
     {
       "Name": "Green bikini",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green bikini.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green bikini.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -85652,7 +85652,7 @@
     },
     {
       "Name": "Green Bodice Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -86794,7 +86794,7 @@
     },
     {
       "Name": "Green Bodice Mid Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice Mid Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice Mid Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -87936,7 +87936,7 @@
     },
     {
       "Name": "Green Bodice",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Bodice.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -89078,7 +89078,7 @@
     },
     {
       "Name": "Green Corset Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Corset Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Corset Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -90220,7 +90220,7 @@
     },
     {
       "Name": "Green Corset v2 Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Corset v2 Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Green Corset v2 Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -91362,7 +91362,7 @@
     },
     {
       "Name": "Long dress blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress blue.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -92504,7 +92504,7 @@
     },
     {
       "Name": "Long dress green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress green.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -93646,7 +93646,7 @@
     },
     {
       "Name": "Long dress orange",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress orange.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress orange.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -94788,7 +94788,7 @@
     },
     {
       "Name": "Long dress purple",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress purple.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress purple.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -95930,7 +95930,7 @@
     },
     {
       "Name": "Long dress red",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress red.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Long dress red.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -97072,7 +97072,7 @@
     },
     {
       "Name": "Orange bikini",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange bikini.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange bikini.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -98214,7 +98214,7 @@
     },
     {
       "Name": "Orange Bodice Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -99356,7 +99356,7 @@
     },
     {
       "Name": "Orange Bodice Mid Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice Mid Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice Mid Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -100498,7 +100498,7 @@
     },
     {
       "Name": "Orange Bodice",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Bodice.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -101640,7 +101640,7 @@
     },
     {
       "Name": "Orange Corset Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Corset Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Corset Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -102782,7 +102782,7 @@
     },
     {
       "Name": "Orange Corset v2 Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Corset v2 Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Orange Corset v2 Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -103924,7 +103924,7 @@
     },
     {
       "Name": "Pink Thigh-High Boots",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Pink Thigh-High Boots.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Pink Thigh-High Boots.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -105066,7 +105066,7 @@
     },
     {
       "Name": "Purple bikini",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple bikini.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple bikini.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -106208,7 +106208,7 @@
     },
     {
       "Name": "Purple Bodice Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -107350,7 +107350,7 @@
     },
     {
       "Name": "Purple Bodice Mid Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice Mid Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice Mid Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -108492,7 +108492,7 @@
     },
     {
       "Name": "Purple Bodice",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Bodice.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -109634,7 +109634,7 @@
     },
     {
       "Name": "Purple Corset Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Corset Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Corset Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -110776,7 +110776,7 @@
     },
     {
       "Name": "Purple Corset v2 Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Corset v2 Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Purple Corset v2 Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -111918,7 +111918,7 @@
     },
     {
       "Name": "Queen Dress",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Queen Dress.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Queen Dress.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -113060,7 +113060,7 @@
     },
     {
       "Name": "Red bikini",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red bikini.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red bikini.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -114202,7 +114202,7 @@
     },
     {
       "Name": "Red Bodice Long Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice Long Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice Long Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -115344,7 +115344,7 @@
     },
     {
       "Name": "Red Bodice Mid Sleeves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice Mid Sleeves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice Mid Sleeves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -116486,7 +116486,7 @@
     },
     {
       "Name": "Red Bodice",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Bodice.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -117628,7 +117628,7 @@
     },
     {
       "Name": "Red Thigh-High Boots",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Thigh-High Boots.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Red Thigh-High Boots.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -118770,7 +118770,7 @@
     },
     {
       "Name": "Short Skirt",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Short Skirt.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 43x Female Clothing\\Short Skirt.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -119912,7 +119912,7 @@
     },
     {
       "Name": "Blue swim trunks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Blue swim trunks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Blue swim trunks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -121054,7 +121054,7 @@
     },
     {
       "Name": "Chainmail",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Chainmail.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Chainmail.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -122196,7 +122196,7 @@
     },
     {
       "Name": "Green swim trunks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Green swim trunks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Green swim trunks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -123338,7 +123338,7 @@
     },
     {
       "Name": "Orange swim trunks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Orange swim trunks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Orange swim trunks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -124480,7 +124480,7 @@
     },
     {
       "Name": "Purple swim trunks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Purple swim trunks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Purple swim trunks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -125622,7 +125622,7 @@
     },
     {
       "Name": "Red swim trunks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Red swim trunks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Red swim trunks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -126764,7 +126764,7 @@
     },
     {
       "Name": "Split hose",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Split hose.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore 7x Male Clothing\\Split hose.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -127906,7 +127906,7 @@
     },
     {
       "Name": "Opera Gloves blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves blue.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -129048,7 +129048,7 @@
     },
     {
       "Name": "Opera Gloves brown",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves brown.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves brown.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -130190,7 +130190,7 @@
     },
     {
       "Name": "Opera Gloves green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves green.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -131332,7 +131332,7 @@
     },
     {
       "Name": "Opera Gloves orange",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves orange.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves orange.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -132474,7 +132474,7 @@
     },
     {
       "Name": "Opera Gloves purple",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves purple.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves purple.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -133616,7 +133616,7 @@
     },
     {
       "Name": "Opera Gloves red",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves red.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves red.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -134758,7 +134758,7 @@
     },
     {
       "Name": "Opera Gloves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Female\\Opera Gloves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -135900,7 +135900,7 @@
     },
     {
       "Name": "Glove blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove blue.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -137042,7 +137042,7 @@
     },
     {
       "Name": "Glove green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove green.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -138184,7 +138184,7 @@
     },
     {
       "Name": "Glove orange",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove orange.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove orange.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -139326,7 +139326,7 @@
     },
     {
       "Name": "Glove purple",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove purple.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove purple.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -140468,7 +140468,7 @@
     },
     {
       "Name": "Glove red",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove red.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove red.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -141610,7 +141610,7 @@
     },
     {
       "Name": "Glove white",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove white.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Glove white.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -142752,7 +142752,7 @@
     },
     {
       "Name": "Gloves",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Gloves.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Arm Layers\\Male\\Gloves.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -143894,7 +143894,7 @@
     },
     {
       "Name": "Backpack",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Backpack.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Backpack.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -145036,7 +145036,7 @@
     },
     {
       "Name": "Cape blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape blue.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -146178,7 +146178,7 @@
     },
     {
       "Name": "Cape green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape green.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -147320,7 +147320,7 @@
     },
     {
       "Name": "Cape orange",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape orange.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape orange.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -148462,7 +148462,7 @@
     },
     {
       "Name": "Cape purple",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape purple.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape purple.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -149604,7 +149604,7 @@
     },
     {
       "Name": "Cape red",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape red.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Cape red.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -150746,7 +150746,7 @@
     },
     {
       "Name": "Female Circle Shield",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Female Circle Shield.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Female Circle Shield.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -151888,7 +151888,7 @@
     },
     {
       "Name": "Female Lantern",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Female Lantern.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Female Lantern.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -153030,7 +153030,7 @@
     },
     {
       "Name": "Male Circle Shield",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Male Circle Shield.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Male Circle Shield.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -154172,7 +154172,7 @@
     },
     {
       "Name": "Male Lantern",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Male Lantern.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Male Lantern.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -155314,7 +155314,7 @@
     },
     {
       "Name": "Small Backpack",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Small Backpack.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Back layers s\\Small Backpack.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -156456,7 +156456,7 @@
     },
     {
       "Name": "Fancy Hair",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Fancy Hair.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Fancy Hair.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -157598,7 +157598,7 @@
     },
     {
       "Name": "Male Hair10",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair10.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair10.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -158740,7 +158740,7 @@
     },
     {
       "Name": "Male Hair11",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair11.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair11.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -159882,7 +159882,7 @@
     },
     {
       "Name": "Male Hair12",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair12.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair12.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -161024,7 +161024,7 @@
     },
     {
       "Name": "Male Hair13",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair13.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair13.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -162166,7 +162166,7 @@
     },
     {
       "Name": "Male Hair14",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair14.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair14.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -163308,7 +163308,7 @@
     },
     {
       "Name": "Male Hair15",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair15.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair15.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -164450,7 +164450,7 @@
     },
     {
       "Name": "Male Hair16",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair16.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair16.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -165592,7 +165592,7 @@
     },
     {
       "Name": "Male Hair17",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair17.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair17.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -166734,7 +166734,7 @@
     },
     {
       "Name": "Male Hair18",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair18.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair18.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -167876,7 +167876,7 @@
     },
     {
       "Name": "Male Hair19",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair19.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair19.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -169018,7 +169018,7 @@
     },
     {
       "Name": "Male Hair20",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair20.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair20.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -170160,7 +170160,7 @@
     },
     {
       "Name": "Male Hair21",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair21.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair21.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -171302,7 +171302,7 @@
     },
     {
       "Name": "Male Hair22",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair22.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair22.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -172444,7 +172444,7 @@
     },
     {
       "Name": "Male Hair23",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair23.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair23.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -173586,7 +173586,7 @@
     },
     {
       "Name": "Male Hair24",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair24.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair24.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -174728,7 +174728,7 @@
     },
     {
       "Name": "Male Hair25",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair25.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair25.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -175870,7 +175870,7 @@
     },
     {
       "Name": "Male Hair26",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair26.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair26.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -177012,7 +177012,7 @@
     },
     {
       "Name": "Male Hair27",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair27.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair27.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -178154,7 +178154,7 @@
     },
     {
       "Name": "Male Hair28",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair28.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair28.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -179296,7 +179296,7 @@
     },
     {
       "Name": "Male Hair29",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair29.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair29.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -180438,7 +180438,7 @@
     },
     {
       "Name": "Male Hair30",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair30.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair30.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -181580,7 +181580,7 @@
     },
     {
       "Name": "Male Hair6",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair6.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair6.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -182722,7 +182722,7 @@
     },
     {
       "Name": "Male Hair7",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair7.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair7.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -183864,7 +183864,7 @@
     },
     {
       "Name": "Male Hair8",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair8.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair8.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -185006,7 +185006,7 @@
     },
     {
       "Name": "Male Hair9",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair9.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Male Hair9.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -186148,7 +186148,7 @@
     },
     {
       "Name": "Queen hair",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Queen hair.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Queen hair.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -187290,7 +187290,7 @@
     },
     {
       "Name": "Shield Maiden hair",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Shield Maiden hair.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\28x Male Hair\\Shield Maiden hair.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -188432,7 +188432,7 @@
     },
     {
       "Name": "Female Hair10",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair10.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair10.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -189574,7 +189574,7 @@
     },
     {
       "Name": "Female Hair11",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair11.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair11.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -190716,7 +190716,7 @@
     },
     {
       "Name": "Female Hair12",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair12.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair12.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -191858,7 +191858,7 @@
     },
     {
       "Name": "Female Hair13",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair13.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair13.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -193000,7 +193000,7 @@
     },
     {
       "Name": "Female Hair14",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair14.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair14.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -194142,7 +194142,7 @@
     },
     {
       "Name": "Female Hair15",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair15.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair15.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -195284,7 +195284,7 @@
     },
     {
       "Name": "Female Hair16",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair16.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair16.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -196426,7 +196426,7 @@
     },
     {
       "Name": "Female Hair17",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair17.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair17.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -197568,7 +197568,7 @@
     },
     {
       "Name": "Female Hair18",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair18.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair18.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -198710,7 +198710,7 @@
     },
     {
       "Name": "Female Hair19",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair19.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair19.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -199852,7 +199852,7 @@
     },
     {
       "Name": "Female Hair20",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair20.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair20.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -200994,7 +200994,7 @@
     },
     {
       "Name": "Female Hair21",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair21.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair21.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -202136,7 +202136,7 @@
     },
     {
       "Name": "Female Hair22",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair22.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair22.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -203278,7 +203278,7 @@
     },
     {
       "Name": "Female Hair23",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair23.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair23.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -204420,7 +204420,7 @@
     },
     {
       "Name": "Female Hair24",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair24.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair24.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -205562,7 +205562,7 @@
     },
     {
       "Name": "Female Hair25",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair25.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair25.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -206704,7 +206704,7 @@
     },
     {
       "Name": "Female Hair26",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair26.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair26.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -207846,7 +207846,7 @@
     },
     {
       "Name": "Female Hair27",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair27.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair27.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -208988,7 +208988,7 @@
     },
     {
       "Name": "Female Hair28",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair28.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair28.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -210130,7 +210130,7 @@
     },
     {
       "Name": "Female Hair29",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair29.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair29.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -211272,7 +211272,7 @@
     },
     {
       "Name": "Female Hair30",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair30.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair30.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -212414,7 +212414,7 @@
     },
     {
       "Name": "Female Hair31",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair31.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair31.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -213556,7 +213556,7 @@
     },
     {
       "Name": "Female Hair32",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair32.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair32.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -214698,7 +214698,7 @@
     },
     {
       "Name": "Female Hair33",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair33.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair33.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -215840,7 +215840,7 @@
     },
     {
       "Name": "Female Hair34",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair34.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair34.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -216982,7 +216982,7 @@
     },
     {
       "Name": "Female Hair35",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair35.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair35.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -218124,7 +218124,7 @@
     },
     {
       "Name": "Female Hair6",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair6.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair6.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -219266,7 +219266,7 @@
     },
     {
       "Name": "Female Hair7",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair7.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair7.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -220408,7 +220408,7 @@
     },
     {
       "Name": "Female Hair8",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair8.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair8.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -221550,7 +221550,7 @@
     },
     {
       "Name": "Female Hair9",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair9.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\30x Female Hair\\Female Hair9.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -222692,7 +222692,7 @@
     },
     {
       "Name": "Female Skin4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -223834,7 +223834,7 @@
     },
     {
       "Name": "Blue Corset v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Corset v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Corset v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -224976,7 +224976,7 @@
     },
     {
       "Name": "Blue Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -226118,7 +226118,7 @@
     },
     {
       "Name": "Blue Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Blue Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -227260,7 +227260,7 @@
     },
     {
       "Name": "Corset v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Corset v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Corset v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -228402,7 +228402,7 @@
     },
     {
       "Name": "Green Corset v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Corset v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Corset v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -229544,7 +229544,7 @@
     },
     {
       "Name": "Green Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -230686,7 +230686,7 @@
     },
     {
       "Name": "Green Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -231828,7 +231828,7 @@
     },
     {
       "Name": "Green Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Green Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -232970,7 +232970,7 @@
     },
     {
       "Name": "Orange Corset v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Corset v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Corset v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -234112,7 +234112,7 @@
     },
     {
       "Name": "Orange Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -235254,7 +235254,7 @@
     },
     {
       "Name": "Orange Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -236396,7 +236396,7 @@
     },
     {
       "Name": "Orange Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Orange Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -237538,7 +237538,7 @@
     },
     {
       "Name": "Purple Corset v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Corset v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Corset v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -238680,7 +238680,7 @@
     },
     {
       "Name": "Purple Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -239822,7 +239822,7 @@
     },
     {
       "Name": "Purple Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -240964,7 +240964,7 @@
     },
     {
       "Name": "Purple Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Purple Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -242106,7 +242106,7 @@
     },
     {
       "Name": "Red Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Red Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Red Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -243248,7 +243248,7 @@
     },
     {
       "Name": "Red Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Red Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Red Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -244390,7 +244390,7 @@
     },
     {
       "Name": "Skyblue Panties and Bra",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skyblue Panties and Bra.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skyblue Panties and Bra.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -245532,7 +245532,7 @@
     },
     {
       "Name": "Skyblue Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skyblue Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skyblue Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -246674,7 +246674,7 @@
     },
     {
       "Name": "Socks",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Socks.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Socks.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -247816,7 +247816,7 @@
     },
     {
       "Name": "Elven Ears1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears1.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -248958,7 +248958,7 @@
     },
     {
       "Name": "Elven Ears2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears2.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -250100,7 +250100,7 @@
     },
     {
       "Name": "Elven Ears3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears3.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -251242,7 +251242,7 @@
     },
     {
       "Name": "Elven Ears4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears4.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -252384,7 +252384,7 @@
     },
     {
       "Name": "Elven Ears5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Ears\\Elven Ears5.png",
       "ImageWidth": 720,
       "ImageHeight": 448,
       "Columns": 10,
@@ -253526,7 +253526,7 @@
     },
     {
       "Name": "Female Hair2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -254668,7 +254668,7 @@
     },
     {
       "Name": "Female Hair3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -255810,7 +255810,7 @@
     },
     {
       "Name": "Female Hair4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -256952,7 +256952,7 @@
     },
     {
       "Name": "Female Hair5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -258094,7 +258094,7 @@
     },
     {
       "Name": "Blue Pants",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Blue Pants.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Blue Pants.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -259236,7 +259236,7 @@
     },
     {
       "Name": "Blue Shirt v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Blue Shirt v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Blue Shirt v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -260378,7 +260378,7 @@
     },
     {
       "Name": "Green Pants",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Pants.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Pants.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -261520,7 +261520,7 @@
     },
     {
       "Name": "Green Shirt v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Shirt v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Shirt v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -262662,7 +262662,7 @@
     },
     {
       "Name": "Green Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Green Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -263804,7 +263804,7 @@
     },
     {
       "Name": "Orange Pants",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Orange Pants.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Orange Pants.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -264946,7 +264946,7 @@
     },
     {
       "Name": "orange Shirt v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\orange Shirt v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\orange Shirt v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -266088,7 +266088,7 @@
     },
     {
       "Name": "Orange Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Orange Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Orange Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -267230,7 +267230,7 @@
     },
     {
       "Name": "Purple Pants",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Pants.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Pants.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -268372,7 +268372,7 @@
     },
     {
       "Name": "Purple Shirt v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Shirt v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Shirt v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -269514,7 +269514,7 @@
     },
     {
       "Name": "Purple Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Purple Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -270656,7 +270656,7 @@
     },
     {
       "Name": "Red Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Red Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Red Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -271798,7 +271798,7 @@
     },
     {
       "Name": "Shirt v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shirt v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shirt v2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -272940,7 +272940,7 @@
     },
     {
       "Name": "Shoes",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shoes.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shoes.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -274082,7 +274082,7 @@
     },
     {
       "Name": "Skyblue Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Skyblue Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Skyblue Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -275224,7 +275224,7 @@
     },
     {
       "Name": "Underwear",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Underwear.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Underwear.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -276366,7 +276366,7 @@
     },
     {
       "Name": "Male Hair2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -277508,7 +277508,7 @@
     },
     {
       "Name": "Male Hair3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -278650,7 +278650,7 @@
     },
     {
       "Name": "Male Hair4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -279792,7 +279792,7 @@
     },
     {
       "Name": "Male Hair5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -280934,7 +280934,7 @@
     },
     {
       "Name": "Character effects blood blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood blue.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281036,7 +281036,7 @@
     },
     {
       "Name": "Character effects blood green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood green.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281138,7 +281138,7 @@
     },
     {
       "Name": "Character effects blood",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects blood.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281240,7 +281240,7 @@
     },
     {
       "Name": "Character effects buff blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff blue.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281342,7 +281342,7 @@
     },
     {
       "Name": "Character effects buff red",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff red.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff red.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281444,7 +281444,7 @@
     },
     {
       "Name": "Character effects buff",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects buff.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281546,7 +281546,7 @@
     },
     {
       "Name": "Character effects curved blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved blue.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281648,7 +281648,7 @@
     },
     {
       "Name": "Character effects curved lines",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved lines.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved lines.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281750,7 +281750,7 @@
     },
     {
       "Name": "Character effects curved orange",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved orange.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects curved orange.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281852,7 +281852,7 @@
     },
     {
       "Name": "Character effects debuff black",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff black.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff black.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -281954,7 +281954,7 @@
     },
     {
       "Name": "Character effects debuff gray brown",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff gray brown.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff gray brown.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282056,7 +282056,7 @@
     },
     {
       "Name": "Character effects debuff",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects debuff.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282158,7 +282158,7 @@
     },
     {
       "Name": "Character effects hearts blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts blue.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282260,7 +282260,7 @@
     },
     {
       "Name": "Character effects hearts pink",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts pink.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts pink.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282362,7 +282362,7 @@
     },
     {
       "Name": "Character effects hearts",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects hearts.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282464,7 +282464,7 @@
     },
     {
       "Name": "Character effects lines green",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines green.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines green.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282566,7 +282566,7 @@
     },
     {
       "Name": "Character effects lines yellow",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines yellow.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines yellow.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282668,7 +282668,7 @@
     },
     {
       "Name": "Character effects lines",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects lines.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282770,7 +282770,7 @@
     },
     {
       "Name": "Character effects stars blue",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars blue.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars blue.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282872,7 +282872,7 @@
     },
     {
       "Name": "Character effects stars pink",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars pink.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars pink.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -282974,7 +282974,7 @@
     },
     {
       "Name": "Character effects stars teal",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars teal.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars teal.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -283076,7 +283076,7 @@
     },
     {
       "Name": "Character effects stars v2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars v2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars v2.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -283178,7 +283178,7 @@
     },
     {
       "Name": "Character effects stars white",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars white.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars white.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -283280,7 +283280,7 @@
     },
     {
       "Name": "Character effects stars",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\Character effects stars.png",
       "ImageWidth": 400,
       "ImageHeight": 64,
       "Columns": 5,
@@ -283382,7 +283382,7 @@
     },
     {
       "Name": "DONT FORGET TO RATE",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\DONT FORGET TO RATE.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore character effects\\DONT FORGET TO RATE.png",
       "ImageWidth": 736,
       "ImageHeight": 488,
       "Columns": 5,
@@ -283484,7 +283484,7 @@
     },
     {
       "Name": "Coin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\Coin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\Coin.png",
       "ImageWidth": 192,
       "ImageHeight": 16,
       "Columns": 19,
@@ -288066,7 +288066,7 @@
     },
     {
       "Name": "GandalfHardcore Emoji",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\GandalfHardcore Emoji.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\GandalfHardcore Emoji.png",
       "ImageWidth": 304,
       "ImageHeight": 240,
       "Columns": 19,
@@ -292648,7 +292648,7 @@
     },
     {
       "Name": "Quest marker",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\Quest marker.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Emojis and Icons\\Quest marker.png",
       "ImageWidth": 512,
       "ImageHeight": 64,
       "Columns": 16,
@@ -293182,7 +293182,7 @@
     },
     {
       "Name": "Female Blindfold",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Female Blindfold.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Female Blindfold.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -294324,7 +294324,7 @@
     },
     {
       "Name": "Female tied up",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Female tied up.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Female tied up.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -295466,7 +295466,7 @@
     },
     {
       "Name": "Male Blindfold",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Male Blindfold.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Male Blindfold.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -296608,7 +296608,7 @@
     },
     {
       "Name": "Male tied up",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Male tied up.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Hostage Layers\\Male tied up.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -297750,7 +297750,7 @@
     },
     {
       "Name": "GandalfHardcore doggy backpack",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy backpack.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy backpack.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -297964,7 +297964,7 @@
     },
     {
       "Name": "GandalfHardcore doggy hat",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy hat.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy hat.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -298178,7 +298178,7 @@
     },
     {
       "Name": "GandalfHardcore doggy sheet 2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 2.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -298392,7 +298392,7 @@
     },
     {
       "Name": "GandalfHardcore doggy sheet 3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 3.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -298606,7 +298606,7 @@
     },
     {
       "Name": "GandalfHardcore doggy sheet 4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 4.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -298820,7 +298820,7 @@
     },
     {
       "Name": "GandalfHardcore doggy sheet 5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet 5.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -299034,7 +299034,7 @@
     },
     {
       "Name": "GandalfHardcore doggy sheet",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore doggy sheet.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -299248,7 +299248,7 @@
     },
     {
       "Name": "GandalfHardcore fox",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore fox.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore fox.png",
       "ImageWidth": 192,
       "ImageHeight": 64,
       "Columns": 6,
@@ -299462,7 +299462,7 @@
     },
     {
       "Name": "GandalfHardcore Wisp",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore Wisp.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\GandalfHardcore Wisp.png",
       "ImageWidth": 160,
       "ImageHeight": 32,
       "Columns": 6,
@@ -299676,7 +299676,7 @@
     },
     {
       "Name": "Wisp with outline",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\Wisp with outline.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Pet companion\\Wisp with outline.png",
       "ImageWidth": 160,
       "ImageHeight": 32,
       "Columns": 6,
@@ -299890,7 +299890,7 @@
     },
     {
       "Name": "Female Demon skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Demon skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Demon skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -301032,7 +301032,7 @@
     },
     {
       "Name": "Female Devil skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Devil skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Devil skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -302174,7 +302174,7 @@
     },
     {
       "Name": "Female Ghost skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Ghost skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Ghost skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -303316,7 +303316,7 @@
     },
     {
       "Name": "Female Orc skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Orc skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Orc skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -304458,7 +304458,7 @@
     },
     {
       "Name": "Female Zombie skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Zombie skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Female Zombie skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -305600,7 +305600,7 @@
     },
     {
       "Name": "Male Demon skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Demon skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Demon skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -306742,7 +306742,7 @@
     },
     {
       "Name": "Male Devil skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Devil skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Devil skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -307884,7 +307884,7 @@
     },
     {
       "Name": "Male Ghost skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Ghost skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Ghost skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -309026,7 +309026,7 @@
     },
     {
       "Name": "Male Orc skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Orc skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Orc skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -310168,7 +310168,7 @@
     },
     {
       "Name": "Male Zombie skin",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Zombie skin.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Special skin\\Male Zombie skin.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -311310,7 +311310,7 @@
     },
     {
       "Name": "Female Skin1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -312452,7 +312452,7 @@
     },
     {
       "Name": "Female Skin2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -313594,7 +313594,7 @@
     },
     {
       "Name": "Female Skin3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -314736,7 +314736,7 @@
     },
     {
       "Name": "Female Skin5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Female Skin5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -315878,7 +315878,7 @@
     },
     {
       "Name": "Male Skin1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -317020,7 +317020,7 @@
     },
     {
       "Name": "Male Skin3",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin3.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin3.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -318162,7 +318162,7 @@
     },
     {
       "Name": "Male Skin4",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin4.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin4.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -319304,7 +319304,7 @@
     },
     {
       "Name": "Male Skin5",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin5.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin5.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -320446,7 +320446,7 @@
     },
     {
       "Name": "Boots",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Boots.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Boots.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -321588,7 +321588,7 @@
     },
     {
       "Name": "Corset",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Corset.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Corset.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -322730,7 +322730,7 @@
     },
     {
       "Name": "Skirt",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skirt.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Clothing\\Skirt.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -323872,7 +323872,7 @@
     },
     {
       "Name": "Female Hair1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hair\\Female Hair1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -325014,7 +325014,7 @@
     },
     {
       "Name": "Pants",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Pants.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Pants.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -326156,7 +326156,7 @@
     },
     {
       "Name": "Shirt",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shirt.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Clothing\\Shirt.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -327298,7 +327298,7 @@
     },
     {
       "Name": "Male Hair1",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair1.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hair\\Male Hair1.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -328440,7 +328440,7 @@
     },
     {
       "Name": "GandalfHardcore Goddess NPC",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcFREE NPC\\GandalfHardcore Goddess NPC.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcFREE NPC\\GandalfHardcore Goddess NPC.png",
       "ImageWidth": 832,
       "ImageHeight": 64,
       "Columns": 13,
@@ -328670,7 +328670,7 @@
     },
     {
       "Name": "Male Skin2",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin2.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Character skin colors\\Male Skin2.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -329812,7 +329812,7 @@
     },
     {
       "Name": "Female Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hand\\Female Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Female Hand\\Female Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -330954,7 +330954,7 @@
     },
     {
       "Name": "Male Sword",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hand\\Male Sword.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Artifacts\\images\\GandalfHardcore Character Asset Pack\\Male Hand\\Male Sword.png",
       "ImageWidth": 800,
       "ImageHeight": 448,
       "Columns": 10,
@@ -332096,7 +332096,7 @@
     },
     {
       "Name": "fireball",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\FX\\fireball.png",
+      "ImagePath": "C:\\Users\\EMUDHRA-HENDRY\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Assets\\images\\FX\\fireball.png",
       "ImageWidth": 256,
       "ImageHeight": 32,
       "Columns": 8,
