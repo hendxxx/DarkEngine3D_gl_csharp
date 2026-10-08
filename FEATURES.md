@@ -1356,9 +1356,30 @@ All elements support:
 - Auto-fill window / Auto-center
 - Image background (Stretch/Zoom/Fill modes)
 
+
 ---
 
-## 16. Performance Features
+## 16. Container Overlay + Bar Rendering (2D UI layering)
+
+### 16.1 Container overlay frontmost rule (F8 fullscreen + docked preview)
+
+When a UI Container is opened in play/preview, it must render ABOVE the game HUD text and NPC bubbles and ABOVE other root-level non-container elements.
+
+- F8 fullscreen path (`IDE.RenderInGameMode`): the authored UI container pass runs AFTER the HUD text mirror and dialogue overlay, so the open menu is unambiguously the top layer.
+- Root-level element ordering: `RenderUIElements` partitions root children into non-containers-first and containers-last, so a game HUD Bar that shares a root with an open menu cannot draw on top of the menu even if authored after it in the hierarchy.
+- Per-group bar sequence: each group runs its own full under→element→over pass (Background/Empty under, Progress in the element pass, ImagePath frame over) so the bar stays coherent with the menu z-order instead of punching through half the bar.
+- Effect2DSystem and HUD Text Overlay draw with depth test off; draw order is the only layering signal.
+
+### 16.2 Bar component render model
+
+- `UIElementType.Bar` = 4 layers: `Background (-3)`, `Empty (-2)`, `Progress (-1)`, `ImagePath (0)`.
+- The element pass draws only Progress; `DrawBarUnderLayers` draws Background + Empty before the element pass; `DrawBarOverLayers` draws ImagePath after the element pass.
+- A sprite-less Bar still renders via fallback colors (RGB `Vector3` 0..1) multiplied by Opacity — persisted as a float array in the scene file so old files load without change.
+- Inspector "Colors (used when a layer has no image)" section sets per-layer fallback colors.
+
+---
+
+## 17. Performance Features
 
 - **MSAA**: Configurable multi-sample anti-aliasing
 - **Frustum culling**: Objects outside camera frustum skipped
@@ -1420,3 +1441,9 @@ dotnet build --nologo
 ---
 
 *Generated for DarkEngine3D — OpenEngine3D game engine reference.*
+
+
+> Scope note: this document describes a local OpenGL/C# desktop game engine. It is NOT a
+> browser/web/Cloudflare Workers target. "Projects / Menu Scene Publishing" in this doc
+> is about how the local IDE + scene files + catalogs are saved and organized — it does
+> NOT describe hosting the engine as a web service.
