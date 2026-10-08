@@ -67,6 +67,10 @@ public class IDE : IDisposable
     // ── Keyboard navigation in in-game mode ──
     private UIElement? _focusedInGameElement = null;
     private int _focusedInGameIndex = -1;
+    /// <summary>Overlay name already logged to the console (once per activation —
+    /// the overlay block runs every frame; without this the "navigable elements"
+    /// line spams the console 60×/second).</summary>
+    private string? _lastLoggedOverlayName = null;
     // ── Project dialogs ──
 
     // ── Panel focus memory ──
@@ -2079,13 +2083,19 @@ public class IDE : IDisposable
             {
                 // Modal: only flatten elements inside the overlay (background not navigable)
                 FlattenVisibleInteractive(activeOverlay.Children, navElements);
-                if (navElements.Count > 0)
+                // Log ONCE per overlay activation — this block runs EVERY frame while
+                // the overlay is open, an unconditional WriteLine spams the console.
+                if (navElements.Count > 0 && !string.Equals(activeOverlay.Name, _lastLoggedOverlayName, StringComparison.Ordinal))
+                {
                     Console.WriteLine($"[IDE] Overlay '{activeOverlay.Name}' — {navElements.Count} navigable elements inside");
+                    _lastLoggedOverlayName = activeOverlay.Name;
+                }
             }
             else
             {
                 // No overlay: flatten all visible interactive elements as usual
                 FlattenVisibleInteractive(activeEditScene.Root.Children, navElements);
+                _lastLoggedOverlayName = null; // overlay closed → next open logs again
             }
 
             // Tab / Shift+Tab to navigate forward/backward
