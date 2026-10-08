@@ -1834,7 +1834,7 @@ public class MapEditorPanel
                     string p3b = act.Param3;
                     if (ImGui.InputText("Item ID##buyitem", ref p1, 64)) act.Param = p1;
                     if (ImGui.InputText("Amount##buyamt", ref p2, 32)) act.Param2 = p2;
-                    if (ImGui.InputText("Harga (kosong = Price item)##buyprice", ref p3b, 32)) act.Param3 = p3b;
+                    if (ImGui.InputText("Price (empty = item Price)##buyprice", ref p3b, 32)) act.Param3 = p3b;
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Price per item. Empty = uses the Price column in the Item Editor.\n\"0\" = free. Payment is all-or-nothing: not enough gold = cancelled.");
                     var bdef = Visual.InventorySystem.Find(p1.Trim());
@@ -1850,7 +1850,7 @@ public class MapEditorPanel
                     string p3s = act.Param3;
                     if (ImGui.InputText("Item ID##sellitem", ref p1, 64)) act.Param = p1;
                     if (ImGui.InputText("Amount##sellamt", ref p2, 32)) act.Param2 = p2;
-                    if (ImGui.InputText("Payout (kosong = Price/payout item)##sellprice", ref p3s, 32)) act.Param3 = p3s;
+                    if (ImGui.InputText("Payout (empty = item Price)##sellprice", ref p3s, 32)) act.Param3 = p3s;
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Gold received per item. Empty = uses the Price column in the Item Editor.\n\"0\" = no payout. The full amount must be in the inventory.");
                     var sdef = Visual.InventorySystem.Find(p1.Trim());
