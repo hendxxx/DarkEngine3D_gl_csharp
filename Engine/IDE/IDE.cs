@@ -2201,9 +2201,29 @@ public class IDE : IDisposable
 
             // If root IS a Container, render it alone — recursion handles its children.
             // Otherwise render root's children directly (multi-element scene).
-            var renderElements = activeEditScene.Root.Type == UIElementType.Container
-                ? (IReadOnlyList<UIElement>)[activeEditScene.Root]
-                : activeEditScene.Root.Children;
+            // LAYER RULE (user: "Main Menu harus paling depan"): RenderUIElements
+            // walks children in hierarchy order, so root-level elements authored
+            // AFTER an overlay (e.g. barHealth/barMagic after 'cont') would still
+            // draw ON TOP of the open menu. Draw all visible Containers (overlays)
+            // LAST — above every non-container sibling — regardless of hierarchy
+            // order. Hidden containers draw nothing, so their position is irrelevant.
+            IReadOnlyList<UIElement> renderElements;
+            if (activeEditScene.Root.Type == UIElementType.Container)
+            {
+                renderElements = [activeEditScene.Root];
+            }
+            else
+            {
+                var ordered = new List<UIElement>(activeEditScene.Root.Children.Count);
+                var overlayElems = new List<UIElement>(activeEditScene.Root.Children.Count);
+                foreach (var child in activeEditScene.Root.Children)
+                {
+                    if (child.Type == UIElementType.Container) overlayElems.Add(child);
+                    else ordered.Add(child);
+                }
+                ordered.AddRange(overlayElems);
+                renderElements = ordered;
+            }
 
             _viewport.RenderUIElements(
                 drawList,
