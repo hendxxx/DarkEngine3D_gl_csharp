@@ -1920,24 +1920,24 @@ public class IDE : IDisposable
         }
 
         // 1) Scene texture from running game scene (render first, behind UI)
-        if (Bridge.SceneTextureID != 0)
+        // Letterbox fit — shared by the dialogue overlay, the HUD text mirror and the
+        // mouse mapper so ALL of them map through the SAME rect.
+        Vector2 sceneImgMin = new(0f, 0f), sceneImgSize = new(0f, 0f);
+        bool hasSceneTexture = Bridge.SceneTextureID != 0;
+        if (hasSceneTexture)
         {
             float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
             float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
             float panelAspect = screenW / screenH;
             float texAspect = texW / texH;
 
-            Vector2 imgSize;
-            if (panelAspect > texAspect)
-                imgSize = new Vector2(screenH * texAspect, screenH);
-            else
-                imgSize = new Vector2(screenW, screenW / texAspect);
-
-            float ox = (screenW - imgSize.X) * 0.5f;
-            float oy = (screenH - imgSize.Y) * 0.5f;
+            sceneImgSize = panelAspect > texAspect
+                ? new Vector2(screenH * texAspect, screenH)
+                : new Vector2(screenW, screenW / texAspect);
+            sceneImgMin = new Vector2((screenW - sceneImgSize.X) * 0.5f, (screenH - sceneImgSize.Y) * 0.5f);
 
             drawList.AddImage((nint)Bridge.SceneTextureID,
-                new Vector2(ox, oy), new Vector2(ox + imgSize.X, oy + imgSize.Y),
+                sceneImgMin, sceneImgMin + sceneImgSize,
                 new Vector2(0, 1), new Vector2(1, 0));
         }
         else
@@ -1945,6 +1945,79 @@ public class IDE : IDisposable
             // Dark background when no scene texture
             drawList.AddRectFilled(new Vector2(0, 0), new Vector2(screenW, screenH),
                 ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.08f, 1f)));
+        }
+
+        // ── LAYER ORDER (user: "Main Menu harus paling depan") ──
+        // The dialogue markers and the HUD text mirror draw BEFORE the authored UI so
+        // an open menu Container (Settings / Main Menu) is unambiguously FRONTMOST.
+        // Previously both blocks ran AFTER RenderUIElements and gameplay HUD text
+        // (hotbar digits, Gold, [I]) + NPC bubbles leaked ON TOP of the menu.
+
+        // Dialogue overlay (in-game F8, fullscreen path):
+        // RenderInGameMode early-returns before ViewportPanel.Render(), so the
+        // viewport-panel overlay never draws here. Draw it on the same FOREGROUND
+        // draw list the scene texture uses, mapping scene pixels → the letterboxed
+        // image rect (same fit math as the AddImage above). State ticks already run
+        // in SceneManager/Player2DSystem — this is visuals + choice mouse picking only.
+        if (hasSceneTexture
+            && DialogueSystem.HudDrawFrameId != Glfw.FrameId) // GameScene HUD drew this frame → no double draw
+        {
+            float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
+            float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
+
+            var rawFont = _imgui?.GetFont(
+                Visual.DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
+            ImFontPtr? dialogueFont = rawFont != null && (nint)rawFont != IntPtr.Zero
+                ?                new ImFontPtr(rawFont) : null;
+            Visual.DialogueSystem.DrawImGuiOverlay(drawList, Bridge.Camera, Bridge.EditorObjectManager,
+                (int)texW, (int)texH,
+                p => new Vector2(sceneImgMin.X + p.X / texW * sceneImgSize.X, sceneImgMin.Y + p.Y / texH * sceneImgSize.Y),
+                dialogueFont);
+        }
+
+        // MOUSE MAPPING (hit-test accuracy rule: ALL panel hover/click tests read the
+        // WindowToScene-mapped cursor): F8 early-returns BEFORE ViewportPanel.Render,
+        // so the panel's per-frame WindowToScene publisher never runs — a stale
+        // letterbox lambda from the last docked frame would keep mapping clicks
+        // through an outdated rect (hover/click land on the wrong slot — "mouse nya
+        // tidak akurat"). The F8 scene image above is letterboxed with the SAME fit
+        // math and the SAME center → publish the matching inverse mapper HERE, every
+        // frame.
+        if (hasSceneTexture && Bridge.SceneTextureWidth > 0 && Bridge.SceneTextureHeight > 0)
+        {
+            float iTexW = Bridge.SceneTextureWidth;
+            float iTexH = Bridge.SceneTextureHeight;
+            ShopHud.WindowToScene = InventoryHud.WindowToScene = (wx, wy) =>
+            {
+                float u = (wx - sceneImgMin.X) / MathF.Max(1f, sceneImgSize.X);
+                float v = (wy - sceneImgMin.Y) / MathF.Max(1f, sceneImgSize.Y);
+                return (u * iTexW, v * iTexH);
+            };
+
+            // ── HUD TEXT MIRROR (F8 fullscreen): the stb font atlas can be GPU-empty
+            // on the HUD path (panel quads render, glyphs vanish — qty chip, title,
+            // labels, gold, tooltip), and the ImGui fallback mirror only ever ran from
+            // ViewportPanel — which F8 early-returns BEFORE. Publish the same trio the
+            // viewport publishes (font resolver + THIS foreground draw list + Worldstar)
+            // and draw every HUD.DrawText/TextOut string queued by this frame's HUD
+            // pass (FrameTextOut survives Flush now), mapped scene-px → window via the
+            // SAME letterbox fit as the scene image AND the mouse mapper above. Drawn
+            // BEFORE the authored UI below so the menu stays frontmost.
+            Visual.HUD.ImGuiFontResolver = (path, sizePx) => ResolveHudFont(path, sizePx);
+            Visual.HUD.OverlayDrawList = drawList;
+            Visual.HUD.OverlayFontPath = "Artifacts\\fonts\\Worldstar.ttf";
+            // Accept-filter: only the shared inventory HUD's strings (+ explicit
+            // TextOuts) — GameScene dialogue/debug text renders fine via stb and
+            // would otherwise draw twice (stb + mirror).
+            Visual.HUD.DrawTextOutOverlay(p => new Vector2(
+                sceneImgMin.X + p.X / iTexW * sceneImgSize.X,
+                sceneImgMin.Y + p.Y / iTexH * sceneImgSize.Y),
+                Visual.InventoryHud.AcceptMirrored);
+        }
+        else
+        {
+            ShopHud.WindowToScene = InventoryHud.WindowToScene = null;
+            Visual.HUD.OverlayDrawList = null; // no scene image → nothing to mirror onto
         }
 
         // 2) Editor scene UI elements (from loaded game.ing) — ALWAYS rendered on top
@@ -2295,84 +2368,12 @@ public class IDE : IDisposable
                     Console.WriteLine("[IDE] In-game stats overlay: OFF (click panel to re-enable in IDE Settings → Gameplay)");
                 }
             }
-        }
-        float dt = io.DeltaTime;
+        }        float dt = io.DeltaTime;
         RenderInGameWarning(dt);
 
-        // ── Dialogue overlay (in-game F8, fullscreen path) ──
-        // RenderInGameMode early-returns before ViewportPanel.Render(), so the        // viewport-panel overlay never draws here. Draw it on the same FOREGROUND        // draw list the scene texture uses, mapping scene pixels → the letterboxed        // image rect (same fit math as the AddImage above). State ticks already run        // in SceneManager/Player2DSystem — this is visuals + choice mouse picking only.
-        if (Bridge.SceneTextureID != 0
-            && DialogueSystem.HudDrawFrameId != Glfw.FrameId) // GameScene HUD drew this frame → no double draw
-        {
-            float texW = Bridge.SceneTextureWidth > 0 ? Bridge.SceneTextureWidth : 1f;
-            float texH = Bridge.SceneTextureHeight > 0 ? Bridge.SceneTextureHeight : 1f;
-            float panelAspect = screenW / screenH;
-            float texAspect = texW / texH;
-            Vector2 dImgSize = panelAspect > texAspect
-                ? new Vector2(screenH * texAspect, screenH)
-                : new Vector2(screenW, screenW / texAspect);
-            Vector2 dImgMin = new((screenW - dImgSize.X) * 0.5f, (screenH - dImgSize.Y) * 0.5f);
-
-            var rawFont = _imgui?.GetFont(
-                Visual.DialogueLibrary.GetTheme("Default")?.FontPath ?? "", 16f);
-            ImFontPtr? dialogueFont = rawFont != null && (nint)rawFont != IntPtr.Zero
-                ?                new ImFontPtr(rawFont) : null;
-            Visual.DialogueSystem.DrawImGuiOverlay(drawList, Bridge.Camera, Bridge.EditorObjectManager,
-                (int)texW, (int)texH,
-                p => new Vector2(dImgMin.X + p.X / texW * dImgSize.X, dImgMin.Y + p.Y / texH * dImgSize.Y),
-                dialogueFont);
-        }
-
-        // MOUSE MAPPING (hit-test accuracy rule: ALL panel hover/click tests read the
-        // WindowToScene-mapped cursor): F8 early-returns BEFORE ViewportPanel.Render,
-        // so the panel's per-frame WindowToScene publisher never runs — a stale
-        // letterbox lambda from the last docked frame would keep mapping clicks
-        // through an outdated rect (hover/click land on the wrong slot — "mouse nya
-        // tidak akurat"). The F8 scene image above is letterboxed with the SAME fit
-        // math and the SAME center → publish the matching inverse mapper HERE, every
-        // frame.
-        if (Bridge.SceneTextureID != 0 && Bridge.SceneTextureWidth > 0 && Bridge.SceneTextureHeight > 0)
-        {
-            float iTexW = Bridge.SceneTextureWidth;
-            float iTexH = Bridge.SceneTextureHeight;
-            float iPanelAspect = screenW / screenH;
-            float iTexAspect = iTexW / iTexH;
-            Vector2 iImgSize = iPanelAspect > iTexAspect
-                ? new Vector2(screenH * iTexAspect, screenH)
-                : new Vector2(screenW, screenW / iTexAspect);
-            Vector2 iImgMin = new((screenW - iImgSize.X) * 0.5f, (screenH - iImgSize.Y) * 0.5f);
-            ShopHud.WindowToScene = InventoryHud.WindowToScene = (wx, wy) =>
-            {
-                float u = (wx - iImgMin.X) / MathF.Max(1f, iImgSize.X);
-                float v = (wy - iImgMin.Y) / MathF.Max(1f, iImgSize.Y);
-                return (u * iTexW, v * iTexH);
-            };
-
-            // ── HUD TEXT MIRROR (F8 fullscreen): the stb font atlas can be GPU-empty
-            // on the HUD path (panel quads render, glyphs vanish — qty chip, title,
-            // labels, gold, tooltip), and the ImGui fallback mirror only ever ran from
-            // ViewportPanel — which F8 early-returns BEFORE. Publish the same trio the
-            // viewport publishes (font resolver + THIS foreground draw list + Worldstar)
-            // and draw every HUD.DrawText/TextOut string queued by this frame's HUD
-            // pass (FrameTextOut survives Flush now), mapped scene-px → window via the
-            // SAME letterbox fit as the scene image AND the mouse mapper above. Runs
-            // after the dialogue overlay block (code order) so HUD text sits on top.
-            Visual.HUD.ImGuiFontResolver = (path, sizePx) => ResolveHudFont(path, sizePx);
-            Visual.HUD.OverlayDrawList = drawList;
-            Visual.HUD.OverlayFontPath = "Artifacts\\fonts\\Worldstar.ttf";
-            // Accept-filter: only the shared inventory HUD's strings (+ explicit
-            // TextOuts) — GameScene dialogue/debug text renders fine via stb and
-            // would otherwise draw twice (stb + mirror).
-            Visual.HUD.DrawTextOutOverlay(p => new Vector2(
-                iImgMin.X + p.X / iTexW * iImgSize.X,
-                iImgMin.Y + p.Y / iTexH * iImgSize.Y),
-                Visual.InventoryHud.AcceptMirrored);
-        }
-        else
-        {
-            ShopHud.WindowToScene = InventoryHud.WindowToScene = null;
-            Visual.HUD.OverlayDrawList = null; // no scene image → nothing to mirror onto
-        }
+        // (Dialogue overlay + HUD text mirror moved ABOVE the authored UI block —
+        // see the "LAYER ORDER" comment near the scene image: the menu must be
+        // frontmost, so gameplay HUD text and NPC bubbles draw under it.)
 
         // ── Inventory UI (in-game F8 session) ──
         // Rendered INSIDE the scene by GameScene's HUD pass (MainMenu-style batch);
