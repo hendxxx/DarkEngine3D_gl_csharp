@@ -834,6 +834,20 @@ public class IDEBridge
         }
     }
 
+    /// <summary>True when the ACTIVE editor scene is a GameScene type. Gates the
+    /// gameplay HUD (inventory/quick slots, shop, quest) so MainMenu/Loading scenes
+    /// never show gameplay UI in preview or in-game (user: "quick slot and
+    /// inventory only in its GameScene type").</summary>
+    public bool IsGameSceneSelected
+    {
+        get
+        {
+            return SelectedEditorScene != null
+                && EditorScenes.TryGetValue(SelectedEditorScene, out var editorScene)
+                && editorScene.Type == SceneType.GameScene;
+        }
+    }
+
     /// <summary>Get the currently selected editor scene's root element, or null.</summary>
     public UIElement? GetSelectedEditorRoot()
     {
