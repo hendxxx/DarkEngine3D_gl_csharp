@@ -1345,29 +1345,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ShopHud.Prewarm();
             QuestHud.Prewarm();
             HUD? invHud = InventoryHud.SharedHud ?? _hud;
-            // ── PAUSE LAYER RULE (user: the pause menu must be FRONTMOST) ──
-            // The shared panels flush AFTER the main HUD (which carries the pause
-            // menu), so while paused they covered the pause menu. They CANNOT be
-            // flushed before it either — the main flush stamps an OPAQUE scene
-            // backdrop (FlushWithBackdrop) that would erase them. While the pause
-            // UI is up (pause menu / save-load / settings / confirm exit), skip the
-            // shared HUD queue+flush entirely: the panels sit behind the dark
-            // overlay anyway, and pause menu / buttons become unambiguous frontmost.
-            // ShopHud cannot be open while paused (a shop owns Esc — no pause), an
-            // open [I] panel keeps its PanelOpen state and reappears on resume,
-            // and an empty queue makes the later invHud.Flush() a no-op.
-            if (!_paused)
-            {
-                InventoryHud.Render(invHud, _deltaTime);
+            InventoryHud.Render(invHud, _deltaTime);
 
-                // ── Shop UI (panel belanja klasik) — opens via the "Open Shop" action and
-                // floats OVER the conversation; while open it owns Esc (dialogue must not
-                // eat it) and freezes player input. Same shared-HUD pipeline. ──
-                ShopHud.Render(invHud, _deltaTime);
+            // ── Shop UI (panel belanja klasik) — opens via the "Open Shop" action and
+            // floats OVER the conversation; while open it owns Esc (dialogue must not
+            // eat it) and freezes player input. Same shared-HUD pipeline. ──
+            ShopHud.Render(invHud, _deltaTime);
 
-                // ── Quest UI: tracker quest aktif (top-left) + panel Quest Log [Q]. ──
-                QuestHud.Render(invHud, _deltaTime);
-            }
+            // ── Quest UI: tracker quest aktif (top-left) + panel Quest Log [Q]. ──
+            QuestHud.Render(invHud, _deltaTime);
             _lastInvHud = invHud;
 
             //  HUD debug overlay — hidden in preview/in-game mode for a clean view.

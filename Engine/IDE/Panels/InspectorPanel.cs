@@ -2925,47 +2925,6 @@ public class InspectorPanel
     /// layers over the character (order = item EquipLayer). Persists with the scene
     /// via EquipmentSlots; at runtime the session player shows the session paperdoll
     /// (Inventory System) instead.</summary>
-    /// <summary>Animation-match indicator for one equipment sheet (Equipment Layers):
-    /// for every base animation of the object — the base sheet's clip set + the actions'
-    /// clips, deduped — show which overlay clip the AUTO MATCHER picks (exact or
-    /// action-token match, e.g. 'baju-run' follows base 'run'). Orange = no match: that
-    /// layer falls back to the raw sheet-frame sync (needs art on the SAME grid as the
-    /// character). Read-only — this is the same match the runtime renderer uses
-    /// (IDEBridge.FindAnimationClipForBase), so what you see here is what plays.</summary>
-    private void RenderEquipmentClipMatch(EditorObject editorObj, string equipSheet)
-    {
-        if (string.IsNullOrEmpty(equipSheet)) return;
-        var anims = new List<string>();
-        void AddAnim(string n)
-        {
-            if (!string.IsNullOrEmpty(n) && !anims.Contains(n, StringComparer.OrdinalIgnoreCase))
-                anims.Add(n);
-        }
-        AddAnim(editorObj.Player2DAnimationClip); // the idle/locomotion clip (Sprite2D plays ONLY this)
-        if (editorObj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Player2D)
-        {
-            foreach (var c in IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet))
-                AddAnim(c); // the base sheet's locomotion set (idle/walk/run…)
-            foreach (var a in editorObj.Actions)
-                AddAnim(a.Clip); // action clips (may live on other sheets — the NAME is what syncs)
-        }
-        if (anims.Count == 0) return;
-
-        ImGui.TextDisabled("Animation match:");
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Which clip on THIS layer's sheet follows each base animation\n(exact or action-token match — baju-run follows base run).\nOrange = no match: the layer falls back to raw sheet-frame sync,\nwhich needs the art on the SAME grid as the character.");
-        ImGui.Indent();
-        foreach (var anim in anims)
-        {
-            var match = IDEBridge.FindAnimationClipForBase(equipSheet, anim);
-            if (match != null)
-                ImGui.TextColored(new System.Numerics.Vector4(0.55f, 0.9f, 0.55f, 1f), $"{anim} -> {match.Name}");
-            else
-                ImGui.TextColored(new System.Numerics.Vector4(1f, 0.55f, 0.3f, 1f), $"{anim} -> (no match)");
-        }
-        ImGui.Unindent();
-    }
-
     private void RenderEquipmentLayersInspector(EditorObject editorObj)
     {
         if (!ImGui.CollapsingHeader("Equipment Layers"))
@@ -2981,7 +2940,7 @@ public class InspectorPanel
             foreach (var slotName in InventorySystem.EquipSlots)
             {
                 var cur = InventorySystem.Find(editorObj.Equipment.Get(slotName));
-                string preview = cur != null ? cur.Name : "(empty)";
+                string preview = cur != null ? cur.Name : "(kosong)";
                 ImGui.PushID($"eqlayer_{slotName}");
                 if (ImGui.BeginCombo(slotName, preview))
                 {
@@ -3001,20 +2960,6 @@ public class InspectorPanel
             }
             if (editorObj.Equipment.Slots.Count > 0)
                 ImGui.TextDisabled("Runtime: the PLAYER wears the session paperdoll (Inventory UI);\nNPCs/enemies keep the slots above.");
-
-            // ── Animation-match indicator per equipped item (auto clip match) ──
-            foreach (var slotName in InventorySystem.EquipSlots)
-            {
-                var worn = InventorySystem.Find(editorObj.Equipment.Get(slotName));
-                if (worn == null || !worn.IsEquipment || string.IsNullOrEmpty(worn.EquipSheet)) continue;
-                ImGui.PushID($"eqmatch_{slotName}");
-                ImGui.TextDisabled($"{worn.Name} ({slotName}):");
-                if (worn.EquipSyncFrame)
-                    RenderEquipmentClipMatch(editorObj, worn.EquipSheet);
-                else
-                    ImGui.TextDisabled("Frame sync off — the clip animates on its own FPS (no match needed).");
-                ImGui.PopID();
-            }
         }
 
         // ── Direct layers: attach sheet/clip art WITHOUT registering an item ──
@@ -3090,14 +3035,6 @@ public class InspectorPanel
                 ImGui.SetTooltip("ON: the art samples the base sprite's frame (art on the same grid as the character).\nOFF: the clip runs on its own FPS (independent aura/fire).");
             ImGui.SameLine();
             if (ImGui.SmallButton("Remove")) removeIdx = i;
-
-            // Animation-match indicator (auto clip match) — only meaningful when syncing.
-            if (string.IsNullOrEmpty(layer.Sheet))
-                ImGui.TextDisabled("Animation match: pick a sheet first.");
-            else if (layer.SyncFrame)
-                RenderEquipmentClipMatch(editorObj, layer.Sheet);
-            else
-                ImGui.TextDisabled("Frame sync off — the clip animates on its own FPS (no match needed).");
 
             ImGui.PopID();
         }
