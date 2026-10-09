@@ -1165,8 +1165,16 @@ public unsafe class ViewportPanel
                         try { elem.OnClick.Invoke(); }
                         catch (Exception ex) { Console.WriteLine($"[Viewport] OnClick error for '{elem.Name}': {ex.Message}"); }
                     }
-                    // Custom ClickBehaviorLabel takes priority over defaults
-                    else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel))
+                    // Default interactive element behaviors (fallback when no custom handler)
+                    else if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
+                    {
+                        // Toggle dropdown popup — MUST come before ClickBehaviorLabel check so
+                        // dropdowns with ClickBehaviorLabel="None" still open their popup.
+                        _openDropdown = (_openDropdown == elem) ? null : elem;
+                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' popup {(_openDropdown != null ? "opened" : "closed")}");
+                    }
+                    // Custom ClickBehaviorLabel takes priority over other defaults (but not dropdowns)
+                    else if (!string.IsNullOrEmpty(elem.ClickBehaviorLabel) && elem.ClickBehaviorLabel != "None")
                     {
                         string behavior = elem.ClickBehaviorLabel.ToLowerInvariant();
                         if (behavior == "closeoverlay" || behavior == "cancel")
@@ -1178,13 +1186,6 @@ public unsafe class ViewportPanel
                             HandlePreviewBehavior(elem);
                         }
                     }
-                    //  Default interactive element behaviors (fallback when no custom handler) 
-                    else if (elem.Type == UIElementType.Dropdown && elem.Options.Count > 0)
-                    {
-                        // Toggle dropdown popup
-                        _openDropdown = (_openDropdown == elem) ? null : elem;
-                        Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' popup {(_openDropdown != null ? "opened" : "closed")}");
-                    }
 
                 }
                 else
@@ -1195,7 +1196,8 @@ public unsafe class ViewportPanel
                         _openDropdown = (_openDropdown == elem) ? null : elem;
                         Console.WriteLine($"[Viewport] Dropdown '{elem.Name}' popup {(_openDropdown != null ? "opened" : "closed")}");
                     }
-                    // Editor mode: select element for inspection
+                    // Editor mode: select element for inspection — dropdown toggling above
+                    // must come before the generic ClickBehaviorLabel check for the same reason.
                     bool ctrlHeld = ImGui.GetIO().KeyCtrl;
                     bool altHeld = ImGui.GetIO().KeyAlt;
                     if (ctrlHeld)

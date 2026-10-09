@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.IDE;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Linq;
@@ -668,11 +669,19 @@ public unsafe class EditorObjectManager
             // on top of every world element so fog/sunset tint the whole scene.
             Effect2DSystem.RenderWeatherOverlay(camera);
 
-            // ── Equipped-item hotbar above each character's head (phase-1 inventory
-            // render): icons crop from tilesets, batched through the same quad pass.
-            // A GAMEPLAY display — shown whenever the scene draws a live session
-            // (early-outs instantly when no character carries equipment).
+            // ── Equipped-item hotbar above each character's head (DISABLED) ──
+            // The hotbar (RenderEquippedHotbar) shows equipped items as icons above the
+            // player's head. This is currently disabled per user request — equipment art
+            // should only render ON the player body via DrawEquipmentSpriteOverlays, not
+            // as HUD icons above the player.
+            // Re-enable by removing this comment block and uncommenting the code below.
             {
+                var br = IDEBridge.Current;
+                bool inLiveSession = br is { InGameActive: true } or { IsPreviewMode: true };
+                if (!inLiveSession) goto skipHotbar;
+                // Hotbar rendering disabled - skip directly
+                goto skipHotbar;
+                /*Disabled:
                 bool batchOpen = false;
                 foreach (var obj in _objects)
                 {
@@ -683,6 +692,8 @@ public unsafe class EditorObjectManager
                         obj.Position.X, obj.Position.Y, obj.Player2DHeight, 0f);
                 }
                 if (batchOpen) Effect2DSystem.EndBatch();
+                */
+                skipHotbar:;
             }
 
             // ── World loot drops (magnet vacuum pickups): animated item-icon quads

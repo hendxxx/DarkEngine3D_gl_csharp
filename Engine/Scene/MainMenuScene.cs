@@ -282,6 +282,64 @@ public unsafe class MainMenuScene : IScene
         // ── Ensure default runtime UI elements (ExitConfirm dialog, etc.) ──
         EnsureDefaultUI();
 
+        // ── Restore editor camera for this main-menu scene.
+        // Preferred: the per-scene editor camera persisted on the scene asset itself
+        // (SceneAsset.EditorCamera* / EditorCameraOrtho / EditorCameraOrthoSize) — this is
+        // the camera that belongs to THIS main-menu scene, so ESC back to menu returns to
+        // the main-menu camera, not the gameplay camera and not a freefly session.
+        // Fallback: the pending stash set by the previous scene's Exit() (e.g. GameScene),
+        // used when the main-menu scene asset has no saved camera yet.
+        SceneAsset? menuAsset = null;
+        string menuKey = _initialSceneName ?? "MainMenu";
+        try { menuAsset = SceneAssetSerializer.FindScene(menuKey); }
+        catch { }
+
+        bool cameraRestored = false;
+        if (menuAsset?.EditorCameraPosition is { Length: 3 } camArr)
+        {
+            _camera.Position = new Vector3(camArr[0], camArr[1], camArr[2]);
+            _camera.Yaw = menuAsset.EditorCameraYaw ?? _camera.Yaw;
+            _camera.Pitch = menuAsset.EditorCameraPitch ?? _camera.Pitch;
+            if (menuAsset.EditorCameraOrtho is bool ortho) _camera.IsOrthographic = ortho;
+            if (menuAsset.EditorCameraOrthoSize is float oSize) _camera.OrthoSize = oSize;
+            cameraRestored = true;
+            Console.WriteLine("[MainMenu] Restored editor camera from scene asset.");
+        }
+        else if (_sceneManager.Bridge?.PendingCameraPos is { } pPos)
+        {
+            _camera.Position = pPos;
+            _camera.Yaw = _sceneManager.Bridge.PendingCameraYaw ?? _camera.Yaw;
+            _camera.Pitch = _sceneManager.Bridge.PendingCameraPitch ?? _camera.Pitch;
+            if (_sceneManager.Bridge.PendingCameraOrtho is bool ortho) _camera.IsOrthographic = ortho;
+            if (_sceneManager.Bridge.PendingCameraOrthoSize is float oSize) _camera.OrthoSize = oSize;
+            cameraRestored = true;
+            _sceneManager.Bridge.PendingCameraPos = null;
+            _sceneManager.Bridge.PendingCameraYaw = null;
+            _sceneManager.Bridge.PendingCameraPitch = null;
+            _sceneManager.Bridge.PendingCameraOrtho = null;
+            _sceneManager.Bridge.PendingCameraOrthoSize = null;
+            Console.WriteLine("[MainMenu] Restored editor camera from pending stash.");
+        }
+
+        if (cameraRestored)
+        {
+            _camera.SyncSmoothVectors();
+            _camera.UpdateVectors();
+            _camera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
+        }
+        else if (_camera.Position.LengthSquared() < 0.01f)
+        {
+            // First-ever entry with no saved camera: set a sensible default looking at the origin.
+            _camera.Init(0f, 8f, 10f, 0f, -30f);
+        }
+
+        // ── CRITICAL: freefly must be OFF when entering the main menu. ──
+        // ESC back to menu must never carry a freefly session (freeLook / FlyMouseLook)
+        // from gameplay or editor fly mode into the menu.
+        _camera.freeLook = false;
+        _camera.FlyMouseLook = false;
+        _camera.SyncSmoothVectors();
+
         // ── Register for IDE Save All ──
         string registerKey = _initialSceneName ?? "MainMenu";
         SceneAssetSerializer.RegisterSceneRoot(registerKey, _sceneRoot);
@@ -425,14 +483,17 @@ public unsafe class MainMenuScene : IScene
         bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
         if (!ingameActive)
         {
-            // ── IDE mode: free-fly camera (WASD + mouse look) when viewport is focused ──
-            // A visible overlay is modal → camera input frozen while it's up.
-            var ideBridge = _sceneManager.Bridge;
-            if (ideBridge != null && ideBridge.IsViewportFocused && !ideBridge.IsOverlayVisible)
-            {
-                _camera.SetCameraFlyMode(window, _deltaTime, true);
-            }
-            return;
+        // ── IDE mode: free-fly camera (WASD + mouse look) when viewport is focused ──
+        // A visible overlay is modal → camera input frozen while it's up.
+        // But NEVER enable fly mode when coming back from a game session — the main menu
+        // must use the saved editor camera position, not a freefly camera.
+        var ideBridge = _sceneManager.Bridge;
+        bool comingFromGame = _sceneManager.Bridge?.PendingCameraPos is { };
+        if (ideBridge != null && ideBridge.IsViewportFocused && !ideBridge.IsOverlayVisible && !comingFromGame)
+        {
+            _camera.SetCameraFlyMode(window, _deltaTime, true);
+        }
+        return;
         }
 
         // ── Load Game overlay: keyboard nav ──
@@ -947,6 +1008,20 @@ public unsafe class MainMenuScene : IScene
                     child.X = w * 0.5f - ext.Width * 0.5f;
                     child.Y = h * 0.20f;
                 }
+            }
+        }
+
+        // ── Settings overlay container visibility sync ──
+        // The authored Settings container must follow _settingsOpen so ESC/back-to-game
+        // actually hides it (not just the flag).
+        foreach (var child in _sceneRoot.Children)
+        {
+            if (child.Type == UIElementType.Container && child.Name != "ExitConfirm")
+            {
+                // Settings container visibility follows _settingsOpen.
+                // When _settingsOpen is true, show the container; when false, hide it.
+                child.IsVisible = _settingsOpen;
+                foreach (var sub in child.Children) sub.IsVisible = _settingsOpen;
             }
         }
     }

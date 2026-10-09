@@ -1991,8 +1991,7 @@ public class SpriteEditorPanel
     }
 
     /// <summary>Reset the sprite editor when the project changes (close/open).
-    /// Sheets are NOT auto-loaded anymore (user request) — use the
-    /// "Auto Load" toolbar button instead.</summary>
+    /// Auto-load sprite sheets + pattern exports from the project folder.</summary>
     public void OnProjectChanged(string? projectRoot)
     {
         SpriteSheets.Clear();
@@ -2007,8 +2006,8 @@ public class SpriteEditorPanel
         _previewTextures.Clear();
         ClearUndoHistory();
 
-        // Auto-load saat project open DIHAPUS (permintaan user) — sheets + pattern
-        // exports kini dimuat manual lewat tombol "Auto Load" di toolbar.
+        // Auto-load sprite sheets + pattern exports saat project open.
+        AutoLoadProjectSheets();
     }
 
     /// <summary>Manual replacement of the removed project-open auto-load:

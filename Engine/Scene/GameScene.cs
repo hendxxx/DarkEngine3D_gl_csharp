@@ -501,6 +501,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // matches the editor reset view position/orientation.
             ResetCameraToEditor2DView();
 
+            // ── CRITICAL: ensure freefly is OFF when entering the game ──
+            // MainMenu/IDE fly mode may have left freeLook or FlyMouseLook on, and
+            // returning from menu must NOT carry a freefly session into the game.
+            _camera.freeLook = false;
+            _camera.FlyMouseLook = false;
+            _camera.SyncSmoothVectors();
+
             _shaderProgram = Shader.GetShaderProgram();
             _projectionLocation = GL.GetUniformLocation(_shaderProgram, "projection");
             _viewLocation = GL.GetUniformLocation(_shaderProgram, "view");
@@ -744,17 +751,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 else
                 {
-                    //  Camera mode / freelook 
-                    if (_camera.CurrentMode == CameraMode.FirstPerson)
-                    {
-                        _camera.freeLook = false;
-                    }
-                    else
-                    {
-                        _camera.freeLook =
-                            (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
-                             Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
-                    }
+                //  Camera mode / freelook 
+                // Force freeLook OFF during actual gameplay (not preview/editor mode).
+                // ALT free-look is an editor/exploration feature, not a gameplay feature.
+                bool isActualGameplay = _sceneManager.Bridge?.InGameActive == true;
+                if (isActualGameplay)
+                {
+                    _camera.freeLook = false;
+                }
+                else if (_camera.CurrentMode == CameraMode.FirstPerson)
+                {
+                    _camera.freeLook = false;
+                }
+                else
+                {
+                    _camera.freeLook =
+                        (Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_ALT) ||
+                         Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
+                }
 
                     // 1. Mouse → yaw/pitch → vectors
                     Mouse.Update(window, _camera);
@@ -2305,17 +2319,24 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             Glfw.OnWindowResized -= OnWindowResized;
 
-            // ── Free HUD GPU resources (font atlases, scratch textures) ──
-            _hud?.Cleanup();
-
-            // ── Clear IDE bridge references ──
+            // ── Stash current camera state to bridge so the next scene (MainMenu)
+            // can restore the editor camera instead of inheriting the game camera position. ──
             var bridge = _sceneManager.Bridge;
             if (bridge != null)
             {
+                bridge.PendingCameraPos = _camera.Position;
+                bridge.PendingCameraYaw = _camera.Yaw;
+                bridge.PendingCameraPitch = _camera.Pitch;
+                bridge.PendingCameraOrtho = _camera.IsOrthographic;
+                bridge.PendingCameraOrthoSize = _camera.OrthoSize;
+
                 bridge.SelectedUIElement = null;
                 bridge.SceneRootElements = null;
                 bridge.SceneRoot = null;
             }
+
+            // ── Free HUD GPU resources (font atlases, scratch textures) ──
+            _hud?.Cleanup();
 
             _csm?.Dispose();
             _light?.DisposeLocalShadow();

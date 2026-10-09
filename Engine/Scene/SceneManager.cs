@@ -309,8 +309,25 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // doesn't leak into the scene.
                         bool suppressAll = bridge.SuppressViewportInput || (popupOpen && imguiCapture);
 
-                        if (suppressAll)
+                        // ── PLAY session (F7 preview / F8 in-game, no active scene):
+                        // FREE-FLY MUST STAY OFF. This block used to run unchecked of
+                        // InGameActive/IsPreviewMode, so the moment ESC hid the modal
+                        // overlay (IsOverlayVisible = false) the editor free-fly input
+                        // switched straight back on — every flag kill elsewhere was
+                        // BYPASSED because SetCameraFlyMode is called directly here
+                        // (user: "freefly nya masih active"). While the game owns the
+                        // camera: re-baseline the mouse and feed processInput=false.
+                        bool playSession = bridge is { InGameActive: true }
+                                           || bridge is { IsPreviewMode: true };
+
+                        if (playSession)
                         {
+                            Mouse.ResetScroll();
+                            Mouse.ResetState(); // baseline deltas — no rotation while playing
+                            _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip ALL input
+                        }
+                        else if (suppressAll)
+                        { 
                             Mouse.ResetScroll();
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip input
