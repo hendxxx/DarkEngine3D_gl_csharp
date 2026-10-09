@@ -198,8 +198,8 @@
       {
         "Name": "Trigger 3",
         "IsEnabled": true,
-        "LeftPx": 1241.9148,
-        "TopPx": 509.30792,
+        "LeftPx": 1216.6196,
+        "TopPx": 510.7959,
         "WidthPx": 72.12561,
         "HeightPx": 96,
         "OnEnter": true,
@@ -234,8 +234,8 @@
       {
         "Name": "Trigger 4",
         "IsEnabled": true,
-        "LeftPx": 891.4944,
-        "TopPx": 502.19507,
+        "LeftPx": 952.5003,
+        "TopPx": 499.21915,
         "WidthPx": 36.765747,
         "HeightPx": 103.00149,
         "OnEnter": true,
@@ -306,8 +306,8 @@
       {
         "Name": "Trigger 6",
         "IsEnabled": true,
-        "LeftPx": 1092.3477,
-        "TopPx": 498.43216,
+        "LeftPx": 1090.8597,
+        "TopPx": 493.96832,
         "WidthPx": 48.010315,
         "HeightPx": 112.27987,
         "OnEnter": true,
