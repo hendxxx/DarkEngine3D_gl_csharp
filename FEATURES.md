@@ -30,7 +30,7 @@ DarkEngine3D_gl_csharp/
 
 Project Folder (user-created):
 ProjectRoot/
-├── {Name}.projing         — Project metadata + scene inventory
+├── {Name}.projing         — Project metadata+ scene inventory
 ├── settings.json          — Per-project engine settings
 ├── shadow_presets.json    — Per-project shadow presets
 ├── imgui.ini              — Per-project IDE layout
@@ -124,12 +124,15 @@ Panel for slicing sprite sheets and building 2D animation clips.
 | **Zoom** | Independent zoom for sheet preview and animation preview (default 1x) |
 | **Animation Clips** | Create clip from frame range (Start/End), FPS control, play/stop preview |
 | **Frame Thumbnails** | Selected frame image shown in Frame Properties |
-| **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`; **auto-loaded on project open** via `OnProjectChanged` + merge `*-sprite-anim.json` pattern exports; also available via the Sprite Editor "Auto Load" toolbar button |
+| **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`; **auto-loaded on project open** via `IDE.OnProjectChanged(projectRoot)` → `SpriteEditorPanel.OnProjectChanged(projectRoot)` (canonical `sprites.sheets.json` only — `*-sprite-anim.json` pattern exports are NOT loaded here; they are only merged from the Sprite Editor "Auto Load" button / Load dialog); also available via the Sprite Editor "Auto Load" toolbar button; project close clears tracker sets + resets pattern-action defaults |
+
 | **Sheet Sections** | The sheet list is grouped into 4 collapsible sections — **Base / FX / Base Equipment / Items** — via a per-sheet `Category` persisted in sprites.sheets.json (files without the field load as Base; hand-edited unknown values fall back to Base instead of killing the file parse). A category combo above the list re-categorizes the whole current selection; with nothing selected it sets the section new imports land in (Import / drag-and-drop / pattern exports). Sections are display-only — the master list and indexes never change, so undo/delete keep working |
 | **Sheet Multi-Select** | Ctrl+Click toggles sheets into the selection, Shift+Click extends a range from the previous primary, plain click selects one. The primary selection still drives Sheet Settings + previews; **Delete Sheet** removes EVERY selected sheet (highest index first), and the category combo re-categorizes all of them at once — bulk-organize an imported folder into sections in two clicks |
 | **Save As JSON** | Toolbar `Save As JSON`: writes sheets + clips JSON to ANY path via save dialog (starts in `Assets/Sprites`, filter `*.json`, indented JSON + binary sidecar cache). Load dialog accepts both `*.sheets.json` and generated `*-sprite-anim.json` |
 | **Save As Pattern** | Batch auto-clip per folder: copies the selected sheet's pattern (grid/padding/offset + **flip X/Y** + master box + render offsets) to EVERY image file in the same folder (png/jpg/jpeg/bmp/tga). Action names & count come from the free-text **`Pattern actions`** field (pipe-separated, default `idle|walk|run|jump start|jump end|attack|dead`, persisted in the save file; e.g. `effect` → a 1-row sheet saves one `<sheet>-effect` clip): one clip per ROW, rows past the action list are NOT saved. Empty frames (all alpha 0, or rect outside the image — JPEG has no alpha so never empty) are skipped, fully-empty rows produce no clip; **FPS = frame count** (1s per clip); clip name `<sheet>-<action>`; loop decided BY ACTION NAME — `jump start/jump end/attack/dead` play once, everything else (incl. custom names like `effect`) loops. Output per file: `<file name>-sprite-anim.json` next to the image (same `SpriteSheetsSaveData` schema → loadable via Load) |
-| **Pattern Export Auto-Load** | `Sprite Sheets` + `Animation Clips` auto-merge every `*-sprite-anim.json` (project `Assets` tree + each sheet's image folder) on project open, after a manual Load, and right after Save As Pattern — the SHEET entry and its clips both appear with no manual Load. Refresh-in-place: the previous auto-loaded set is replaced on re-run — tracked **BY INSTANCE** (a manual sheet/clip sharing a name is never removed or duplicated); files are enumerated before removal so a folder reachable only through an auto-loaded sheet's image path stays reachable; indicator line shows `(N sheets + M clips auto-loaded from *-sprite-anim.json)` |
+
+| **Pattern Export Auto-Load** | `Sprite Sheets` + `Animation Clips` auto-merge every `*-sprite-anim.json` (project `Assets` tree + each sheet's image folder) from the Sprite Editor "Auto Load" button / Load dialog and right after Save As Pattern — the SHEET entry and its clips both appear with no manual Load. Project open does NOT trigger this merge. Refresh-in-place: the previous auto-loaded set is replaced on re-run — tracked **BY INSTANCE** (a manual sheet/clip sharing a name is never removed or duplicated); files are enumerated before removal so a folder reachable only through an auto-loaded sheet's image path stays reachable; indicator line shows `(N sheets + M clips auto-loaded from *-sprite-anim.json)`.
+
 | **Play Integration** | Play in Preview loads the selected animation clip |
 
 ### 2.5 Map Editor (2D Tilemap)
@@ -138,40 +141,40 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 
 | Feature | Description |
 |---------|-------------|
-| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise). Resize = modal (Width/Height tiles): every layer's grid grows/shrinks preserving tiles at their grid indices (top-left anchor); trigger areas + player spawn clamped into the new bounds; viewport mesh rebakes automatically (cache key includes W/H) |
+| **New/Resize Map** | Grid of empty tiles shown immediately in viewport; GameScene type enforced (warning otherwise). Resize = modal (Width/Height tiles): every layer's grid grows/shrinks preserving tiles at their grid indices (top-left anchor); trigger areas+ player spawn clamped into the new bounds; viewport mesh rebakes automatically (cache key includes W/H) |
 | **Tile Palette** | Auto-detected cols/rows from tileset image (read-only); multi-select (marquee) preserves block shape when stamping |
 | **Tools** | Paint, Erase (with brush size), Fill (flood), Pick (default), Collision, Trigger — paint directly in the 3D viewport |
 | **Layers** | Multiple tile layers, visibility/lock per layer, all visible layers render (stacked in depth, tiny lift per layer) |
 | **Undo/Redo** | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y over the 2D level (per-tile granularity). Object-level undo covers editor objects (add / delete / duplicate — delete keeps the instance alive so undo restores the SAME object with its GPU state) and trigger areas (create / delete / cut / paste / duplicate), all through the Hierarchy panel's shared history |
 | **Sprite Repeat Width** | `Sprite2DWorldWidth` (Inspector → Sprite 2D → Width, 0 = off): tiles the animated frame across a world width — animated water surfaces, hedges, fences. Each repeat is a full frame quad sharing the ONE clip clock (whole strip animates in lockstep); strip centered on Position.X, base on Position.Y; UNBOUNDED width (DragFloat, no upper limit) — all tiles batch into ONE draw call (chunked vertex flush), so thousands of tiles stay one draw; DoF sprite-shape mask carves every tile |
-| **Duplicate (Ctrl+D)** | Deep-copies the object following the FULL .ing save contract — sprite sheet/clip + all Sprite2D/Player2D physics & render props, animation actions (deep clone incl. projectile block), NPC binding + badge + alert image, camera follow, Effect2D emitter, glow, render layers, equipment slots, tilemap payload (deep clone) + parallax layers (TextureId excluded — rebuilds lazily), PBR/terrain/sculpt/splat state |
+| **Duplicate (Ctrl+D)** | Deep-copies the object following the FULL .ing save contract — sprite sheet/clip+ all Sprite2D/Player2D physics & render props, animation actions (deep clone incl. projectile block), NPC binding+ badge+ alert image, camera follow, Effect2D emitter, glow, render layers, equipment slots, tilemap payload (deep clone)+ parallax layers (TextureId excluded — rebuilds lazily), PBR/terrain/sculpt/splat state |
 | **Collision Flags** | Per-tile-id collision toggles; dedicated Collision paint tool (click/drag toggles, hover preview shows add vs remove); full 3D translucent boxes with bright edges CENTERED on the tile; per-layer `CollisionTileIds` persist in the tilemap json; Show Collision checkbox persisted in settings |
 | **Parallax Layers** | Image layers behind/in front of the grid: ScrollFactor, ZPosition, Alpha (per-vertex tint), WidthPx/HeightPx (0 = proportional to image aspect), RepeatX/Y (GL_REPEAT), TopPx offset, TileHorizontal wrapping |
 | **Parallax Preview** | Panning the editor camera slides each layer by `-camX × ScrollFactor` (fractional UV phase = seamless wrap) |
-| **Grid Overlay** | Show/hide tile grid + grid color, real-time; auto-hidden in preview/in-game |
+| **Grid Overlay** | Show/hide tile grid+ grid color, real-time; auto-hidden in preview/in-game |
 | **Camera Start** | Per-map saved view; "Set Current View"/"Reset" in Grid Settings; Play in Preview restores it; auto-captured on first framing |
 | **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
-| **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles + parallax + spawn + camera start) and canonical scene `.ing`; autoload first map on project open |
-| **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter + white handles); edited in the Trigger Areas panel (see §2.9) |
-| **Portals** | Portal / Portal One Way trigger actions render a 4-state sprite animation (NotActive/Active/Enter/Out clips from one Sprite Editor sheet, visual size px overrides the area size). Sheet with NO authored clips falls back to its implicit frame grid (8 FPS) — an authored portal never renders invisible. Arrival spawns at the destination portal center ± ONE PORTAL WIDTH (side = player travel direction) + arrival-inside guard (auto portals only), so two-way pairs don't ping-pong. Button-mode portals (PortalAutoEnter off) show a `[KEY]` badge above the portal while the player stands inside |
+| **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles+ parallax+ spawn+ camera start) and canonical scene `.ing`; autoload first map on project open |
+| **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter+ white handles); edited in the Trigger Areas panel (see §2.9) |
+| **Portals** | Portal / Portal One Way trigger actions render a 4-state sprite animation (NotActive/Active/Enter/Out clips from one Sprite Editor sheet, visual size px overrides the area size). Sheet with NO authored clips falls back to its implicit frame grid (8 FPS) — an authored portal never renders invisible. Arrival spawns at the destination portal center ± ONE PORTAL WIDTH (side = player travel direction)+ arrival-inside guard (auto portals only), so two-way pairs don't ping-pong. Button-mode portals (PortalAutoEnter off) show a `[KEY]` badge above the portal while the player stands inside |
 | **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
 
 ### 2.6 Player2D System (2D Character)
 
-Player character object with capsule collider + animated sprite, spawned from a Start marker.
+Player character object with capsule collider+ animated sprite, spawned from a Start marker.
 
 | Feature | Description |
 |---------|-------------|
 | **Player 2D Object** | `EditorPrimitiveType.Player2D` — added from the Hierarchy toolbar or Add-element dropdown (🏃 icon) |
 | **Capsule Collider** | Feet-anchored capsule (Position.Y = capsule bottom), radius/height/visibility tunable in Inspector; rendered as a world-upright blue outline in edit mode (hidden in-game via `Editor2DAidsHidden`) |
-| **Animated Sprite** | Sprite Sheet + Animation Clip pickers (from the Sprite Editor via the static `IDEBridge` registry, refreshed every frame in all modes); clip FPS/loop/reverse/speed respected; animation previews live in edit mode |
+| **Animated Sprite** | Sprite Sheet+ Animation Clip pickers (from the Sprite Editor via the static `IDEBridge` registry, refreshed every frame in all modes); clip FPS/loop/reverse/speed respected; animation previews live in edit mode |
 | **Sprite UV** | Frame UVs converted (`v' = 1 − v_raw`) for the top-row-first texture upload — sprite stands upright |
-| **Start Object** | `EditorPrimitiveType.Start2D` (🚩 arrow marker) — the spawn point; Player2D teleports there (velocity + anim clock reset) when in-game mode begins |
+| **Start Object** | `EditorPrimitiveType.Start2D` (🚩 arrow marker) — the spawn point; Player2D teleports there (velocity+ anim clock reset) when in-game mode begins |
 | **Deferred Spawn** | `EditorObject.Player2DSpawnPending` static flag set on in-game entry; consumed by `Player2DSystem.Update` on the first frame AFTER the .ing reload re-creates objects |
-| **Physics** | `Player2DSystem` — gravity (tunable per-player) + capsule-AABB vs collision-tile resolution (ground/ceiling on the active layer); runs only in preview/in-game |
+| **Physics** | `Player2DSystem` — gravity (tunable per-player)+ capsule-AABB vs collision-tile resolution (ground/ceiling on the active layer); runs only in preview/in-game |
 | **Persistence** | Sheet/clip/height/capsule/gravity saved in the scene `.ing` via `EditorObjectData` |
-| **Equipment Sprite Layers** | Composite equipped art over Player2D/Sprite2D: paperdoll slot → item with Equip Art, ordered by EquipLayer, frame-synced with the base sprite. **Direct layers (no item required)**: Inspector → Equipment Layers → `+ Add layer` attaches a Sheet/Clip straight to the object — no Item Editor registration; merged with paperdoll items (stable order: same layer = item first, then direct), empty-Sheet rows skipped; edited per layer (Layer/Offset X,Y/Height/Frame sync, Remove); persisted in scene `.ing` via `EditorObjectData.DirectEquipLayers` (save + editor load + runtime load + Duplicate) and rendered in editor preview AND in-game |
-| **Equipment Auto Clip Match** | Synced layers (Frame sync ON) automatically follow EVERY base animation, not just one authored clip: while the character plays clip X, the overlay finds the clip on its own sheet named X or `&lt;anything&gt;-X` (action-token match — `baju-run` follows base `run` and pattern-style `hero-run`) and samples the same POSITION within that clip, so a clothing sheet may use a different grid layout / frame count than the character (shorter clips freeze on their last frame). Outfits authored with Save As Pattern (`&lt;sheet&gt;-idle/-walk/-run/...`) need no per-action wiring. No matching clip → the old same-grid behavior (authored clip + raw sheet-frame sync); Frame sync OFF keeps the independent-FPS mode for auras/fire |
+| **Equipment Sprite Layers** | Composite equipped art over Player2D/Sprite2D: paperdoll slot → item with Equip Art, ordered by EquipLayer, frame-synced with the base sprite. **Direct layers (no item required)**: Inspector → Equipment Layers → `+ Add layer` attaches a Sheet/Clip straight to the object — no Item Editor registration; merged with paperdoll items (stable order: same layer = item first, then direct), empty-Sheet rows skipped; edited per layer (Layer/Offset X,Y/Height/Frame sync, Remove); persisted in scene `.ing` via `EditorObjectData.DirectEquipLayers` (save+ editor load+ runtime load+ Duplicate) and rendered in editor preview AND in-game |
+| **Equipment Auto Clip Match** | Synced layers (Frame sync ON) automatically follow EVERY base animation, not just one authored clip: while the character plays clip X, the overlay finds the clip on its own sheet named X or `&lt;anything&gt;-X` (action-token match — `baju-run` follows base `run` and pattern-style `hero-run`) and samples the same POSITION within that clip, so a clothing sheet may use a different grid layout / frame count than the character (shorter clips freeze on their last frame). Outfits authored with Save As Pattern (`&lt;sheet&gt;-idle/-walk/-run/...`) need no per-action wiring. No matching clip → the old same-grid behavior (authored clip+ raw sheet-frame sync); Frame sync OFF keeps the independent-FPS mode for auras/fire |
 | **Render Layer vs Tilemap Z** | Tilemap planes live in a sub-character band (`Map2dLayerIndex × 0.001` — always below Z≈0.05 where characters start). A Player2D/Sprite2D with **Render Layer ≥ 1 draws in front of the tilemap**; negative layers draw behind it. The layer index is NEVER mapped 1:1 to world Z (the old z=index put a layer-1 map at z=1.0, covering the character's sword even with the render layer raised) |
 
 ### 2.7 Gizmo Z-Order
@@ -185,7 +188,7 @@ The transform gizmo is ALWAYS frontmost: 2D overlays (tile grid, hover highlight
 - Pivot Position
 - Color (RGB picker)
 - Cast Shadow checkbox
-- Texture slot (albedo) + Texture Settings (filter, wrap, mip, anisotropy)
+- Texture slot (albedo)+ Texture Settings (filter, wrap, mip, anisotropy)
 - PBR Maps: Normal, Metallic, Roughness, AO, Height, Emission texture slots
 - PBR Tuning: All parameters (see §5)
 
@@ -206,19 +209,19 @@ The transform gizmo is ALWAYS frontmost: 2D overlays (tile grid, hover highlight
 **GLB Reference**:
 - Model path, Position, Rotation, Scale
 - Cast Shadow toggle
-- PBR Maps + Tuning (same as primitives)
+- PBR Maps+ Tuning (same as primitives)
 
 **Map2D (2D Level)**:
 - Tilemap binding (auto-created from Map Editor "New Map" / scene `.ing` restore)
-- Tileset cols/rows + FlipV (read-only, auto-detected)
-- Show Grid + Grid Color, Show Collision + Collision Color
+- Tileset cols/rows+ FlipV (read-only, auto-detected)
+- Show Grid+ Grid Color, Show Collision+ Collision Color
 - Grid Settings: camera start capture/reset, spawn info
 - Rendered as upright world-space plane; object transform intentionally not applied
 
 **Player 2D**:
-- Sprite Sheet + Animation Clip combos (auto-select first item; clip summary shown when resolvable)
+- Sprite Sheet+ Animation Clip combos (auto-select first item; clip summary shown when resolvable)
 - Sprite Height, Capsule Radius/Height, Show Capsule, Gravity
-- Glow (bloom) slider + Glow Tint picker + Flicker checkbox (see §2.10)
+- Glow (bloom) slider+ Glow Tint picker+ Flicker checkbox (see §2.10)
 - Selection shows via line gizmos (no stencil outline — no solid mesh)
 
 ### 2.9 Trigger Area / Event System
@@ -231,9 +234,9 @@ Non-blocking event volumes on the tilemap: the player passes through them; enter
 | **Conditions** | On Enter / On Stay (with repeat interval in seconds) / On Exit; optional gate "only when moving right" |
 | **Actions (18 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Show Bubble, Hide Bubble, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
 | **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration), Start Dialogue (opens the Dialogue System conversation), Show/Hide Bubble (player-following speech bubble; Param2 = `type\|duration`) |
-| **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity + grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
-| **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise + ±1.2° camera roll, quadratic decay, random seed per shake |
-| **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list + rename + enable, conditions, per-action editor with contextual params + reorder, precise geometry |
+| **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity+ grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
+| **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise+ ±1.2° camera roll, quadratic decay, random seed per shake |
+| **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list+ rename+ enable, conditions, per-action editor with contextual params+ reorder, precise geometry |
 | **Rendering** | Amber translucent boxes drawn in edit mode only (hidden in-game via `Editor2DAidsHidden`); overlay projected via `SceneToScreen` so it sticks to the viewport image |
 | **Persistence** | `Assets/Maps/{map}.tilemap.json` AND scene `.ing` (`Tilemap2DData.TriggerAreas`) — triggers load with the project |
 
@@ -243,16 +246,16 @@ The user's rule: a projectile impact plays the **Hit Clip animation**, not parti
 
 | Feature | Description |
 |---------|-------------|
-| **Hit Clip + Hit Scale** | `Player2DAction.ProjectileHitSheet/Clip/Scale` — impact sprite plays once at the hit point; `Hit Scale` multiplies its size (1 = projectile's own World Height, 0.5 = half, 2 = double). Impact height = `WorldHeight × HitScale` |
+| **Hit Clip+ Hit Scale** | `Player2DAction.ProjectileHitSheet/Clip/Scale` — impact sprite plays once at the hit point; `Hit Scale` multiplies its size (1 = projectile's own World Height, 0.5 = half, 2 = double). Impact height = `WorldHeight × HitScale` |
 | **Hit FX opt-in** | `ProjectileHitFx` default changed from "Explosion" to **"" (none)** — old scenes that saved "Explosion" keep their particles; new projectiles are clean unless the user picks a preset |
 | **Hit FX Scale** | `ProjectileHitFxScale` (0.05–8) — multiplies the optional burst. `SpawnBurst` scale now grows **BOTH count AND particle sizes** (`WithSizeScale`: SizeMin/SizeMax/AlignVelScale/Grow × scale) — previously scale only multiplied the count, so the sliders never changed how big the FX looked |
 | **Action FX Scale** | `Player2DAction.FxScale` — sizes a character action's own FX: burst = count+size (SpawnBurst), follow stream = per-particle size (`WithSizeScale` applied in Player2DSystem's follow-FX emitter) |
-| **Effects Panel** | New dedicated panel (2D Sidescroller menu): per-action Hit Sheet/Clip/Scale, Hit FX + FX Scale, Action FX Preset/Follow/Scale, Effect2D emitter overrides (preset/rate/wind/offset/enable), and the Global Weather section below. The Inspector's "Hit FX" combo was removed → replaced by a pointer to this panel |
-| **Weather Presets** | One-click scene weather in the Effects panel: **Clear Day** (all off, faint warm tint), **Sunset** (warm orange wash), **Rain** (rain + ground fog + cool tint), **Storm** (heavy rain, thick fog, strong wind, gloomy tint), **Snow** (snowfall + light fog + cold tint), **Fog** (dense ground fog only) + **Clear** (all layers off). Presets map to `Effect2DSystem.ApplyWeatherPreset` |
-| **Weather Layers** | Manual per-layer control under the presets: Rain (intensity **0–100** — 0.7 = sparse reference look, 100 = storm wall capped by the 4000-particle pool; wind slant; **Offset X/Y** — shifts the spawn area; **Size** — drop size; SPARSE vertical dashes, camera-relative sizing; **leans with the wind**: each dash rotates toward the CURRENT velocity every frame (`LeanToVel`, θ = atan2(−vx, −vy) for the SizeY long axis) — wind direction + strength set the tilt, the longer the fall the more it slants (advection), terminal cap 2×|WindX·wind|+1; **ground splashes**: every drop hitting ground collision OR A SPRITE'S HEAD spawns a small 3-point fan splash (left/center/right) with return gravity — visible but subtle); **surface = max(ground collision, sprite top)** — rain & snow also hit Player2D/Sprite2D via `SpriteTopYAt` (live quads from TryGet*DrawData: offset + custom frame + mirror included), Snow (intensity **0–100**, **Offset X/Y**, **Size**, pure opaque white, **falls all the way to the ground** — dies ON ground collision via GroundKill, now actually executed; life = a SAFETY NET only (180 s — the old 3/30/8 s timers killed particles MID-AIR before reaching the ground at tall viewports — user: "the default must fall to the ground"); **SNOW REST**: flakes hitting an obstacle/collision tile STAY on that surface for `SnowRestSeconds` (a 0–20 s slider, default 6; velocity freezes + fades in place, 0 = vanish immediately) — snow physics: fall → contact (a tile OR a sprite's head) → rest → fade; **Weather surface FINAL v2 (user: "the tent should have splashes" — the tent is a decor tile)**: a **collision** tile = a full box (all layers/maps); a **decor** tile = a **PER-PIXEL TILESET OUTLINE** (`GetTileTopProfile`: a per-pixel-column top profile from the tileset image, cached per tileId — a slanted tent roof splashes along its shape, transparent areas are passed through; the old any-tile-box rule is NOT coming back) + **per-pixel sprite alpha** (`SpriteHitAt`, every Player2D/Sprite2D in the scene) + **ALL MAPS** (`_surfaceMaps`, the active map first). The column surface = the highest hit, Fog (atmospheric cloud FRONT — see below), Tint (full-view ambient wash), Wind X (**the spawn band is WIDENED + SHIFTED upwind** by the computed drift → still 1 full screen at any wind — user: "x=5 add an offset"; snow gets a horizontal terminal `0.4+0.75|WindX|` so it doesn't fly away) + **CAMERA-LEAD**: the camera velocity (smoothed, `TrackCameraTravel`) widens & shifts the band toward the movement by the camera's travel during the fall time — walking/running used to open rain holes on the rear side (particles landed where the camera USED to be — user: "a hole on the bottom left"). Rain/snow/splash sizes are CAMERA-RELATIVE (fraction of view height — fixed world sizes were sub-pixel at far zoom and invisible). Session state; resets on project close/session start |
-| **Fog Front Layer (reference look)** | Fog = a FULL atmospheric cloud layer at the **VERY FRONT** (user revision: "the fog should appear at the very front" — the backdrop-behind version was REJECTED): a translucent dark wash + 3 rows of cyan/blue billows (brighter toward the bottom) drifting + following WindX (a seamless wrap) + a horizon bloom near the bottom — the world (tiles/player/particles) stays VISIBLE through its alpha. Drawn by `RenderFogFront(camera)` at the end of `EditorObjectManager.Draw`'s 2D pass (depth off, before the editor gizmos so the design tools stay crisp). The active Tint steers the cloud color (Sunset = warm clouds, Snow = pale clouds) |
+| **Effects Panel** | New dedicated panel (2D Sidescroller menu): per-action Hit Sheet/Clip/Scale, Hit FX+ FX Scale, Action FX Preset/Follow/Scale, Effect2D emitter overrides (preset/rate/wind/offset/enable), and the Global Weather section below. The Inspector's "Hit FX" combo was removed → replaced by a pointer to this panel |
+| **Weather Presets** | One-click scene weather in the Effects panel: **Clear Day** (all off, faint warm tint), **Sunset** (warm orange wash), **Rain** (rain+ ground fog+ cool tint), **Storm** (heavy rain, thick fog, strong wind, gloomy tint), **Snow** (snowfall+ light fog+ cold tint), **Fog** (dense ground fog only)+ **Clear** (all layers off). Presets map to `Effect2DSystem.ApplyWeatherPreset` |
+| **Weather Layers** | Manual per-layer control under the presets: Rain (intensity **0–100** — 0.7 = sparse reference look, 100 = storm wall capped by the 4000-particle pool; wind slant; **Offset X/Y** — shifts the spawn area; **Size** — drop size; SPARSE vertical dashes, camera-relative sizing; **leans with the wind**: each dash rotates toward the CURRENT velocity every frame (`LeanToVel`, θ = atan2(−vx, −vy) for the SizeY long axis) — wind direction+ strength set the tilt, the longer the fall the more it slants (advection), terminal cap 2×|WindX·wind|+1; **ground splashes**: every drop hitting ground collision OR A SPRITE'S HEAD spawns a small 3-point fan splash (left/center/right) with return gravity — visible but subtle); **surface = max(ground collision, sprite top)** — rain & snow also hit Player2D/Sprite2D via `SpriteTopYAt` (live quads from TryGet*DrawData: offset+ custom frame+ mirror included), Snow (intensity **0–100**, **Offset X/Y**, **Size**, pure opaque white, **falls all the way to the ground** — dies ON ground collision via GroundKill, now actually executed; life = a SAFETY NET only (180 s — the old 3/30/8 s timers killed particles MID-AIR before reaching the ground at tall viewports — user: "the default must fall to the ground"); **SNOW REST**: flakes hitting an obstacle/collision tile STAY on that surface for `SnowRestSeconds` (a 0–20 s slider, default 6; velocity freezes+ fades in place, 0 = vanish immediately) — snow physics: fall → contact (a tile OR a sprite's head) → rest → fade; **Weather surface FINAL v2 (user: "the tent should have splashes" — the tent is a decor tile)**: a **collision** tile = a full box (all layers/maps); a **decor** tile = a **PER-PIXEL TILESET OUTLINE** (`GetTileTopProfile`: a per-pixel-column top profile from the tileset image, cached per tileId — a slanted tent roof splashes along its shape, transparent areas are passed through; the old any-tile-box rule is NOT coming back)+ **per-pixel sprite alpha** (`SpriteHitAt`, every Player2D/Sprite2D in the scene)+ **ALL MAPS** (`_surfaceMaps`, the active map first). The column surface = the highest hit, Fog (atmospheric cloud FRONT — see below), Tint (full-view ambient wash), Wind X (**the spawn band is WIDENED+ SHIFTED upwind** by the computed drift → still 1 full screen at any wind — user: "x=5 add an offset"; snow gets a horizontal terminal `0.4+0.75|WindX|` so it doesn't fly away)+ **CAMERA-LEAD**: the camera velocity (smoothed, `TrackCameraTravel`) widens & shifts the band toward the movement by the camera's travel during the fall time — walking/running used to open rain holes on the rear side (particles landed where the camera USED to be — user: "a hole on the bottom left"). Rain/snow/splash sizes are CAMERA-RELATIVE (fraction of view height — fixed world sizes were sub-pixel at far zoom and invisible). Session state; resets on project close/session start |
+| **Fog Front Layer (reference look)** | Fog = a FULL atmospheric cloud layer at the **VERY FRONT** (user revision: "the fog should appear at the very front" — the backdrop-behind version was REJECTED): a translucent dark wash+ 3 rows of cyan/blue billows (brighter toward the bottom) drifting+ following WindX (a seamless wrap)+ a horizon bloom near the bottom — the world (tiles/player/particles) stays VISIBLE through its alpha. Drawn by `RenderFogFront(camera)` at the end of `EditorObjectManager.Draw`'s 2D pass (depth off, before the editor gizmos so the design tools stay crisp). The active Tint steers the cloud color (Sunset = warm clouds, Snow = pale clouds) |
 | **Weather Overlay Rendering** | `Effect2DSystem.RenderWeatherOverlay(camera)` runs in the 2D pass AFTER projectiles — tint = full-view `TexSquare` quad (hard-edged = uniform alpha to every corner; a soft blob texture would vignette). Static 54-float scratch buffer (no stackalloc in loops — CA2014; Span locals cannot be captured by local functions — CS8175) |
-| **Persistence** | New fields persist ×4 sites: `Player2DActionData` (SceneAsset), save ×2 (SceneManagerPanel), load (SceneManagerPanel + LoadingScene) |
+| **Persistence** | New fields persist ×4 sites: `Player2DActionData` (SceneAsset), save ×2 (SceneManagerPanel), load (SceneManagerPanel+ LoadingScene) |
 
 ### 2.10 Per-Sprite Glow (Emissive Post-FX)
 
@@ -264,30 +267,30 @@ Per-sprite emissive boost so only bright sprite pixels (fire, lava, candles) cro
 | **Glow Tint** | `Sprite2DGlowColor` / `Player2DGlowColor` — colors the bloom (e.g. blue fire); brightest channel normalized to 1 at render, so any brightness of the hue works; white = natural colors |
 | **Flicker** | `Sprite2DGlowFlicker` / `Player2DGlowFlicker` — organic fire breathing: 3 out-of-phase sine layers over absolute engine time (±22% around the Glow value), per-object seed from the name hash (two fires never sync), frame-gated via `Glfw.FrameId` for multi-pass consistency |
 | **Baked to Vertices** | Boost/tint/flicker multiply the per-vertex tint (`aTint`) — the map2d shader has no tint uniform by design |
-| **Inspector** | "Glow (bloom)" slider + "Glow Tint" picker + "Flicker" checkbox in both the Sprite2D and Player2D sections |
-| **Persistence** | Saved in the scene `.ing` via `EditorObjectData` (Glow + GlowColorX/Y/Z + Flicker), symmetric save/load |
+| **Inspector** | "Glow (bloom)" slider+ "Glow Tint" picker+ "Flicker" checkbox in both the Sprite2D and Player2D sections |
+| **Persistence** | Saved in the scene `.ing` via `EditorObjectData` (Glow+ GlowColorX/Y/Z+ Flicker), symmetric save/load |
 
-### 2.11 Dialogue System (Conversation + Bubble)
+### 2.11 Dialogue System (Conversation+ Bubble)
 
-Data-driven dialogue: RPG conversation window + world-space speech bubbles, authored entirely in the editor.
+Data-driven dialogue: RPG conversation window+ world-space speech bubbles, authored entirely in the editor.
 
 | Feature | Description |
 |---------|-------------|
 | **Dialogue Assets** | `DialogueAsset` (Id, Name, StartNodeId, ThemeName) with `DialogueNode` pages — text, speaker, portrait, emotion, choices, auto-advance, per-node start/end actions; branching via NextNodeId / choice targets (empty = end). Stored in `Assets/Dialogue/dialogues.json` |
-| **Dialogue Editor** | Panel (2D Sidescroller menu): asset list + add/duplicate/delete, node editor (speaker/emotion/portrait/text/next/choices/actions), speaker manager, theme editor (colors, fonts, typewriter speed), language dropdown + translation table, ▶ Start/■ Stop preview |
-| **Conversation Runtime** | `DialogueSystem` — bottom window with portrait frame, colored speaker name, typewriter text, numbered choices (1-9 / arrows + E / Space next / Esc close); closes with a fade; freezes player input + editor camera via the `DialogueOverlay` modal gate |
+| **Dialogue Editor** | Panel (2D Sidescroller menu): asset list+ add/duplicate/delete, node editor (speaker/emotion/portrait/text/next/choices/actions), speaker manager, theme editor (colors, fonts, typewriter speed), language dropdown+ translation table, ▶ Start/■ Stop preview |
+| **Conversation Runtime** | `DialogueSystem` — bottom window with portrait frame, colored speaker name, typewriter text, numbered choices (1-9 / arrows+ E / Space next / Esc close); closes with a fade; freezes player input+ editor camera via the `DialogueOverlay` modal gate |
 | **Speakers** | Reusable `SpeakerData` (Id, Name, portrait, name color); portraits support emotion variants (`<name>_Happy.png` tried before the base) |
-| **Themes** | `DialogueThemeData` with optional parent inheritance — window/border/name/text/choice/bubble colors, fonts, typewriter speed, optional background image; built-in Default + Medieval |
+| **Themes** | `DialogueThemeData` with optional parent inheritance — window/border/name/text/choice/bubble colors, fonts, typewriter speed, optional background image; built-in Default+ Medieval |
 | **Bubbles** | `ShowBubble/HideBubble` follow any object (player/NPC) with fade in/out, auto-hide on duration/distance, type-tinted borders (Speech/Thought/Quest/Warning); also fired from trigger actions |
 | **NPC Interaction** | `EditorObject.NpcDialogueId` (Inspector: NPC Dialogue section) — Sprite2D/Player2D with a dialogue id shows an "[E] Talk" prompt in range and starts the conversation on E. Per-NPC badge customization: `NpcDisplayName` (white name line drawn above the badge — empty = Hierarchy name), `NpcBadgeSize` (badge text size in screen px, default 15 — also scales the alert image ×2), `NpcBadgeLift` (badge float height above the VISUAL head top in world units, default 0.15 — snug; badges anchor via `BadgeHeadHeight`, not the bubble margin); all persisted with the NPC binding and shared by the HUD (GameScene) and ImGui-overlay (preview) render paths |
-| **HUD Z-Index (panels are top layer)** | Open UI panels (inventory `[I]`, shop, quest log) hide ALL world-anchored markers — NPC name badges, "!" indicators, "[E] Talk" prompts, speech bubbles, portal/interact-key badges. Two mechanisms: (1) flag gate `DialogueSystem.PanelUiOpen` (`InventoryHud.PanelOpen \|\| ShopHud.IsOpen \|\| QuestHud.LogOpen`) checked in both render paths, because the panels queue their occluder rects into the SHARED HUD only AFTER `DialogueSystem.Tick` ran (same frame, different HUD instance) and `Flush` purges last frame's list before Tick ever sees it — the point probe alone never fired on the GameScene path; (2) full-extent occluder probe `HUD.PanelCoversRect(x,y,w,h)` (rect overlap vs the per-frame `DrawSolidBox` occluder list) replacing the anchor-point-only `PointInPanelOccluder` for every marker — a badge name line + plate tower ~30–80px ABOVE its anchor point, so a point-only test let the marker's upper half punch through the parchment ("Agus/Budi" on top of the open inventory) |
-| **HUD Mouse Accuracy (panel hover/click)** | Every inventory/shop hover + click test reads the cursor mapped through `InventoryHud/ShopHud.WindowToScene`. Two fixes: (1) cursor SOURCE is `ImGui.GetIO().MousePos` (screen space — the same space the ViewportPanel letterbox rect `_imageMin/_imageSize` lives in), not the raw GLFW cursor: the two DIVERGE on Windows display scaling ≠ 100% (OS screen units vs framebuffer px), offsetting every hover/click by the scale factor; GLFW is only the fallback outside an ImGui frame. (2) The F8 fullscreen path now publishes its own `WindowToScene` every frame in `IDE.RenderInGameMode` (scene-image letterbox inverse, same fit math as the displayed image) — F8 early-returns before `ViewportPanel.Render`, so the panel's per-frame publisher never ran there and a STALE letterbox lambda from the last docked frame kept mapping clicks through an outdated rect (hover landed on the wrong slot); no scene texture → mapper set null (identity) |
-| **HUD Text Mirror (F8 fullscreen + flush order)** | `HUD.DrawText` mirrors every string into `HUD.FrameTextOut`, drawn by an ImGui overlay with proven fonts when the stb atlas renders no glyphs. Two bugs kept the mirror dead everywhere: (1) `HUD.Flush` cleared `FrameTextOut` at the END of every flush while the overlay reads the list AFTER the flush in the same frame — every string was wiped before it could be drawn (panel quads visible, all glyphs gone); the flush-end clear is gone, strings are frame-stamped (`TextOutItem.Frame`) and stale frames drop in `TextOut()` (clear when `Glfw.FrameId` changes) and in `DrawTextOutOverlay` (filter `Frame != Glfw.FrameId`), with draw-then-clear unchanged. (2) The F8 path never published the overlay pieces nor called `DrawTextOutOverlay` — `IDE.RenderInGameMode` now publishes `ImGuiFontResolver` (`ResolveHudFont` → `_imgui.GetFont`), `OverlayDrawList` (foreground draw list) and `OverlayFontPath` (Worldstar) inside its `WindowToScene` block and draws the mirror with the SAME letterbox fit as the scene image and the mouse mapper; no scene texture → `OverlayDrawList` nulled. **Anti-overlap (user: "things still overlap")**: (a) `HUD.TextOut` de-duplicates same-text/same-spot (≤6px) entries — `HUD.DrawText` auto-mirrors AND the call site adds an explicitly-sized TextOut for the same string, so the overlay used to draw BOTH (16px ghost under the 26px title / tooltip lines); (b) auto-mirrored entries carry their `Source` HUD instance and every overlay pass (`ViewportPanel`, F8) filters through `InventoryHud.AcceptMirrored` — only the shared inventory HUD's strings (its stb atlas is the broken one) plus untagged explicit TextOuts draw, so GameScene dialogue/debug text with a healthy stb never double-draws; the ViewportPanel publish + `DrawTextOutOverlay` also moved OUTSIDE the `HudDrawFrameId` dialogue guard (dock in-game mirrors too — guard now protects the dialogue overlay only); (c) explicit TextOut sizes match the DrawText slot via `hud.GetFontSlotSize(slot)` (size drift = ghost) and stb-only decorations opt out with `DrawText(..., mirror: false)` (quest log ✓); (d) mirror-font glyph rule — Worldstar/atlas has no `× ◈ • ✓ → ← — ·`, they render as `?`: all mirrored HUD strings are ASCII (`Gold120`, plain qty digits, `- ` bullets, `== DONE ==`, `->`/`<-`, `({n})` qty in names); Console output is exempt (IDE font has them) |
-| **HUD Item Qty + Hover Desc (inventory)** | Quantity badge shows `×N` on EVERY occupied grid/hotbar slot — previously only `count > 1`, so a single potion showed nothing (user: "beri informasi jumlah itemnya"); chip sized from text extents, 15px mirrored digit, bottom-right of the cell; paperdoll cells pass count 0 (gear never stacks, no useless ×1 on equipment). The always-on info strip under the grid now follows the HOVERED item (grid/hotbar/paperdoll — name ×qty + notes/use line + price; fallback: first grid slot), giving a guaranteed-visible desc next to the mouse-adjacent tooltip (which also shows `(n)` on the name line for single items too). Glyphs are plain ASCII (no `×` — the mirror font renders it as `?`) and the summary lives INSIDE the panel's left column under the name plate (word-wrapped to the column width) — the old grid-bottom position straddled the panel's bottom frame and floated over the game scene |
-| **HUD Tooltip Z-Front (mirrored plate)** | Tooltip plates (inventory + shop) now render ON TOP of the slot icons: `HUD.Flush` draws ALL images (`DrawImageUV` icons) AFTER every box, so a batched parchment plate could never cover the hovered icon (potion punching through the tooltip — user: "make sure the tooltips' Z is frontmost"). The plate (fill + 2px wooden edge) is mirrored into the overlay list via the new `HUD.RectOut(x,y,w,h,rgb,alpha,source)` (`IsRect` entry in `FrameTextOut`, drawn as `AddRectFilled` with no font resolution) queued BEFORE the tooltip's text lines — the overlay composites above the scene texture and draws in INSERT order, giving plate < edge < text Z-order. `InventoryUI.Render` now calls `DrawTooltip` LAST (after flash + info summary) so the tooltip owns the highest insert order of any HUD entry; the batch `FillSolid`/`DrawBox` plate stays as fallback for paths with no overlay. Shop tooltip mirrors identically (already the last call in its Render), and its explicit TextOut switched from a hardcoded `14f` to `hud.GetFontSlotSize(labelFont)` for size parity. **Hidden during conversations (user: "hide the hotbar during dialogue")**: `InventoryHud.Render` returns early while `DialogueSystem.IsConversationActive` — hotbar, gold chip, flash and tooltip queue NOTHING (neither the batch nor the mirror), because both render composites put the shared inventory HUD ON TOP of the conversation window (preview: the mirror draws after the dialogue overlay; in-game: `invHud.Flush()` runs after the main HUD) — previously the mirrored tooltip covered the "1. Yes" choice and hotbar digits floated on the panel. `PanelOpen` state is kept so an open [I] panel reappears after the dialogue ends; ShopSystem still renders (a shop opened from a conversation must float above it) |
+| **HUD Z-Index (panels are top layer)** | Open UI panels (inventory `[I]`, shop, quest log) hide ALL world-anchored markers — NPC name badges, "!" indicators, "[E] Talk" prompts, speech bubbles, portal/interact-key badges. Two mechanisms: (1) flag gate `DialogueSystem.PanelUiOpen` (`InventoryHud.PanelOpen \|\| ShopHud.IsOpen \|\| QuestHud.LogOpen`) checked in both render paths, because the panels queue their occluder rects into the SHARED HUD only AFTER `DialogueSystem.Tick` ran (same frame, different HUD instance) and `Flush` purges last frame's list before Tick ever sees it — the point probe alone never fired on the GameScene path; (2) full-extent occluder probe `HUD.PanelCoversRect(x,y,w,h)` (rect overlap vs the per-frame `DrawSolidBox` occluder list) replacing the anchor-point-only `PointInPanelOccluder` for every marker — a badge name line+ plate tower ~30–80px ABOVE its anchor point, so a point-only test let the marker's upper half punch through the parchment ("Agus/Budi" on top of the open inventory) |
+| **HUD Mouse Accuracy (panel hover/click)** | Every inventory/shop hover+ click test reads the cursor mapped through `InventoryHud/ShopHud.WindowToScene`. Two fixes: (1) cursor SOURCE is `ImGui.GetIO().MousePos` (screen space — the same space the ViewportPanel letterbox rect `_imageMin/_imageSize` lives in), not the raw GLFW cursor: the two DIVERGE on Windows display scaling ≠ 100% (OS screen units vs framebuffer px), offsetting every hover/click by the scale factor; GLFW is only the fallback outside an ImGui frame. (2) The F8 fullscreen path now publishes its own `WindowToScene` every frame in `IDE.RenderInGameMode` (scene-image letterbox inverse, same fit math as the displayed image) — F8 early-returns before `ViewportPanel.Render`, so the panel's per-frame publisher never ran there and a STALE letterbox lambda from the last docked frame kept mapping clicks through an outdated rect (hover landed on the wrong slot); no scene texture → mapper set null (identity) |
+| **HUD Text Mirror (F8 fullscreen+ flush order)** | `HUD.DrawText` mirrors every string into `HUD.FrameTextOut`, drawn by an ImGui overlay with proven fonts when the stb atlas renders no glyphs. Two bugs kept the mirror dead everywhere: (1) `HUD.Flush` cleared `FrameTextOut` at the END of every flush while the overlay reads the list AFTER the flush in the same frame — every string was wiped before it could be drawn (panel quads visible, all glyphs gone); the flush-end clear is gone, strings are frame-stamped (`TextOutItem.Frame`) and stale frames drop in `TextOut()` (clear when `Glfw.FrameId` changes) and in `DrawTextOutOverlay` (filter `Frame != Glfw.FrameId`), with draw-then-clear unchanged. (2) The F8 path never published the overlay pieces nor called `DrawTextOutOverlay` — `IDE.RenderInGameMode` now publishes `ImGuiFontResolver` (`ResolveHudFont` → `_imgui.GetFont`), `OverlayDrawList` (foreground draw list) and `OverlayFontPath` (Worldstar) inside its `WindowToScene` block and draws the mirror with the SAME letterbox fit as the scene image and the mouse mapper; no scene texture → `OverlayDrawList` nulled. **Anti-overlap (user: "things still overlap")**: (a) `HUD.TextOut` de-duplicates same-text/same-spot (≤6px) entries — `HUD.DrawText` auto-mirrors AND the call site adds an explicitly-sized TextOut for the same string, so the overlay used to draw BOTH (16px ghost under the 26px title / tooltip lines); (b) auto-mirrored entries carry their `Source` HUD instance and every overlay pass (`ViewportPanel`, F8) filters through `InventoryHud.AcceptMirrored` — only the shared inventory HUD's strings (its stb atlas is the broken one) plus untagged explicit TextOuts draw, so GameScene dialogue/debug text with a healthy stb never double-draws; the ViewportPanel publish+ `DrawTextOutOverlay` also moved OUTSIDE the `HudDrawFrameId` dialogue guard (dock in-game mirrors too — guard now protects the dialogue overlay only); (c) explicit TextOut sizes match the DrawText slot via `hud.GetFontSlotSize(slot)` (size drift = ghost) and stb-only decorations opt out with `DrawText(..., mirror: false)` (quest log ✓); (d) mirror-font glyph rule — Worldstar/atlas has no `× ◈ • ✓ → ← — ·`, they render as `?`: all mirrored HUD strings are ASCII (`Gold120`, plain qty digits, `- ` bullets, `== DONE ==`, `->`/`<-`, `({n})` qty in names); Console output is exempt (IDE font has them) |
+| **HUD Item Qty+ Hover Desc (inventory)** | Quantity badge shows `×N` on EVERY occupied grid/hotbar slot — previously only `count > 1`, so a single potion showed nothing (user: "beri informasi jumlah itemnya"); chip sized from text extents, 15px mirrored digit, bottom-right of the cell; paperdoll cells pass count 0 (gear never stacks, no useless ×1 on equipment). The always-on info strip under the grid now follows the HOVERED item (grid/hotbar/paperdoll — name ×qty+ notes/use line+ price; fallback: first grid slot), giving a guaranteed-visible desc next to the mouse-adjacent tooltip (which also shows `(n)` on the name line for single items too). Glyphs are plain ASCII (no `×` — the mirror font renders it as `?`) and the summary lives INSIDE the panel's left column under the name plate (word-wrapped to the column width) — the old grid-bottom position straddled the panel's bottom frame and floated over the game scene |
+| **HUD Tooltip Z-Front (mirrored plate)** | Tooltip plates (inventory+ shop) now render ON TOP of the slot icons: `HUD.Flush` draws ALL images (`DrawImageUV` icons) AFTER every box, so a batched parchment plate could never cover the hovered icon (potion punching through the tooltip — user: "make sure the tooltips' Z is frontmost"). The plate (fill+ 2px wooden edge) is mirrored into the overlay list via the new `HUD.RectOut(x,y,w,h,rgb,alpha,source)` (`IsRect` entry in `FrameTextOut`, drawn as `AddRectFilled` with no font resolution) queued BEFORE the tooltip's text lines — the overlay composites above the scene texture and draws in INSERT order, giving plate < edge < text Z-order. `InventoryUI.Render` now calls `DrawTooltip` LAST (after flash+ info summary) so the tooltip owns the highest insert order of any HUD entry; the batch `FillSolid`/`DrawBox` plate stays as fallback for paths with no overlay. Shop tooltip mirrors identically (already the last call in its Render), and its explicit TextOut switched from a hardcoded `14f` to `hud.GetFontSlotSize(labelFont)` for size parity. **Hidden during conversations (user: "hide the hotbar during dialogue")**: `InventoryHud.Render` returns early while `DialogueSystem.IsConversationActive` — hotbar, gold chip, flash and tooltip queue NOTHING (neither the batch nor the mirror), because both render composites put the shared inventory HUD ON TOP of the conversation window (preview: the mirror draws after the dialogue overlay; in-game: `invHud.Flush()` runs after the main HUD) — previously the mirrored tooltip covered the "1. Yes" choice and hotbar digits floated on the panel. `PanelOpen` state is kept so an open [I] panel reappears after the dialogue ends; ShopSystem still renders (a shop opened from a conversation must float above it) |
 | **Conditions** | Choice conditions: `level:5`, `flag:name`, `item:potion`, `quest:id`, `questdone:id`, `gold:100`, `var:name:10` — unknown conditions fail closed |
-| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed. `Change Sprite` gets a dedicated contextual editor row: object name + `Sheet|Clip|Loop` art string with a live clip picker from the Sprite Editor registry (loop segment optional — `Loop`/`Once`; runtime also honors it from trigger actions). Art names resolve CASE-INSENSITIVELY ('Cooking Area' finds the registered 'Cooking area'), the override stores the canonical spelling, and a genuinely unregistered art logs a visible `[ChangeSprite]` warning instead of silently keeping the old sprite |
-| **Localization** | `DialogueLibrary.CurrentLanguage` + per-language override tables (English/Indonesia/Japanese/Chinese/Korean/Thai/Vietnamese); untranslated text passes through |
+| **Actions** | Choices/nodes execute trigger-catalog actions (Give Item, Activate Quest, Change Map, Play Sound, Camera Shake…) — no new action types needed. `Change Sprite` gets a dedicated contextual editor row: object name+ `Sheet|Clip|Loop` art string with a live clip picker from the Sprite Editor registry (loop segment optional — `Loop`/`Once`; runtime also honors it from trigger actions). Art names resolve CASE-INSENSITIVELY ('Cooking Area' finds the registered 'Cooking area'), the override stores the canonical spelling, and a genuinely unregistered art logs a visible `[ChangeSprite]` warning instead of silently keeping the old sprite |
+| **Localization** | `DialogueLibrary.CurrentLanguage`+ per-language override tables (English/Indonesia/Japanese/Chinese/Korean/Thai/Vietnamese); untranslated text passes through |
 | **Save/Load** | `SaveData.DialogueCompleted/Flags/Variables` captured on save, restored on load; session state resets on new play sessions |
 | **Trigger Integration** | Start Dialogue (Param = asset id), Show Bubble (Param = text, Param2 = `type\|seconds`), Hide Bubble — wired in `TriggerEventSystem` |
 
@@ -412,7 +415,7 @@ Each layer in `TerrainLayerList`:
 - **Item catalog auto-merge**: on project open, `LoadCatalog` reads `items.json` FIRST, then merges EVERY other top-level `*.json` in `Assets/Items/` as an external catalog (e.g. `gear-items.json`). Ids already present win (the main file is authoritative); files without an `Items` array or with invalid JSON are skipped (logged `[Inventory] Auto-load skip …`); with no `items.json` at all the external files still load. Saving writes the merged list back to `items.json`
 - **Binary sidecar cache (warm load)**: big JSON loads (scene manifest, sheets, maps, catalogs) try the `.cache/<file>.bin` sidecar first; wire format **v2** = [magic][ver 2][root type][**layoutId** — hash of the DTO member layout][JSON stamp len/hash/mtime]. A sidecar with a wrong version OR a different member layout than the current build is rejected **silently** before decoding (JSON parses as usual, no console spam); the Sprite Editor then rewrites the sidecar (**self-heal**) so the next load is a binary hit. Stale v1 sidecars written by older builds (e.g. before the `PatternActions` field existed) are auto-rejected and healed — the `[BinCache] cache invalid … parsing JSON` log spam is gone
 - **New Scene**: Clears active file (does NOT overwrite game.ing)
-- **Save As**: Opens file dialog, saves JSON + thumbnail PNG
+- **Save As**: Opens file dialog, saves JSON+ thumbnail PNG
 - **Load**: Reads .ing JSON, reconstructs all objects, loads textures
 - **Settings persistence**: `settings.json` for PostFX, Shadows, Fog, Quality, IDE fonts
 
@@ -440,7 +443,8 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 
 | File | Purpose |
 |------|---------|
-| `{Name}.projing` | Project metadata + scene inventory |
+| `{Name}.projing`| Project metadata + scene inventory
+ |
 | `settings.json` | Engine settings (resolution, shadows, fog, post-FX, fonts) |
 | `shadow_presets.json` | Saved shadow presets |
 | `imgui.ini` | IDE panel layout (positions, sizes) |
@@ -455,11 +459,11 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 
 ### 3.6.3 Project Lifecycle
 
-1. **New Project** (File > New Project): Pick folder → enter name → creates structure + copies fonts
+1. **New Project** (File > New Project): Pick folder → enter name → creates structure+ copies fonts
 2. **Open Project** (File > Open Project): Browse for `.projing` file → auto-loads `game.ing`
 3. **Recent Projects**: File > Recent Projects submenu (persisted globally)
-4. **Save All** (Ctrl+S): Saves scenes + updates `.projing` (LastSaved + scene inventory) + ALL catalogs (item/shop/quest/dialogue)
-5. **Close Project**: File > Close Project persists everything first (scenes + sheets + catalogs) then resets all editor state: scenes, selection, hierarchy, editor objects, Shop/Item Editor selection (via `OnProjectChanged`), Shadow preset cache
+4. **Save All** (Ctrl+S): Saves scenes+ updates `.projing` (LastSaved+ scene inventory)+ ALL catalogs (item/shop/quest/dialogue)
+5. **Close Project**: File > Close Project persists everything first (scenes+ sheets+ catalogs) then resets all editor state: scenes, selection, hierarchy, editor objects, Shop/Item Editor selection (via `OnProjectChanged`), Shadow preset cache
 6. **Switching projects** (Recent Projects / Open Project): the outgoing project is persisted FIRST (`PersistEditorData`) — no data loss when switching without Close Project
 
 ### 3.6.4 Path Resolution
@@ -478,7 +482,7 @@ File
 ├── New Project...
 ├── Open Project...       (file browser: *.projing)
 ├── Recent Projects       (submenu)
-├── ── Current Project ──  (shows name + path + Close)
+├── ── Current Project ──  (shows name+ path+ Close)
 ├── ── Separator ──
 ├── New Scene (Ctrl+N)
 ├── Open Scene... (Ctrl+O)
@@ -515,12 +519,12 @@ File
 ```
 1. Shadow Pass
    ├── CSM: 3 cascade depth maps (sun directional)
-   └── Local Shadows: Point (cube map) + Spot (projective) per light
+   └── Local Shadows: Point (cube map)+ Spot (projective) per light
 
 2. Scene Pass → MSAA FBO (multisampled)
    ├── Sky (procedural or cubemap)
-   ├── Terrain (heightmap + dynamic layers + PBR)
-   ├── Objects (primitives + GLB references)
+   ├── Terrain (heightmap+ dynamic layers+ PBR)
+   ├── Objects (primitives+ GLB references)
    ├── Selection highlight (outline shader)
    └── Grid overlay
 
@@ -566,9 +570,9 @@ Both terrain and objects use the same BRDF functions:
 float D = DistributionGGX(N, H, roughness);
 float G = GeometrySmith(N, V, L, roughness);
 vec3  F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-vec3 specular = D * G * F / (4.0 * NdotV * NdotL + 0.0001);
+vec3 specular = D * G * F / (4.0 * NdotV * NdotL+ 0.0001);
 vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-vec3 Lo = (kD * albedo / PI + specular) * lightColor * NdotL;
+vec3 Lo = (kD * albedo / PI+ specular) * lightColor * NdotL;
 ```
 
 ### 5.2 Object PBR (objectPbr_fragment.glsl)
@@ -612,7 +616,7 @@ Per-object PBR with 7 texture slots:
   hard ±0.16 UV offset cap prevents cross-tile texture smearing, far-field fade 80–160u for stability
 - **Vertex Displacement** (planes): TRUE geometric displacement — the plane mesh is tessellated
   (16..512 segments, `PbrVertexSegments`) and a dedicated vertex stage (`pbrDisplace_vertex.glsl`
-  + the shared objectPbr fragment) pushes vertices along the displacement source via vertex
+ + the shared objectPbr fragment) pushes vertices along the displacement source via vertex
   texture fetch, re-deriving normals from the height gradient. Real silhouette, real parallax,
   real self-occlusion; view-ray POM auto-reduces (micro 0.3) so depth is not doubled.
   `PbrVertexDisplaceScale`/`PbrVertexOffset` are the LEGACY PBR fields (no UI on planes).
@@ -635,10 +639,9 @@ Per-object PBR with 7 texture slots:
   - `TerrainHeightTilingX/Y` — the elevation's OWN tiling (uniform `u_terrainUvScale`), decoupled
     from PBR per-map tiling and global Map Tiling; slopes use two separate footprints (terrain
     tiling for base, POM tiling for detail) so gradients add correctly.
-  - All uniforms upload every draw (live, no mesh rebuild); persist symmetric (SceneAsset +
-    save ×2 + load clamp, −1 sentinels migrate legacy scenes: BaseHeight inherits the old PBR
+  - All uniforms upload every draw (live, no mesh rebuild); persist symmetric (SceneAsset+    save ×2+ load clamp, −1 sentinels migrate legacy scenes: BaseHeight inherits the old PBR
     peak, Displace starts 0 — shape unchanged).
-  - Chunk AABB pad + plane picking proxy use the real max: base + detail + |offset|
+  - Chunk AABB pad+ plane picking proxy use the real max: base+ detail+ |offset|
     (`TerrainDisplacementExtent`); elevation texture load failure flattens only dedicated-
     source planes (legacy fallback planes render through the unit-5 branch).
   - **Terrain Sculpt (viewport brush)** — brush sculpting that PAINTS the elevation heightmap.
@@ -650,8 +653,7 @@ Per-object PBR with 7 texture slots:
     coherent pattern per stroke via a per-stroke seed, converging like Smooth; Terrace    quantizes the local 3×3 mean onto a shared N-step grid — per-texel Round() on a
     steep slope alternates levels (sawtooth teeth), so the MEAN is what snaps;
     `Steps` 2..64, and the grid stays shared across stamps); a dirty-rect GL_R8 texture binds at unit 16 (`u_sculptDeltaMap`) and the
-    vertex stage composes elevation = base·BaseHeight + (delta − 0.5)·2·`SculptAmp` +
-    POM detail. **Dirty-rect uploads serialize PACKED rows with 4-byte row padding**
+    vertex stage composes elevation = base·BaseHeight+ (delta − 0.5)·2·`SculptAmp`+    POM detail. **Dirty-rect uploads serialize PACKED rows with 4-byte row padding**
     (`FlushTexture` in TerrainHeightfield.cs): `TexSubImage2D` reads rows at
     `UNPACK_ROW_LENGTH = 0`, so uploading straight from the row-pitched (512-byte) CPU
     mirror shifted every row after the first by (Res − rect width) texels — the LIVE
@@ -662,7 +664,7 @@ Per-object PBR with 7 texture slots:
     sculpted relief while the Base Height slider keeps driving the shaped terrain.
     Each finished stroke bakes the delta to `Artifacts/Terrain/<scene>/<object>_sculpt.tga`
     (`SculptDeltaPath`) — persistence without overwriting the base. CPU picking/rings and
-    splat height bands read the COMBINED surface (base + delta).
+    splat height bands read the COMBINED surface (base+ delta).
     Brush params:
     radius (world units), strength (height-range fraction per second at the core), hardness
     (falloff: 0 soft dome … 1 hard disc). Picking ray-marches the combined surface
@@ -670,10 +672,9 @@ Per-object PBR with 7 texture slots:
     world radius; while the session is ON, LMB paints instead of selecting/gizmo-dragging.
     UI: dedicated TERRAIN panel (menu "Terrain") — heightmap input, Terrain Geometry
     (size / Base Height / Displace Height / Offset / Strength / tiling / segments / chunks)
-    and "Terrain Sculpt" brush controls + "Sculpt Add Height" amplitude + "Revert sculpt"
+    and "Terrain Sculpt" brush controls+ "Sculpt Add Height" amplitude+ "Revert sculpt"
     (reset the delta layer to neutral — the base image is untouched). Session state:
-    `EditorObject.SculptBrush` +
-    `IDEBridge.TerrainSculptObject` (null = off). SHIFT-TAP in the viewport cycles the
+    `EditorObject.SculptBrush`+    `IDEBridge.TerrainSculptObject` (null = off). SHIFT-TAP in the viewport cycles the
     brush mode (Raise → Lower → Smooth → Flatten → Noise → Terrace → Raise, per-stroke
     console log, synced back into the Terrain panel). Viewport affordances: the paintable-region
     boundary is drawn ON the displaced surface (96-point perimeter outline, live elevation per
@@ -685,10 +686,10 @@ Per-object PBR with 7 texture slots:
 ### 5.3 Terrain rendering (displaced PBR plane — objectPbr pipeline)
 
 Terrain IS a PBR Plane: the geometric-displacement vertex stage (pbrDisplace_vertex.glsl,
-unit-15 elevation, base + POM-detail decomposition — see 5.2) displaces the tessellated
+unit-15 elevation, base+ POM-detail decomposition — see 5.2) displaces the tessellated
 grid while the SHARED objectPbr_fragment.glsl shades it (Cook-Torrance, POM, CSM, local
 lights, fog). The old dedicated terrainEditor_fragment.glsl / sampler2DArray layer
-system was stripped; terrain-specific behavior lives in the vertex stage + CPU fields
+system was stripped; terrain-specific behavior lives in the vertex stage+ CPU fields
 + the splat layer path below.
 
 ### 5.4 Local Light PBR
@@ -719,7 +720,7 @@ ObjColor fallback), so an unpainted terrain renders identically to the plain pat
 
 Gate `u_splatActive` = a live weight field (paint session, band buffer) exists AND (note: the PBR render path itself is entered via `HasPbrMaterial`, which also counts splat state — field/band buffer/stored splat file/layer textures/bands-enabled — so a plain plane painted without any heightmap still renders through the splat pipeline)
 
-**Splat renders through a TERRAIN_SPLAT program VARIANT** (`Shader.GetObjectPbrSplat(Displace)ShaderProgram` — the SAME `objectPbr_fragment.glsl` compiled with a `#define TERRAIN_SPLAT 1` prefix injected after `#version`). Reason: `GL_MAX_TEXTURE_IMAGE_UNITS` = 32 on the target GPU — the base objectPbr program uses 17 samplers (7 maps + 3 CSM + 7 local-light shadows) and the full splat set needs 25 more; one program cannot carry both, which is why the splat block was once stripped as "dead code" after the link started failing with "Number of sampler exceeds the limitation". The splat variant trades the 7 local-light SHADOW samplers for 21 splat samplers (weight map + albedo/normal/metal/rough/AO per layer 0-3 — per-layer POM-height samplers dropped) = 31 ≤ 32. `DrawPbrPrimitive` picks the variant per-plane when splat state exists and falls back to the plain program if the variant failed to link (one-shot console warning). The `#version`-aware define-prefix loader lives in `ShaderHelpers.LoadShader(vertex, fragment, fragmentPrefix)`; `Tools/ShaderSmokeTest` covers all four objectPbr programs and prints `GL_MAX_TEXTURE_IMAGE_UNITS`.
+**Splat renders through a TERRAIN_SPLAT program VARIANT** (`Shader.GetObjectPbrSplat(Displace)ShaderProgram` — the SAME `objectPbr_fragment.glsl` compiled with a `#define TERRAIN_SPLAT 1` prefix injected after `#version`). Reason: `GL_MAX_TEXTURE_IMAGE_UNITS` = 32 on the target GPU — the base objectPbr program uses 17 samplers (7 maps+ 3 CSM+ 7 local-light shadows) and the full splat set needs 25 more; one program cannot carry both, which is why the splat block was once stripped as "dead code" after the link started failing with "Number of sampler exceeds the limitation". The splat variant trades the 7 local-light SHADOW samplers for 21 splat samplers (weight map+ albedo/normal/metal/rough/AO per layer 0-3 — per-layer POM-height samplers dropped) = 31 ≤ 32. `DrawPbrPrimitive` picks the variant per-plane when splat state exists and falls back to the plain program if the variant failed to link (one-shot console warning). The `#version`-aware define-prefix loader lives in `ShaderHelpers.LoadShader(vertex, fragment, fragmentPrefix)`; `Tools/ShaderSmokeTest` covers all four objectPbr programs and prints `GL_MAX_TEXTURE_IMAGE_UNITS`.
 (`SplatIsPainted` — any layer 1-3 map or paint — OR `SplatHeightBandsEnabled`). Uniform
 vec4 `u_splatHasAlbedo/Normal/Metal/Rough/Ao/Height` gate per-slot presence — MUST be
 `Uniform4f` (vec4 FLOAT): the old 4× `Uniform1i(loc+i)` scheme = a silent double bug —
@@ -731,7 +732,7 @@ land on other uniforms (a sampler on the wrong unit → random textures). Empty 
 `u_splatTint[l]` (layer 0 = the object color). **Weight map sampling = RAW mesh UV**
 (`TexCoord`, 1:1 with the 256² field — NOT the tiled uvAlbedo: sampling through the
 tiled UV makes every paint stroke REPEAT once per tile, "tiled paint").
-**Layer 0** samples the base maps through its own per-map tiling/offset + the POM shift
+**Layer 0** samples the base maps through its own per-map tiling/offset+ the POM shift
 (identical to the plain path). **Layers 1-3** sample ALL their maps through ONE per-layer
 tiling `u_splatLayerTiling[l]` (`SplatLayerTiling`, a per-layer slider in the Terrain
 panel → Layer textures) INDEPENDENT of the global Map Tiling — the mask paint stays
@@ -740,7 +741,7 @@ panel → Layer textures) INDEPENDENT of the global Map Tiling — the mask pain
 decoupled layer UVs).
 
 **UNIVERSAL VERTEX DISPLACEMENT (PBR panel → "Vertex Displacement", every primitive).**
-Checkbox `PbrVertexDisplaceEnabled` (default OFF — legacy behavior) + `PbrPrimTessellation`
+Checkbox `PbrVertexDisplaceEnabled` (default OFF — legacy behavior)+ `PbrPrimTessellation`
 (1..64, subdivisions per Box face / slices·stacks Sphere; 1 = the legacy mesh):
 - **Plane**: toggle ON adds a displaced path when ONLY a PBR height map is set (without
   terrain elevation / sculpt) — a plain plane with a PBR height never entered
@@ -751,10 +752,8 @@ Checkbox `PbrVertexDisplaceEnabled` (default OFF — legacy behavior) + `PbrPrim
   `DrawPbrPrimitive`: `displaced = PbrVertexDisplaceEnabled && _pbrTex[5] != 0` for
   Box/Sphere; scale/offset = `PbrVertexDisplaceScale`/`PbrVertexOffset`).
 - **Sphere**: slices = 12·tess, stacks = 8·tess.
-- UI: a "Vertex Displacement" section in PbrPanel (Enable + Height Scale + Height Offset +
-  Tessellation for Box/Sphere + a hint) — separate from the Terrain panel (which keeps
-  terrain elevation/sculpt/chunks). Persist: `PbrVertexDisplaceEnabled` +
-  `PbrPrimTessellation` in SceneAsset + save ×2 + load clamp + Duplicate.
+- UI: a "Vertex Displacement" section in PbrPanel (Enable+ Height Scale+ Height Offset+  Tessellation for Box/Sphere+ a hint) — separate from the Terrain panel (which keeps
+  terrain elevation/sculpt/chunks). Persist: `PbrVertexDisplaceEnabled`+  `PbrPrimTessellation` in SceneAsset+ save ×2+ load clamp+ Duplicate.
 The key: displacement needs INTERIOR vertices — a 2-triangle-per-face mesh cannot move;
 before raising tessellation, toggling ON on Box/Sphere produces nothing.
 **Box/Sphere displaced ANTI-ARTIFACT**: (1) `u_dispEdgeFade` = the displacement FADES to 0
@@ -766,10 +765,10 @@ DIFFERENT heights (per-face UVs), without the face fade they TEAR (a strip stret
 `pbrDisplace_vertex.glsl` assumes a PLANE grid (cell world size from the model's X/Z axes); on
 faces facing any direction it produces garbage normals (banded shading). Both are
 uploaded from `DrawPbrPrimitive` (`perFaceUvDisp = Box || Sphere`); Plane keeps fade off
-+ recompute on (terrain elevation must connect fully to the edge + needs the normal slope).
++ recompute on (terrain elevation must connect fully to the edge+ needs the normal slope).
 **BUG "Box tess>1 still broken" (TWO causes, both fixed)**: (1) **mesh** — in
 `Object3D.CreateBoxVertices`, the RIGHT face used `dv = p6−p1` = the face DIAGONAL
-`(0,2hy,2hz)` (it must be `p2−p1`, pure +Y) → the corner walk landed at
+`(0,2hy,2hz)` (it must be `p2−p1`, pure+Y) → the corner walk landed at
 `p5+p6−p1 = (hx,hy,3hz)`, half the depth OUTSIDE the box → the right face stretched into a slanted
 parallelogram hanging out front (tess=1 hid it because it used the flat
 quad; tess≥2 exploded) — the "stretched striped red" screenshot; (2) **shader** —
@@ -781,7 +780,7 @@ now the whole `(elev+offset)*edgeFade`. Mesh rule: **the face basis MUST be a si
 **BUG "Box tessellation > 1 looks wrong" (fixed — terrain-path uniform leakage)**:
 `terrainDriven = displaced` put Box/Sphere on the terrain path → `u_terrainDisplace`
 + `u_sculptAmp` were NEVER written for non-terrain, and the displace program is SHARED
-across objects → a Box inherited `u_terrainDisplace=1` + the sculpt amp from the last drawn terrain
+across objects → a Box inherited `u_terrainDisplace=1`+ the sculpt amp from the last drawn terrain
 plane, PLUS sampler units 15/16 still held the terrain/white textures → every
 Box face got displaced by the terrain elevation (even Height Scale 0 hit it, because the
 terrain branch uses BaseHeight/amp — and at tess=1 it was INVISIBLE because the edge fade = all
@@ -834,7 +833,7 @@ a destination on another map now MOVES the runtime level: `TriggerEventSystem.Ru
 (`OnTeleportPlayer(target, z, destMap)`) — destMap != null → `RuntimeMap = destMap`
 WITHOUT touching the camera (REVISION: the first version reset `CameraFollowInitialized`
 → the camera JUMPED/re-framed to the new level — the user rejected it: "the camera moved somewhere else,
-it must stay unchanged"). Camera follow + framing stay LOCKED to the session's active
+it must stay unchanged"). Camera follow+ framing stay LOCKED to the session's active
 map; a smooth follow carries the camera to the landing point like ordinary movement.
 The ONE exception: the world-bound clamp uses `RuntimeMap ?? activeMap`
 (the destination portal lives in the RUNTIME map's extent — clamping to the active map would fight the follow).
@@ -854,17 +853,17 @@ proved to OVERRIDE the per-scene camera on scene switches/.ing restores. Do NOT 
 back on; if ever, only on an explicit user action with a confirmation first.
 
 **PER-SCENE CAMERA (save & load symmetric — double-checked).** EditorScene stores
-`CameraPos/CameraYaw/CameraPitch + CameraOrtho/CameraOrthoSize`: (1) the
+`CameraPos/CameraYaw/CameraPitch+ CameraOrtho/CameraOrthoSize`: (1) the
 `IDEBridge.SelectedEditorScene` setter STASHES the live camera to the outgoing scene before switching,
 then RESTORES the incoming scene's camera (+`UpdateVectors`/`SyncSmoothVectors`); (2) loading an
-`.ing` → `SceneAsset.EditorCamera*` → `EditorScene.CameraPos` + `PendingCameraPos`
+`.ing` → `SceneAsset.EditorCamera*` → `EditorScene.CameraPos`+ `PendingCameraPos`
 for the first scene (applied once by `SceneManager.ApplyPendingEditorCamera`);
 a legacy manifest-level fallback for old files; (3) save ×2 snapshots the live camera
 into the SELECTED scene only (other scenes keep their stored values). A scene rename moves
 the camera along so the view doesn't reset. **"FORCED CAMERA" AUDIT (user decision:
 "check everything that forces the camera position, don't force it")**: editor-camera
 writers in edit mode = the USER ONLY (input, Focus Selection, the user-path map-editor
-auto-focus) + per-scene restore. `SyncLevelCamera` used to FORCE the ortho framing + capture
+auto-focus)+ per-scene restore. `SyncLevelCamera` used to FORCE the ortho framing+ capture
 `HasCameraStart` in edit mode every time a level showed → it overwrote the per-scene restore (the
 "camera moves on its own when switching scenes" bug, the second culprit after the map-editor auto-focus);
 now edit mode writes NO camera at all (just a lock state); framing/anchor
@@ -897,10 +896,10 @@ the PBR albedo slot (the cache key uses the effective albedo source; PbrAlbedoPa
 when set).
 
 **GOTCHA — GenTextures/TexImage2D WITHOUT BindTexture: the texture never gets data.**
-`TerrainSplatField.EnsureTexture()` once called `TexImage2D` + `TexParameter`
+`TerrainSplatField.EnsureTexture()` once called `TexImage2D`+ `TexParameter`
 WITHOUT `GL.BindTexture` first: the upload landed on whatever texture was bound
 and the weight texture itself never got storage → sampling = black → `splatSum=0`
-→ the shader falls back to all-layer-0 → **the paint is invisible in 3D even though the CPU field + TGA
+→ the shader falls back to all-layer-0 → **the paint is invisible in 3D even though the CPU field+ TGA
 are correct** (sculpt passed because `TerrainHeightfield.EnsureTexture` does bind). Rule:
 every `GenTextures` MUST be immediately followed by `BindTexture` before `TexImage2D`/
 `TexParameter`/`TexSubImage2D` — GL doesn't attach the new handle automatically. A related
@@ -909,9 +908,9 @@ case already fixed: `FromFile()` didn't mark a dirty rect, so an eager
 → the paint vanished); now `FromFile` calls `MarkWholeDirty()`.
 
 **RANDOM TILING (anti-repetition, PBR panel → "Mapping → Random Tiling" — a CHECKBOX on/off; now `bool PbrRandomTiling`, uploaded 1.0/0.0, persisted as a float > 0.5 = on).**
-`u_randomTiling` + `randTiledUv()` in `objectPbr_fragment.glsl`: each tile's UV address
+`u_randomTiling`+ `randTiledUv()` in `objectPbr_fragment.glsl`: each tile's UV address
 is hashed (fract-sin, deterministic — frozen across frames) → a 90° rotation (an index 0-3 from the
-hash) + a random offset; the warp is BLENDED back into the original tiling UV near tile edges
+hash)+ a random offset; the warp is BLENDED back into the original tiling UV near tile edges
 (a smoothstep 0..0.18 from the edge) so neighboring tiles always meet on identical
 texel paths — seamless, no extra fetches/splits. Applied to the 6
 albedo/normal/metal/rough/AO/emission maps and ALL splat layer samplers (each
@@ -928,8 +927,8 @@ plain path). **NORMAL CO-ROTATION**: the normal map rotates with the same tile a
 the bump lighting follows the rotated texture — also for splat layer normals
 (`lrotS`). Property
 `PbrRandomTiling` (default 0), upload `u.RandomTiling` di `DrawPbrPrimitive`,
-persist `PbrRandomTiling` in SceneAsset + save ×2 + load (clamped 0..1) + Duplicate.
-The "Random Tiling##object" slider in the PbrPanel mapping section + included in "Reset tuning
+persist `PbrRandomTiling` in SceneAsset+ save ×2+ load (clamped 0..1)+ Duplicate.
+The "Random Tiling##object" slider in the PbrPanel mapping section+ included in "Reset tuning
 to defaults".
 
 **Three weight sources, max-blend (the brush always wins where it painted)**:
@@ -941,7 +940,7 @@ to defaults".
   `SplatMapPath` at it — painted weights persist with the scene.
 - **AUTO height bands** — `ComputeHeightBands` maps each texel's elevation (the SAME
   `TerrainHeightfield` the vertex stage displaces with, sampled through the terrain's
-  OWN tiling ×BaseHeight +Offset) into per-layer smoothstep bands
+  OWN tiling ×BaseHeight+Offset) into per-layer smoothstep bands
   (`SplatHeightBands[l]` low/high, `SplatHeightLayerFeather` softness in world units,
   `SplatHeightLayerCount` 1-4 active layers). The strongest band owns the texel.
   Recompute is amortized (at most once per draw while `_splatBandsPending`); elevation/
@@ -953,21 +952,20 @@ to defaults".
   the recompute from ever clearing the flag).
 - **AUTO slope layer (PBR)** — `TerrainSplatField.ComputeSlopeWeights` folds a
   STEEPNESS mask into ONE layer (1-3): weight = smoothstep(threshold, threshold+fade,
-  1−N.Y) with N derived from the COMBINED displaced elevation (base×BaseHeight +
-  offset + delta×amp — exactly the vertex stage's surface) via central differences
+  1−N.Y) with N derived from the COMBINED displaced elevation (base×BaseHeight+  offset+ delta×amp — exactly the vertex stage's surface) via central differences
   in world units, through the terrain's own tiling. The fold is sum-preserving
-  (target += t·(1−target), others ×(1−t)) so paint/bands keep their share; painted
-  fields are skipped (brush wins). Bands + slope share ONE buffer
+  (target+= t·(1−target), others ×(1−t)) so paint/bands keep their share; painted
+  fields are skipped (brush wins). Bands+ slope share ONE buffer
   (`_splatFieldForBands`): every rebuild rewrites the base first (bands or a neutral
   layer-0 fill) then re-folds the slope — the pass is NOT idempotent, never fold
   twice. UI: TerrainPanel "Auto layer from slope (PBR)" (Layer/Threshold/Blend).
-  Persist ×5 site: SceneAsset `SplatSlope*`, save ×2 + load clamp, Duplicate.
+  Persist ×5 site: SceneAsset `SplatSlope*`, save ×2+ load clamp, Duplicate.
   Plane-only (per-face Box/Sphere UVs carry no world slope meaning). CPU tests:
   SLOPE suite in `Tools/BrushLogicTest` (flat untouched / steep flank → 1 / sum=1).
 
 **Viewport painting** (Terrain panel → "Terrain Paint"): brush session
 (`EditorObject.SplatBrush`: mode Paint/Erase/Smooth, Layer 0-3, radius, strength,
-hardness) + `IDEBridge.TerrainSplatObject` — mutually exclusive with the sculpt session
+hardness)+ `IDEBridge.TerrainSplatObject` — mutually exclusive with the sculpt session
 (enabling one turns the other off). Same precedence as sculpt (gizmo/sun-handle first,
 click-to-select blocked); the rubber-band MARQUEE is also suppressed while a terrain
 sculpt/paint session is active (a terrain drag used to draw a stray selection
@@ -980,13 +978,13 @@ spot; the brush ring just dims to the projection color instead).
 Stroke end bakes ONLY when texels actually mutated: `TerrainSplatField.HasAnyEdits`
 is set inside the stamp loop (a stamp that lands outside its texel window no longer
 flips it), so a pick-miss stroke can never overwrite the previous splat bake with
-band-only weights (`EndSplatStroke` guards on `HasPaint` + logs
+band-only weights (`EndSplatStroke` guards on `HasPaint`+ logs
 `stroke end: N texels mutated` — 0 means the stamp never landed).
-Layer textures (albedo + 5 optional PBR maps per layer 1-3, drag-drop `ASSET_IMAGE_PATH`)
+Layer textures (albedo+ 5 optional PBR maps per layer 1-3, drag-drop `ASSET_IMAGE_PATH`)
 plus per-layer tint live under "Layer textures"; "Auto layers from height" exposes the
 bands; "Revert paint" reloads the stored splat file.
 
-**Persistence** (SceneAsset + save ×2 + load + `EditorObjectManager.Duplicate`):
+**Persistence** (SceneAsset+ save ×2+ load+ `EditorObjectManager.Duplicate`):
 `SplatMapPath`, `SplatLayerAlbedo/Normal/Metallic/Roughness/Ao/Height` (layers 1-3),
 `SplatLayerTints` (12 floats), `SplatHeightBandsEnabled/Count/Feather/Bands`.
 
@@ -1013,7 +1011,7 @@ Layer 3: HeightMin=0.7, HeightMax=1.0  (Snow)
 ```
 
 Each layer has:
-- Albedo texture path + PBR map paths (Normal, Metallic, Roughness, AO, Height, Emission)
+- Albedo texture path+ PBR map paths (Normal, Metallic, Roughness, AO, Height, Emission)
 - Tiling X/Y
 - Height range (min/max)
 - Blend sharpness (1=smooth, higher=sharper)
@@ -1024,7 +1022,7 @@ Each layer has:
 
 Optional rock/cliff texture on steep surfaces:
 - Enable/disable toggle
-- Separate albedo + PBR texture slots
+- Separate albedo+ PBR texture slots
 - Slope threshold (0-1, default 0.35)
 - Slope texture tiling
 
@@ -1080,7 +1078,7 @@ Up to `MAX_LOCAL_LIGHTS` per scene:
 - **Cascade 1**: Mid
 - **Cascade 2**: Far (lowest resolution)
 - **Blend zones**: Smooth transition between cascades
-- **Bias**: Constant + slope-scaled (prevents acne on slopes)
+- **Bias**: Constant+ slope-scaled (prevents acne on slopes)
 - **Shadow filtering**: Hard (PCF 1-tap) or Soft (Poisson 16-tap disk)
 - **Debug overlay**: Colored cascade visualization (toggle with L key)
 
@@ -1128,7 +1126,7 @@ SceneColorTex → Bright Extract → 5-Mip Reactive Chain (downsample → soften
 | `BloomSoftKnee` | 0.15 | 0-0.5 |
 | `BloomMips` (Radius) | 5 | 1-5 |
 
-- Bright extraction: pixels above threshold + soft knee (half res)
+- Bright extraction: pixels above threshold+ soft knee (half res)
 - **Mip chain**: 5 levels (½ → 1/32 res), each softened with 13-tap box blurs via
   ping-pong scratch targets (never sampling and writing the same texture)
 - **Additive upsample**: Catmull-Rom 9-tap, blended ONE/ONE back down the chain —
@@ -1179,7 +1177,7 @@ SceneColorTex → Bright Extract → 5-Mip Reactive Chain (downsample → soften
 | Parameter | Default |
 |-----------|---------|
 | `useFog` | 0 (off) |
-| `fogMode` | 3 (Exp2 + height blend) |
+| `fogMode` | 3 (Exp2+ height blend) |
 | `fogColor` | sky color |
 | `fogDensity` | 0.001 |
 | `fogStart` | 0 |
@@ -1187,7 +1185,7 @@ SceneColorTex → Bright Extract → 5-Mip Reactive Chain (downsample → soften
 | `fogHeight` | 0 |
 | `fogHeightRange` | 100 |
 
-Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
+Modes: Linear (1), Exponential (2), Exp2+ height blend (3)
 
 ---
 
@@ -1197,7 +1195,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
 
 - **Rayleigh scattering**: Sky color from sun angle
 - **Turbulence**: Cloud-like wisps
-- **Sun disk**: Size + intensity control
+- **Sun disk**: Size+ intensity control
 - **Cloud layer**: Enable/disable, scale, speed, coverage
 
 ### 10.2 Skybox (Cubemap)
@@ -1211,7 +1209,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
 
 ### 11.1 Editor Camera
 
-- **FPS mode**: WASD + Mouse look
+- **FPS mode**: WASD+ Mouse look
 - **Speed**: Configurable move speed
 - **Near/Far clip**: Configurable
 
@@ -1299,7 +1297,7 @@ Modes: Linear (1), Exponential (2), Exp2 + height blend (3)
 ### 13.2 Save Slots
 
 - Save slots in `saves/slot_0/` through `saves/slot_9/`
-- Each slot: `save.json` + `thumbnail.png`
+- Each slot: `save.json`+ `thumbnail.png`
 - Supports quick save/load
 
 ---
@@ -1349,7 +1347,7 @@ Built-in UI elements for game HUD/menu:
 | Scene | Full-screen background element |
 
 All elements support:
-- Font selection (per-element font path + size)
+- Font selection (per-element font path+ size)
 - Opacity (0-1)
 - Alignment (Left/Center/Right)
 - Hover effects (color transition)
@@ -1359,9 +1357,9 @@ All elements support:
 
 ---
 
-## 16. Container Overlay + Bar Rendering (2D UI layering)
+## 16. Container Overlay+ Bar Rendering (2D UI layering)
 
-### 16.1 Container overlay frontmost rule (F8 fullscreen + docked preview)
+### 16.1 Container overlay frontmost rule (F8 fullscreen+ docked preview)
 
 When a UI Container is opened in play/preview, it must render ABOVE the game HUD text and NPC bubbles and ABOVE other root-level non-container elements.
 
@@ -1373,7 +1371,7 @@ When a UI Container is opened in play/preview, it must render ABOVE the game HUD
 ### 16.2 Bar component render model
 
 - `UIElementType.Bar` = 4 layers: `Background (-3)`, `Empty (-2)`, `Progress (-1)`, `ImagePath (0)`.
-- The element pass draws only Progress; `DrawBarUnderLayers` draws Background + Empty before the element pass; `DrawBarOverLayers` draws ImagePath after the element pass.
+- The element pass draws only Progress; `DrawBarUnderLayers` draws Background+ Empty before the element pass; `DrawBarOverLayers` draws ImagePath after the element pass.
 - A sprite-less Bar still renders via fallback colors (RGB `Vector3` 0..1) multiplied by Opacity — persisted as a float array in the scene file so old files load without change.
 - Inspector "Colors (used when a layer has no image)" section sets per-layer fallback colors.
 
@@ -1445,5 +1443,5 @@ dotnet build --nologo
 
 > Scope note: this document describes a local OpenGL/C# desktop game engine. It is NOT a
 > browser/web/Cloudflare Workers target. "Projects / Menu Scene Publishing" in this doc
-> is about how the local IDE + scene files + catalogs are saved and organized — it does
+> is about how the local IDE+ scene files+ catalogs are saved and organized — it does
 > NOT describe hosting the engine as a web service.

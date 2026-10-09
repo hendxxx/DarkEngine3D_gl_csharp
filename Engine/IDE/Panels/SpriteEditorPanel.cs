@@ -2006,8 +2006,12 @@ public class SpriteEditorPanel
         _previewTextures.Clear();
         ClearUndoHistory();
 
-        // Auto-load sprite sheets + pattern exports saat project open.
-        AutoLoadProjectSheets();
+        // On project open: load canonical sprites.sheets.json only.
+        // Pattern exports (*-sprite-anim.json) are NOT auto-loaded here;
+        // they stay button-triggered (Auto Load toolbar / Load dialog).
+        string sheetsPath = GetDefaultSavePath();
+        if (File.Exists(sheetsPath))
+            LoadSheetsFromFile(sheetsPath);
     }
 
     /// <summary>Manual replacement of the removed project-open auto-load:
