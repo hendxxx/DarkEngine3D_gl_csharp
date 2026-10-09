@@ -2301,12 +2301,34 @@ public unsafe class ViewportPanel
         _texW = texW;
         _texH = texH;
 
-        // ── Bar under-layers (drawn BEFORE the element's own pass) ──
-        DrawBarUnderLayers(drawList, elements);
+        // ── LAYER RULE (user: "Main Menu harus paling depan") ──
+        // Draw non-container elements first (their own pass + bar layers), then
+        // containers LAST. Previously the bar OVER-layer pass (ImagePath frames, e.g.
+        // barHealth's ornate Health_Bar.png) ran after the ENTIRE element pass, so a
+        // root-level bar frame still punched through an open menu container even
+        // after the menu's element pass was moved last ("kok setengah2": the fill
+        // hid, the frame stayed). Sequencing under→element→over PER GROUP keeps each
+        // bar's layer order intact while putting whole overlay containers above
+        // everything outside them. The two DrawEditorUIPreview calls see disjoint
+        // sets, so every element still draws exactly once.
+        var front = new List<UIElement>(elements.Count);
+        var back = new List<UIElement>(elements.Count);
+        foreach (var e in elements)
+        {
+            if (e.Type == UIElementType.Container) back.Add(e);
+            else front.Add(e);
+        }
 
-        DrawEditorUIPreview(drawList, elements, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+        DrawBarUnderLayers(drawList, front);
+        DrawEditorUIPreview(drawList, front, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
         // Bar over-layers (ImagePath) draw AFTER the element pass so bar art sits on top.
-        DrawBarOverLayers(drawList, elements);
+        DrawBarOverLayers(drawList, front);
+
+        // Overlay containers: same under→element→over sequence, on top of everything.
+        DrawBarUnderLayers(drawList, back);
+        DrawEditorUIPreview(drawList, back, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);
+        DrawBarOverLayers(drawList, back);
+
         // Render dropdown popup AFTER all elements (outside any container clip rect)
         RenderDropdownPopup(drawList, mouseScreen, leftClicked, isPreview);
 

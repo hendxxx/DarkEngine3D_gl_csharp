@@ -696,15 +696,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 HUD? previewHud = null;
                 if (bridge.InGameActive || bridge.IsPreviewMode)
                 {
-                    InventoryHud.Prewarm();
-                    if (InventoryHud.SharedHud is { } invHudQ)
+                    // Gameplay HUD only when the ACTIVE scene is GameScene type —
+                    // MainMenu/Loading scenes must not show the inventory/quick
+                    // slots/shop/quest panels (user request).
+                    if (bridge.IsGameSceneSelected)
                     {
-                        InventoryHud.Render(invHudQ, dt);
-                        // Shop panel + quest tracker — same shared HUD + flush path.
-                        ShopHud.Render(invHudQ, dt);
-                        QuestHud.Render(invHudQ, dt);
-                        flushPreviewHud = invHudQ.QueuedItemCount > 0;
-                        previewHud = invHudQ;
+                        InventoryHud.Prewarm();
+                        if (InventoryHud.SharedHud is { } invHudQ)
+                        {
+                            InventoryHud.Render(invHudQ, dt);
+                            // Shop panel + quest tracker — same shared HUD + flush path.
+                            ShopHud.Render(invHudQ, dt);
+                            QuestHud.Render(invHudQ, dt);
+                            flushPreviewHud = invHudQ.QueuedItemCount > 0;
+                            previewHud = invHudQ;
+                        }
                     }
                 }
 
