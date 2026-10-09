@@ -447,6 +447,9 @@ public static unsafe class DialogueSystem
                     float dx = obj.Position.X - player.Position.X;
                     float dy = obj.Position.Y - player.Position.Y;
                     float dist = MathF.Sqrt(dx * dx + dy * dy);
+                    // Only keep it interactable while the player is still within range.
+                    // That makes the [E] prompt disappear when the player walks away from
+                    // the NPC, and reappear when another / the same NPC comes back in range.
                     if (dist < best) { best = dist; InteractableNpc = obj; }
                 }
             }
@@ -1145,6 +1148,9 @@ public static unsafe class DialogueSystem
                 foreach (var (area, map) in TriggerEventSystem.ButtonModePortals(manager))
                 {
                     if (!area.RuntimePortalWasInside) continue; // player not inside → no badge
+                    // Distance hide: the portal [E] badge disappears once the player leaves
+                    // the portal area. After a trigger fires, it also stays hidden while the
+                    // player is far, and only comes back when the player re-enters range.
                     if (string.IsNullOrWhiteSpace(area.PortalEnterKey)) continue;
 
                     // Badge anchor: the portal's TOP edge (visual height follows the
