@@ -322,9 +322,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                         if (playSession)
                         {
-                            Mouse.ResetScroll();
-                            Mouse.ResetState(); // baseline deltas — no rotation while playing
-                            _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip ALL input
+                            Mouse.Update(window, _editorCamera);
+                            _editorCamera.SetCameraFlyMode(window, dt, true);
                         }
                         else if (suppressAll)
                         { 

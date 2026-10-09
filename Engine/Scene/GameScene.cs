@@ -506,6 +506,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // returning from menu must NOT carry a freefly session into the game.
             _camera.freeLook = false;
             _camera.FlyMouseLook = false;
+            // FlyMode (G toggle) left ON by the editor would make Camera.SetCamera()
+            // set IsFlyMode=true every frame → CharacterAgent.Move() early-returns →
+            // WASD dead in 3D gameplay/preview.
+            _camera.FlyMode = false;
+            _camera.IsFlyMode = false;
             _camera.SyncSmoothVectors();
 
             _shaderProgram = Shader.GetShaderProgram();
@@ -804,6 +809,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bool playingSession = ideGate is { InGameActive: true } || ideGate is { IsPreviewMode: true };
             bool editorFlyMode = !playingSession
                 && (ideGate?.IsViewportFocused ?? false) && !(ideGate?.IsOverlayVisible ?? false);
+
+            // ── 3D WASD gate: during a play session the camera must NEVER stay in
+            // FlyMode (left over from the editor G toggle / debug auto-freefly).
+            // Camera.SetCamera() copies FlyMode → IsFlyMode, and CharacterAgent.Move()
+            // early-returns on IsFlyMode — which killed all WASD player movement in
+            // 3D in-game/preview. Force it off BEFORE Move() runs below.
+            if (playingSession)
+            {
+                _camera.FlyMode = false;
+                _camera.IsFlyMode = false;
+            }
 
             // ── Gizmo size shortcuts: = to increase, - to decrease ──
             // Only active when viewport is focused (not during gameplay or when typing in other panels).
