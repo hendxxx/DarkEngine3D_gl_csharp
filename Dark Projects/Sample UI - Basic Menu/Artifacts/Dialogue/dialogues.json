@@ -11,7 +11,7 @@
           "SpeakerId": "village_chief",
           "Emotion": "Neutral",
           "PortraitPath": "",
-          "Text": "Selamat datang di desa kami! Apakah kamu ingin masuk ke dungeon ini?",
+          "Text": "Selamat datang di desa kami! Silahkan Masuk...",
           "Choices": [
             {
               "Text": "Ya",
@@ -31,8 +31,8 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 30,
+          "GraphY": 30
         },
         {
           "Id": "accept",
@@ -46,8 +46,8 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 191,
+          "GraphY": 206
         },
         {
           "Id": "decline",
@@ -61,8 +61,329 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 532,
+          "GraphY": 104
+        }
+      ],
+      "Notes": []
+    },
+    {
+      "Id": "quest_ember",
+      "Name": "Quest: Bawa 3 Ember",
+      "StartNodeId": "start",
+      "ThemeName": "Default",
+      "Nodes": [
+        {
+          "Id": "start",
+          "SpeakerId": "village_chief",
+          "Emotion": "Neutral",
+          "PortraitPath": "",
+          "Text": "Perapian desa kami hampir padam. Bawakan aku 3 Ember dari dungeon!",
+          "Choices": [
+            {
+              "Text": "Baik, aku akan mencarinya! (Terima quest)",
+              "NextNodeId": "accept",
+              "Conditions": [
+                "notflag:quest_ember_active"
+              ],
+              "Actions": [
+                {
+                  "Type": "Activate Quest",
+                  "Param": "ember",
+                  "Param2": "",
+                  "Param3": "",
+                  "Delay": 0,
+                  "LoopAnim": true
+                }
+              ]
+            },
+            {
+              "Text": "Aku sudah punya Ember-nya!",
+              "NextNodeId": "waiting",
+              "Conditions": [
+                "flag:quest_ember_active"
+              ],
+              "Actions": []
+            },
+            {
+              "Text": "Bagaimana perapian desa?",
+              "NextNodeId": "already_done",
+              "Conditions": [
+                "questdone:ember"
+              ],
+              "Actions": []
+            },
+            {
+              "Text": "Lagi sibuk, nanti dulu.",
+              "NextNodeId": "",
+              "Conditions": [],
+              "Actions": []
+            }
+          ],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 18.521143,
+          "GraphY": -115.105545
+        },
+        {
+          "Id": "accept",
+          "SpeakerId": "village_chief",
+          "Emotion": "Happy",
+          "PortraitPath": "",
+          "Text": "Terima kasih! Chest di ujung dungeon menyimpan Ember-nya. Bawa 3 kepadaku.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 409.21478,
+          "GraphY": 139.23242
+        },
+        {
+          "Id": "waiting",
+          "SpeakerId": "village_chief",
+          "Emotion": "Sad",
+          "PortraitPath": "",
+          "Text": "Perapian masih padam... Bawa 3 Ember dan perapian akan menyala lagi.",
+          "Choices": [
+            {
+              "Text": "Berikut Ember-nya! (Serahkan 3 Ember)",
+              "NextNodeId": "handin",
+              "Conditions": [
+                "item:Ember\u003E=3"
+              ],
+              "Actions": []
+            },
+            {
+              "Text": "Belum semuanya... (pergi)",
+              "NextNodeId": "",
+              "Conditions": [],
+              "Actions": []
+            }
+          ],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 35,
+          "GraphY": 258
+        },
+        {
+          "Id": "handin",
+          "SpeakerId": "village_chief",
+          "Emotion": "Happy",
+          "PortraitPath": "",
+          "Text": "Sempurna! Kau membawa semuanya! Ini hadiahmu - 20 koin emas dan Potion untuk perjalananmu.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [
+            {
+              "Type": "Remove Item",
+              "Param": "Ember",
+              "Param2": "3",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            },
+            {
+              "Type": "Modify Stat",
+              "Param": "Gold",
+              "Param2": "20",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            },
+            {
+              "Type": "Give Item",
+              "Param": "Potion",
+              "Param2": "1",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            },
+            {
+              "Type": "Complete Quest",
+              "Param": "ember",
+              "Param2": "",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            },
+            {
+              "Type": "Change Sprite",
+              "Param": "Alat Masak 1",
+              "Param2": "Cooking area|Alat Masak - 1",
+              "Param3": "",
+              "Delay": 0,
+              "LoopAnim": true
+            }
+          ],
+          "OnEndActions": [],
+          "GraphX": 750.1018,
+          "GraphY": 232.8205
+        },
+        {
+          "Id": "already_done",
+          "SpeakerId": "village_chief",
+          "Emotion": "Happy",
+          "PortraitPath": "",
+          "Text": "Perapian desa menyala hangat berkatmu. Terima kasih sekali lagi, penjelajah!",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 646,
+          "GraphY": 5
+        }
+      ],
+      "Notes": []
+    },
+    {
+      "Id": "shop_umum",
+      "Name": "Shop: Pedagang Keliling",
+      "StartNodeId": "start",
+      "ThemeName": "Default",
+      "Nodes": [
+        {
+          "Id": "start",
+          "SpeakerId": "pedagang",
+          "Emotion": "Neutral",
+          "PortraitPath": "",
+          "Text": "Selamat datang di warungku! Ada yang bisa kubantu?",
+          "Choices": [
+            {
+              "Text": "Beli 1 Potion (30 Gold)",
+              "NextNodeId": "thanks_buy",
+              "Conditions": [
+                "gold:30"
+              ],
+              "Actions": [
+                {
+                  "Type": "Buy Item",
+                  "Param": "Potion",
+                  "Param2": "1",
+                  "Param3": "30",
+                  "Delay": 0,
+                  "LoopAnim": true
+                }
+              ]
+            },
+            {
+              "Text": "Beli 1 Potion",
+              "NextNodeId": "poor_buy",
+              "Conditions": [
+                "gold:0;notgold:30"
+              ],
+              "Actions": []
+            },
+            {
+              "Text": "Jual 3 Ember (30 Gold)",
+              "NextNodeId": "thanks_sell",
+              "Conditions": [
+                "item:Ember\u003E=3"
+              ],
+              "Actions": [
+                {
+                  "Type": "Sell Item",
+                  "Param": "Ember",
+                  "Param2": "3",
+                  "Param3": "30",
+                  "Delay": 0,
+                  "LoopAnim": true
+                }
+              ]
+            },
+            {
+              "Text": "Jual Ember",
+              "NextNodeId": "poor_sell",
+              "Conditions": [
+                "notitem:Ember\u003E=3"
+              ],
+              "Actions": []
+            },
+            {
+              "Text": "Cuma lihat-lihat.",
+              "NextNodeId": "",
+              "Conditions": [],
+              "Actions": []
+            }
+          ],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": -238.34126,
+          "GraphY": -141.40126
+        },
+        {
+          "Id": "thanks_buy",
+          "SpeakerId": "pedagang",
+          "Emotion": "Happy",
+          "PortraitPath": "",
+          "Text": "Potion bagus ini ikut perjalananmu! Terima kasih sudah membeli.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 248.76057,
+          "GraphY": 172.36263
+        },
+        {
+          "Id": "poor_buy",
+          "SpeakerId": "pedagang",
+          "Emotion": "Sad",
+          "PortraitPath": "",
+          "Text": "Wah, gold-mu belum cukup untuk Potion. Kumpulkan dulu ya!",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 720.8163,
+          "GraphY": 40.299393
+        },
+        {
+          "Id": "thanks_sell",
+          "SpeakerId": "pedagang",
+          "Emotion": "Happy",
+          "PortraitPath": "",
+          "Text": "Ember bagus! Warungku butuh ini. Terima 30 Gold!",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": -61.728508,
+          "GraphY": 187.81683
+        },
+        {
+          "Id": "poor_sell",
+          "SpeakerId": "pedagang",
+          "Emotion": "Sad",
+          "PortraitPath": "",
+          "Text": "Bawa 3 Ember dulu kalau mau jual padaku.",
+          "Choices": [],
+          "NextNodeId": "",
+          "AutoAdvance": false,
+          "AutoAdvanceDelay": 1.5,
+          "OnStartActions": [],
+          "OnEndActions": [],
+          "GraphX": 684.28815,
+          "GraphY": -105.81312
         }
       ],
       "Notes": []
