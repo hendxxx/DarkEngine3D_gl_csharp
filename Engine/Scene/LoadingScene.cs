@@ -413,6 +413,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.NpcDisplayName = objData.NpcDisplayName;
                 obj.NpcBadgeSize = objData.NpcBadgeSize;
                 obj.NpcBadgeLift = objData.NpcBadgeLift;
+                obj.NpcPromptPos = SceneAsset.RemapLegacyPromptPos(objData.NpcPromptPos);
 
                 // ── Animation actions ──
                 // Restore the user-authored actions (Idle/Walk/Run/Jump/Attack/...). Without

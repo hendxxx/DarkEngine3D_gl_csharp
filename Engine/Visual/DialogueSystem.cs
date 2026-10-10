@@ -421,6 +421,11 @@ public static unsafe class DialogueSystem
     /// doesn't override it. 0.15 ≈ a snug badge right above the head.</summary>
     internal const float DefaultNpcBadgeLift = 0.15f;
 
+    /// <summary>Global on/off for the DEFAULT feet-level [E] prompt (Prompt Position
+    /// = Bottom). Off = NPCs keep only their "!"/alert icon; Icon*/Above prompts still
+    /// render. Global toggle — per-NPC None remains the per-object override.</summary>
+    public static bool ShowDefaultNpcPrompt { get; set; } = true;
+
     // ════════════════════════════════════════════
     //  INPUT + NPC INTERACTION (call from update)
     // ════════════════════════════════════════════
@@ -732,10 +737,22 @@ public static unsafe class DialogueSystem
 
     private static void DrawInteractPrompt(HUD hud, EditorObject npc, int w, int h)
     {
+        // Per-NPC None = the user turned the badge off for this NPC (the chest-zone's
+        // ground [E] owns the hint instead).
+        if (npc.NpcPromptPos == NpcPromptPosition.None) return;
+        // GLOBAL toggle: the default feet-level [E] can be turned off engine-wide
+        // (user request: "default [E] di bawah juga dibuat option bisa on/off").
+        // Icon*/Above/IconBelow placements stay untouched — the user positioned those
+        // beside the alert icon on purpose; only the default Bottom placement hides.
+        if (npc.NpcPromptPos == NpcPromptPosition.Bottom && !ShowDefaultNpcPrompt) return;
         var theme = DialogueLibrary.GetTheme("Default");
         float lift = npc.NpcBadgeLift > 0f ? npc.NpcBadgeLift : DefaultNpcBadgeLift;
+        // Only None/Bottom remain (Icon*/Above placements were removed at the enum
+        // level — legacy values remap to Bottom on load).
+        float bottomY = npc.Position.Y - 0.06f; // just below the base line = ground-level
+        bool bottom = npc.NpcPromptPos == NpcPromptPosition.Bottom;
         var sp = Project(new Vector3(npc.Position.X,
-            npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
+            bottom ? bottomY : npc.Position.Y + BadgeHeadHeight(npc) + lift, npc.Position.Z), w, h);
         // Behind an opaque HUD panel (inventory/shop/quest open) → skip entirely;
         // the world-anchored badge must not read through the panel ("layer UI").
         if (HUD.PanelCoversRect(sp.X - 45f, sp.Y - 30f, 90f, 30f)) return;
@@ -1147,10 +1164,11 @@ public static unsafe class DialogueSystem
             {
                 foreach (var (area, map) in TriggerEventSystem.ButtonModePortals(manager))
                 {
-                    if (!area.RuntimePortalWasInside) continue; // player not inside → no badge
-                    // Distance hide: the portal [E] badge disappears once the player leaves
-                    // the portal area. After a trigger fires, it also stays hidden while the
-                    // player is far, and only comes back when the player re-enters range.
+                    // Distance hide: the [E] badge shows ONLY while the player stands
+                    // inside the portal area this frame (RuntimePlayerInside is refreshed
+                    // every physics tick). The armed flag alone would stick after the
+                    // player walks away — the "[E] masih ada padahal sudah jauh" bug.
+                    if (!area.RuntimePlayerInside) continue; // player not inside → no badge
                     if (string.IsNullOrWhiteSpace(area.PortalEnterKey)) continue;
 
                     // Badge anchor: the portal's TOP edge (visual height follows the
@@ -1167,7 +1185,8 @@ public static unsafe class DialogueSystem
             }
         }
 
-        // ── Interact-KEY ZONE badge ("[E]" above a chest/lever trigger) — same plate        // as the portal badge, fed by the armed RequireInteractKey zones.
+        // ── Interact-KEY ZONE badge ("[E]" above a chest/lever trigger) — same plate
+        // as the portal badge, fed by the armed RequireInteractKey zones.
         if (ShowPrompts && Active == null && !PanelUiOpen && manager != null && camera != null)
         {
             var player = manager.Objects.FirstOrDefault(o =>
@@ -1176,7 +1195,11 @@ public static unsafe class DialogueSystem
             {
                 foreach (var (area, map) in TriggerEventSystem.InteractKeyZones(manager))
                 {
-                    if (!area.RuntimeInteractArmed) continue; // player not inside → no badge
+                    // Same distance-hide contract as the portal badge: the armed flag
+                    // can linger after the fire — gate on the live inside state so the
+                    // [E] above the chest/NPC zone vanishes the moment the player steps
+                    // out of the box.
+                    if (!area.RuntimePlayerInside) continue; // player not inside → no badge
                     if (string.IsNullOrWhiteSpace(area.InteractKey)) continue;
 
                     float cellB = map.TileSize * Tilemap2D.WorldScale;
@@ -1196,7 +1219,10 @@ public static unsafe class DialogueSystem
             foreach (var obj in manager.Objects)
             {
                 if (obj == null || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
-                if (Active != null || obj == InteractableNpc) continue;
+                if (Active != null) continue; // conversation owns the screen
+                // USER RULE: the in-range NPC KEEPS its "!"/alert icon — approaching no
+                // longer swaps the icon for the [E] badge (a ground/zone [E] already
+                // exists; the badge renders at its own configured spot).
 
                 float bob = MathF.Sin(_time * 3f + obj.Position.X * 0.7f) * 3f;
                 // Same lift as the HUD indicator (NpcBadgeLift − 0.05), visual-head anchor.
@@ -1245,22 +1271,31 @@ public static unsafe class DialogueSystem
             }
 
             if (Active == null && InteractableNpc != null
+                && InteractableNpc.NpcPromptPos != NpcPromptPosition.None // per-NPC: badge can be disabled
+                && !(InteractableNpc.NpcPromptPos == NpcPromptPosition.Bottom && !ShowDefaultNpcPrompt) // global toggle for the default feet prompt
                 && !IsNpcPromptBehindPanel(InteractableNpc, w, h)) // hidden while behind an open HUD panel
             {
                 float iLift = InteractableNpc.NpcBadgeLift > 0f ? InteractableNpc.NpcBadgeLift : DefaultNpcBadgeLift;
+                // Bottom (default, the zone-[E] look): anchor at the NPC's BASE line
+                // instead of the head — badge plate bottom sits on the feet line.
+                bool bottom = InteractableNpc.NpcPromptPos == NpcPromptPosition.Bottom;
+                float anchorWorldY = InteractableNpc.Position.Y + (bottom
+                    ? -0.06f // just below the base line so the plate reads as ground-level
+                    : BadgeHeadHeight(InteractableNpc) + iLift);
                 var head = Project(new Vector3(InteractableNpc.Position.X,
-                    InteractableNpc.Position.Y + BadgeHeadHeight(InteractableNpc) + iLift, InteractableNpc.Position.Z), w, h);
+                    anchorWorldY, InteractableNpc.Position.Z), w, h);
                 var scr = sceneToScreen(head);
                 float badgeFs = InteractableNpc.NpcBadgeSize > 0f ? InteractableNpc.NpcBadgeSize : 0f;
                 string disp = string.IsNullOrWhiteSpace(InteractableNpc.NpcDisplayName)
                     ? InteractableNpc.Name : InteractableNpc.NpcDisplayName;
+
                 if (badgeFs > 0f)
                 {
-                    // Per-NPC size: reuse the key-badge plate (name line included) with
-                    // the viewport's own scene→screen mapping.
+                    // Per-NPC size plate. DrawKeyBadge is world-anchored (it Projects
+                    // internally); Bottom passes the feet anchor directly.
+                    float badgeWorldX = InteractableNpc.Position.X;
                     DrawKeyBadge(dl, sceneToScreen, Project, w, h, InteractableNpc.Position.Z,
-                        InteractableNpc.Position.X,
-                        InteractableNpc.Position.Y + BadgeHeadHeight(InteractableNpc) + iLift,
+                        badgeWorldX, anchorWorldY,
                         "E", (s, sz) => TextWS(s, sz), (s, sz) => TextHS(s, sz), badgeFs, disp);
                 }
                 else

@@ -208,6 +208,14 @@ public static class TriggerEventSystem
                 // ── On Exit ──
                 trigger.RuntimePlayerInside = false;
                 trigger.RuntimeInteractArmed = false;
+                // Button-mode portal: player left without pressing the key → disarm.
+                // The [E] badge reads this flag, so without clearing it here the badge
+                // would STICK above the portal after the player walks away (the old
+                // disarm lived in an else-if after the wasInside branch, which never
+                // ran because the OnExit branch had already matched).
+                trigger.RuntimePortalWasInside = false;
+                if (trigger.RuntimePortalPhase == "entering")
+                    trigger.RuntimePortalPhase = "idle";
                 if (trigger.IsEnabled && trigger.OnExit && trigger.RuntimeCooldown <= 0f)
                 {
                     Fire(trigger, "OnExit");
@@ -259,13 +267,6 @@ public static class TriggerEventSystem
                     }
                 }
                 if (isPortalArmed) fired = true; // mark the boundary event (cooldown guard)
-            }
-            else if (wasInside && !inside && trigger.RuntimePortalWasInside && !trigger.PortalAutoEnter)
-            {
-                // Button-mode portal: player left without pressing the key → disarm.
-                trigger.RuntimePortalWasInside = false;
-                if (trigger.RuntimePortalPhase == "entering")
-                    trigger.RuntimePortalPhase = "idle";
             }
             else if (inside)
             {

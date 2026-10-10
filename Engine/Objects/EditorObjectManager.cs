@@ -422,6 +422,12 @@ public unsafe class EditorObjectManager
                 PbrTexSettings = source.PbrTexSettings.Select(s => s.Clone()).ToArray(),
                 PbrRandomTiling = source.PbrRandomTiling,   // bool — copies directly
                 PbrVertexDisplaceEnabled = source.PbrVertexDisplaceEnabled,
+                PbrTexTiling = source.PbrTexTiling,
+                // Terrain displacement tuning (TerrainPanel) — was missing from the
+                // duplicate, resetting the Inspector values on the clone.
+                TerrainHeightScale = source.TerrainHeightScale,
+                TerrainHeightOffset = source.TerrainHeightOffset,
+                TerrainHeightStrength = source.TerrainHeightStrength,
                 PbrPrimTessellation = source.PbrPrimTessellation,
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
@@ -469,6 +475,7 @@ public unsafe class EditorObjectManager
                 NpcDisplayName = source.NpcDisplayName,
                 NpcBadgeSize = source.NpcBadgeSize,
                 NpcBadgeLift = source.NpcBadgeLift,
+                NpcPromptPos = source.NpcPromptPos,
                 Sprite2DLoop = source.Sprite2DLoop,
                 Sprite2DSpeed = source.Sprite2DSpeed,
                 Sprite2DStartOffset = source.Sprite2DStartOffset,

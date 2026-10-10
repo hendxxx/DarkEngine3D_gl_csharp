@@ -2915,6 +2915,23 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("How HIGH the badge floats above the NPC's head (world units, default 0.15 — hugging the top of the head).\n0 = use the default. Raise it if the badge covers a hat/hair.");
 
+        // ── Prompt position: where the [E] badge sits (None disables it — user:
+        // "ketika mendekat NPC, icon '!' jangan berubah jadi [E] karena sudah ada
+        // [E] di bawah/")
+        bool showDef = Visual.DialogueSystem.ShowDefaultNpcPrompt;
+        if (ImGui.Checkbox("Show Default [E] (feet)", ref showDef))
+            Visual.DialogueSystem.ShowDefaultNpcPrompt = showDef;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("GLOBAL toggle for the default feet-level [E] prompt (Prompt Position = Bottom).\nOff = NPC keeps only the '!'/alert icon; Icon*/Above prompts still render.\nRuntime flag — resets to ON each launch.");
+        int posIdx = (int)editorObj.NpcPromptPos;
+        string[] prompts = { "None (no [E] badge)", "Bottom — at the NPC's feet (default)" };
+        ImGui.SetNextItemWidth(-30f);
+        if (posIdx < 0 || posIdx >= prompts.Length) posIdx = (int)NpcPromptPosition.Bottom;
+        if (ImGui.Combo("Prompt Position", ref posIdx, prompts, prompts.Length))
+            editorObj.NpcPromptPos = (NpcPromptPosition)posIdx;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Where the [E] Talk badge sits when the player is near:\n- None: never shown (keep the '!'/alert icon instead)\n- Bottom: classic dark plate at the NPC's feet\n(Above/Icon options were removed — legacy values load as Bottom.\nA chest with its own ground [E] from a trigger zone → pick None).");
+
         // Quick preview: start the bound conversation immediately.
         if (!string.IsNullOrEmpty(editorObj.NpcDialogueId) && ImGui.Button("▶ Preview Dialogue"))
             Visual.DialogueSystem.StartConversation(editorObj.NpcDialogueId, editorObj);

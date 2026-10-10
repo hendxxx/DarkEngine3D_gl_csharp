@@ -216,6 +216,11 @@ public class EditorObjectData
     public float NpcBadgeSize { get; set; } = 0f;
     /// <summary>Badge lift above the head anchor in world units (0 = default 0.5).</summary>
     public float NpcBadgeLift { get; set; } = 0f;
+    /// <summary>Where the [E] interact prompt sits (None = no badge). Mirrors
+    /// NpcPromptPosition on EditorObject; serialized as an int via the enum.
+    /// Legacy values 2..6 (Above/Icon*) remap to Bottom on load via
+    /// <see cref="SceneAsset.RemapLegacyPromptPos"/>.</summary>
+    public NpcPromptPosition NpcPromptPos { get; set; } = NpcPromptPosition.Bottom;
 
     // ── Player2D (animated sprite + capsule collider) ──
     public string Player2DSpriteSheet { get; set; } = "";
@@ -465,6 +470,12 @@ public class EditorObjectData
 /// </summary>
 public class SceneAsset
 {
+    /// <summary>Accepts the two surviving values plus any legacy one (2..6):
+    /// Above/Icon* placements were removed; old files remap to Bottom (feet),
+    /// preserving "badge shown" semantics without the oversized plates.</summary>
+    public static NpcPromptPosition RemapLegacyPromptPos(NpcPromptPosition raw)
+        => raw == NpcPromptPosition.None ? NpcPromptPosition.None : NpcPromptPosition.Bottom;
+
     public string SceneName { get; set; } = "Untitled";
     public string Description { get; set; } = "";
     /// <summary>Scene type: "MainMenu", "GameScene", "Loading" (persists editor type choice).</summary>

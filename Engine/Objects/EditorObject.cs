@@ -173,6 +173,20 @@ public class Player2DAction
 }
 
 /// <summary>
+/// Where the NPC [E] interact prompt sits. Old default = Below (the badge swaps out
+/// the "!"/alert icon at the head — the behavior the user wants to disable now that
+/// chest-zone [E] badges already exist on the ground).
+/// </summary>
+public enum NpcPromptPosition
+{
+    None = 0,       // no [E] badge at all (zone badges / custom UI own the hint)
+    Bottom = 1,     // below the NPC — at the feet/base line (the ground-level zone-[E] look)
+    // Legacy values 2..6 (Above, IconLeft/Right/Above/Below) were REMOVED — the
+    // icon-anchored plates looked oversized/noisy, so the choice is now just on
+    // (feet) or off (None). Load paths remap any old value: != None → Bottom.
+}
+
+/// <summary>
 /// Type of editor-placed 3D primitive.
 /// </summary>
 public enum EditorPrimitiveType
@@ -302,6 +316,11 @@ public unsafe class EditorObject
     /// <summary>Badge lift: how far above the head anchor the [E] badge floats, in
     /// world units. 0 = engine default (0.5). Persisted with the NPC binding.</summary>
     public float NpcBadgeLift { get; set; } = 0f;
+    /// <summary>Where the [E] interact prompt sits relative to the NPC. The old
+    /// behavior replaced the "!"/alert indicator with the badge at the head; the
+    /// badge now defaults to the NPC's FEET (Bottom) since ground zone-[E] badges
+    /// already exist. Persisted with the NPC binding.</summary>
+    public NpcPromptPosition NpcPromptPos { get; set; } = NpcPromptPosition.Bottom;
 
     // ── Player2D: sprite animation + capsule collider ──
     /// <summary>Sprite sheet name (from Sprite Editor) driving the player sprite.</summary>

@@ -951,11 +951,15 @@ public class SceneManagerPanel
                         NpcDisplayName = obj.NpcDisplayName,
                         NpcBadgeSize = obj.NpcBadgeSize,
                         NpcBadgeLift = obj.NpcBadgeLift,
-                        Player2DHeight = obj.Player2DHeight,
+                        NpcPromptPos = obj.NpcPromptPos,
                         Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
                         Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
                         Player2DCapsuleOffsetX = obj.Player2DCapsuleOffsetX,
                         Player2DCapsuleOffsetY = obj.Player2DCapsuleOffsetY,
+                        // World height of the sprite — MISSING before: load then reset the
+                        // Inspector value back to the 2.0 default in-game ("SpriteHeight
+                        // nya ke reset jadi 2").
+                        Player2DHeight = obj.Player2DHeight,
 
                         Player2DShowCapsule = obj.Player2DShowCapsule,
                         Player2DGravity = obj.Player2DGravity,
@@ -1568,6 +1572,7 @@ public class SceneManagerPanel
                         obj.NpcDisplayName = objData.NpcDisplayName;
                         obj.NpcBadgeSize = objData.NpcBadgeSize;
                         obj.NpcBadgeLift = objData.NpcBadgeLift;
+                        obj.NpcPromptPos = SceneAsset.RemapLegacyPromptPos(objData.NpcPromptPos);
                         // Legacy WalkSheet/WalkClip (removed fields) migrate into the Walk
                         // action so old .ing files keep their moving animation after load.
                         if (!string.IsNullOrEmpty(objData.Player2DWalkClip))
@@ -1998,6 +2003,16 @@ public class SceneManagerPanel
                             PbrVertexChunk = obj.PbrVertexChunk,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
+                            // Player2D sizing — twin of the SaveAllEditorScenes block so
+                            // Save As keeps the Inspector's Sprite Height (was missing →
+                            // in-game load reset Player2DHeight back to the 2.0 default).
+                            Player2DSpriteSheet = obj.Player2DSpriteSheet,
+                            Player2DAnimationClip = obj.Player2DAnimationClip,
+                            Player2DHeight = obj.Player2DHeight,
+                            Player2DCapsuleRadius = obj.Player2DCapsuleRadius,
+                            Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
+                            Player2DCapsuleOffsetX = obj.Player2DCapsuleOffsetX,
+                            Player2DCapsuleOffsetY = obj.Player2DCapsuleOffsetY,
                         });
                     }
                 }
