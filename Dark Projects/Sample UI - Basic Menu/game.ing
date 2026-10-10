@@ -5154,7 +5154,7 @@
                 1
               ],
               "alignment": "Center",
-              "isVisible": true,
+              "isVisible": false,
               "opacity": 1,
               "autoFillWindow": true,
               "autoCenterX": false,
@@ -28154,7 +28154,7 @@
             ]
           },
           "tilemapShowGrid": false,
-          "tilemapShowTriggers": false,
+          "tilemapShowTriggers": true,
           "tilemapGridColorR": 1,
           "tilemapGridColorG": 1,
           "tilemapGridColorB": 1,
@@ -30813,14 +30813,14 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        63.6684,
-        33.600002,
-        307.03183
+        110.01643,
+        33.215355,
+        266.93085
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
       "editorCameraOrtho": true,
-      "editorCameraOrthoSize": 33.600002,
+      "editorCameraOrthoSize": 35.5488,
       "renderProperties": {
         "backgroundColor": [
           0.4962963,
