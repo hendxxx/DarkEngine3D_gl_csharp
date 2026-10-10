@@ -11,7 +11,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 /// portrait, emotion, choices, auto-advance, start/end actions), manages reusable
 /// speakers and themes, sets the active localization language, and previews the
 /// selected asset through the live DialogueSystem (drawn in the viewport HUD).
-/// No coding required — everything lives in Assets/Dialogue/dialogues.json.
+/// No coding required — everything lives in Artifacts/Dialogue/dialogues.json.
 /// </summary>
 public class DialogueEditorPanel
 {

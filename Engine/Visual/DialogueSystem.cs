@@ -21,7 +21,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 ///    the target every frame so movement/jumps carry the bubble along. One bubble per
 ///    target; ShowBubble replaces, HideBubble removes.
 ///
-/// Everything is data-driven from <see cref="DialogueLibrary"/> (Assets/Dialogue/
+/// Everything is data-driven from <see cref="DialogueLibrary"/> (Artifacts/Dialogue/
 /// dialogues.json): assets, speakers, themes, localization. Dialogue results reuse the
 /// trigger-action catalog so Start Quest / Give Item / Change Map … need no new types.
 /// </summary>

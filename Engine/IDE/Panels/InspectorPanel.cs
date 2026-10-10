@@ -2690,7 +2690,7 @@ public class InspectorPanel
             }
             ImGui.EndCombo();
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Assets/Sprites onto this Inspector");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Artifacts/Sprites onto this Inspector");
 
         // Drag-drop target: clip box → assign (same as dropping on the viewport with
         // this object selected).

@@ -10,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 /// <summary>
 /// Item Catalog editor (inventory phase 2): author ItemDefs — icon cropped from any
 /// Sprite Editor sheet (visual cell picker), equip slot + stat bonuses, use effects,
-/// price/stack. Persists per project to Assets/Items/items.json (Save Catalog button
+/// price/stack. Persists per project to Artifacts/Items/items.json (Save Catalog button
 /// + auto-load on project open, auto-clear on close — wired in IDE.cs).
 ///
 /// Layout: left item-list column + right editor column (SameLine — both children
@@ -70,7 +70,7 @@ public class ItemEditorPanel
         }
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
-            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "Open a project first — catalog saves to Assets/Items/items.json");
+            ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "Open a project first — catalog saves to Artifacts/Items/items.json");
             ImGui.End();
             return;
         }
@@ -93,7 +93,7 @@ public class ItemEditorPanel
         if (_dirty)
             ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f), "(unsaved changes)");
         else
-            ImGui.TextDisabled($"{InventorySystem.Items.Count} items — Assets/Items/items.json");
+            ImGui.TextDisabled($"{InventorySystem.Items.Count} items — Artifacts/Items/items.json");
 
         ImGui.End();
     }

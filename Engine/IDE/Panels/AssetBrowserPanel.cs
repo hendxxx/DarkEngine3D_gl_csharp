@@ -55,7 +55,7 @@ public unsafe class AssetBrowserPanel
         {
             _rootPath = projectRoot;
             // Navigate to Assets folder if it exists, otherwise project root
-            string assetsDir = Path.Combine(projectRoot, "Assets");
+            string assetsDir = Path.Combine(projectRoot, "Artifacts");
             _currentPath = Directory.Exists(assetsDir) ? assetsDir : projectRoot;
         }
         else
@@ -153,14 +153,14 @@ public unsafe class AssetBrowserPanel
         IDE.PanelFocus.Notify("Asset Browser");
 
         // ── Sprite Clips: animation boxes built from the Sprite Editor registry.
-        // Shown ONLY while browsing the project's Assets/Sprites folder. Each clip is
+        // Shown ONLY while browsing the project's Artifacts/Sprites folder. Each clip is
         // a drag source — drop it on the viewport to place a Sprite2D (decorative
         // animated sprite: no controller, no physics, no camera attachment), or onto
         // a selected Player2D/Sprite2D to assign that clip to it.
         bool isSpritesFolder = _rootPath != null &&
             string.Equals(
                 Path.GetFullPath(_currentPath),
-                Path.GetFullPath(Path.Combine(_rootPath, "Assets", "Sprites")),
+                Path.GetFullPath(Path.Combine(_rootPath, "Artifacts", "Sprites")),
                 StringComparison.OrdinalIgnoreCase);
         if (isSpritesFolder && IDEBridge.SpriteClipCount > 0)
             RenderSpriteClipBoxes();
@@ -231,7 +231,7 @@ public unsafe class AssetBrowserPanel
     public static string? _dragSpriteClip = null;
 
     /// <summary>Render the Sprite Editor's animation clips as draggable boxes (shown in
-    /// the Assets/Sprites folder). One box per clip: colored tile + sheet/clip label.</summary>
+    /// the Artifacts/Sprites folder). One box per clip: colored tile + sheet/clip label.</summary>
     private void RenderSpriteClipBoxes()
     {
         ImGui.Separator();

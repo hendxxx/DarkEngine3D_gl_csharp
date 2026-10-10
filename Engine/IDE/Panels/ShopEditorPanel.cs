@@ -10,7 +10,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 /// <summary>
 /// Shop editor: author ShopDefs — id/name, sell percent, and the stock list
 /// (item id + optional price override + stock cap). Persists per project to
-/// Assets/Shops/shops.json (Save button + auto-load on project open, auto-clear
+/// Artifacts/Shops/shops.json (Save button + auto-load on project open, auto-clear
 /// on close — wired in IDE.cs like the item catalog). NPCs bind to a shop id via
 /// the "Open Shop" trigger/dialogue action.
 /// </summary>
@@ -56,7 +56,7 @@ public class ShopEditorPanel
         }
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
-            ImGui.TextDisabled("Open a project first — shops are saved to Assets/Shops/shops.json.");
+            ImGui.TextDisabled("Open a project first — shops are saved to Artifacts/Shops/shops.json.");
             ImGui.End();
             return;
         }

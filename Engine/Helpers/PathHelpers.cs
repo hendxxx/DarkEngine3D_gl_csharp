@@ -15,8 +15,9 @@ public static class PathHelpers
     /// <summary>Directory the executable runs from.</summary>
     public static string AppBaseDir => AppDomain.CurrentDomain.BaseDirectory;
 
-    /// <summary>Normalize a path: '/' → '\' and collapse duplicated separators.
-    /// This also cleans up the old double-backslash defaults ("Artifacts\\fonts\\...").
+    /// <summary>Normalize a path: '/' → '\\' and collapse duplicated separators.
+    /// This also cleans up the old double-backslash defaults
+    /// ("Artifacts\\fonts\\...").
     /// </summary>
     public static string Normalize(string? path)
     {
@@ -33,26 +34,30 @@ public static class PathHelpers
     }
 
     /// <summary>Resolve a possibly-relative path to an absolute path.
-    /// Checks project Assets first, then exe directory. Absolute paths returned as-is.</summary>
+    /// When a project is loaded, known project assets (for example
+    /// "Artifacts/...", "Assets/...", "Scenes/...", and other project-relative paths)
+    /// are resolved against the loaded project root first, then the exe folder is used
+    /// as a fallback. Absolute paths are returned as-is.</summary>
     public static string Resolve(string? path)
     {
         if (string.IsNullOrEmpty(path)) return path ?? "";
         string p = Normalize(path);
         try
         {
-            if (Path.IsPathRooted(p)) return Path.GetFullPath(p);
-
-            // Try project assets first
+            // When a project is loaded, force known project-relative asset paths to resolve
+            // against the loaded project root (for example
+            // "Artifacts/shaders/vertex_shader.glsl" ->
+            // "C:\Users\...\Dark Projects\Sample UI - Basic Menu\Artifacts\shaders\vertex_shader.glsl"),
+            // even if a copy also exists next to the executable. That keeps the resolved path
+            // anchored to the active project instead of the debug/publish folder.
             if (DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded)
             {
-                string projectPath = Path.GetFullPath(Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, p));
-                if (File.Exists(projectPath)) return projectPath;
-                string assetsPath = Path.GetFullPath(Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.AssetsDir, p));
-                if (File.Exists(assetsPath)) return assetsPath;
+                string projectRootPath = Path.GetFullPath(Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, p));
+                return projectRootPath;
             }
 
-            // Fallback to exe directory
-            return Path.GetFullPath(Path.Combine(AppBaseDir, p));
+            string combined = Path.Combine(AppBaseDir, p);
+            return Path.GetFullPath(combined);
         }
         catch
         {

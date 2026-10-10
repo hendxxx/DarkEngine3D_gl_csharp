@@ -218,7 +218,7 @@ public class DialogueThemeData
 }
 
 /// <summary>Persisted container for every dialogue asset, speaker and theme
-/// (Assets/Dialogue/dialogues.json inside the project). Loaded lazily per project;
+/// (Artifacts/Dialogue/dialogues.json inside the project). Loaded lazily per project;
 /// everything is designer-editable — no hardcoded dialogue content.</summary>
 public static class DialogueLibrary
 {
@@ -343,7 +343,7 @@ public static class DialogueLibrary
     }
 
     // ════════════════════════════════════════════
-    //  PERSISTENCE (Assets/Dialogue/dialogues.json)
+    //  PERSISTENCE (Artifacts/Dialogue/dialogues.json)
     // ════════════════════════════════════════════
 
     private sealed class DialogueFileData
@@ -360,8 +360,8 @@ public static class DialogueLibrary
     public static string GetFilePath()
     {
         string dir = DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.IsProjectLoaded
-            ? Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Dialogue")
-            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Dialogue");
+            ? Path.Combine(DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Dialogue")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Dialogue");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "dialogues.json");
     }

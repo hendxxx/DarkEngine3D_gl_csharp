@@ -224,7 +224,7 @@ public class SpriteEditorPanel
             if (ImGui.Button("Auto Load"))
                 AutoLoadProjectSheets();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Load sheets + clips from the project file (Assets/Sprites/sprites.sheets.json)\n+ merge sheets/clips from *-sprite-anim.json (pattern exports).\nAuto-load on project open was REMOVED — click this to load manually.\nRequires an open project.");
+                ImGui.SetTooltip("Load sheets + clips from the project file (Artifacts/Sprites/sprites.sheets.json)\n+ merge sheets/clips from *-sprite-anim.json (pattern exports).\nAuto-load on project open was REMOVED — click this to load manually.\nRequires an open project.");
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips) — click = select, Ctrl+Click = toggle, Shift+Click = range");
 
@@ -1483,7 +1483,7 @@ public class SpriteEditorPanel
     private string GetDefaultSavePath()
     {
         string dir = Engine.Project.ProjectManager.IsProjectLoaded
-            ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Sprites")
+            ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Sprites")
             : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Sprites");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "sprites.sheets.json");
@@ -1872,7 +1872,7 @@ public class SpriteEditorPanel
         try
         {
             string root = Engine.Project.ProjectManager.IsProjectLoaded
-                ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets")
+                ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts")
                 : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Sprites");
             if (Directory.Exists(root)) roots.Add(root);
         }
@@ -2184,7 +2184,11 @@ public class SpriteEditorPanel
         if (_previewTextures.ContainsKey(path)) return;
         try
         {
-            using var stream = File.OpenRead(path);
+            string dir = Engine.Project.ProjectManager.IsProjectLoaded
+           ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, path)
+           : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+
+            using var stream = File.OpenRead(dir);
             var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
             uint texId;

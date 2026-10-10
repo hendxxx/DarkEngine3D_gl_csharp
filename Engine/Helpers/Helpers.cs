@@ -419,7 +419,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         /// Remove world transforms from all meshes by baking node world matrices into vertex positions.
         /// After this operation, mesh vertices are in a unified local space (origin reset),
         /// and the node hierarchy can be ignored for positioning.
-        /// This is used for loading GLB files as "assets" where individual meshes can be
+        /// This is used for loading GLB files as "Artifacts" where individual meshes can be
         /// instantiated at arbitrary world positions.
         /// </summary>
         public static void RemoveWorldTransform(GltfData data, int[]? meshToNode)

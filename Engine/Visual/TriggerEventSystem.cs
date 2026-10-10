@@ -29,7 +29,7 @@ public static class TriggerEventSystem
     public static TriggerRuntimeState State { get; } = new();
 
     /// <summary>Set by the IDE so the "Change Map" action can load another .tilemap.json
-    /// from the project's Assets/Maps folder (and swap the scene's Map2D object).</summary>
+    /// from the project's Artifacts/Maps folder (and swap the scene's Map2D object).</summary>
     public static Func<string, bool>? OnChangeMap { get; set; }
 
     /// <summary>Set by the IDE so "Camera Shake" can reach the active camera without

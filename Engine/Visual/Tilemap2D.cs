@@ -42,7 +42,7 @@ public class Tilemap2D
     public Vector4 PaletteGridColor = new(1f, 1f, 1f, 0.25f);
 
     /// <summary>Parallax layer definitions carried with the map. The Map Editor panel
-    /// syncs its live layer list here so both the standalone Assets/Maps/*.tilemap.json
+    /// syncs its live layer list here so both the standalone Artifacts/Maps/*.tilemap.json
     /// AND the scene's .ing (via EditorObjectData.Tilemap) round-trip the parallax setup.</summary>
     public List<TilemapParallaxLayerData> ParallaxLayers = new();
 
@@ -458,7 +458,7 @@ public class Tilemap2DData
 }
 
 /// <summary>Serializable parallax layer definition stored with the tilemap — used by both
-/// the standalone Assets/Maps/*.tilemap.json (MapSaveData) and the scene's .ing file
+/// the standalone Artifacts/Maps/*.tilemap.json (MapSaveData) and the scene's .ing file
 /// (EditorObjectData.Tilemap), so parallax survives project reloads.</summary>
 public class TilemapParallaxLayerData
 {

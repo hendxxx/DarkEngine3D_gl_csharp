@@ -322,11 +322,11 @@ public class IDE : IDisposable
             // Auto-load sprite sheets + Map Editor grid/palette prefs
             _spriteEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
             _mapEditor?.OnProjectChanged(Engine.Project.ProjectManager.ProjectRoot);
-            // Item catalog belongs to the project (Assets/Items/items.json).
+            // Item catalog belongs to the project (Artifacts/Items/items.json).
             Visual.InventorySystem.LoadCatalog();
-            // Shop catalog belongs to the project (Assets/Shops/shops.json).
+            // Shop catalog belongs to the project (Artifacts/Shops/shops.json).
             Visual.ShopSystem.LoadCatalog();
-            // Quest display catalog belongs to the project (Assets/Quests/quests.json).
+            // Quest display catalog belongs to the project (Artifacts/Quests/quests.json).
             Visual.QuestSystem.LoadCatalog();
             // Panels re-sync their selection/dirty state to the freshly loaded catalogs
             // (stale indices from the previous project pointed at the wrong entries).
@@ -629,10 +629,10 @@ public class IDE : IDisposable
         if (!Engine.Project.ProjectManager.IsProjectLoaded) return;
         try
         {
-            Visual.InventorySystem.SaveCatalog(); // items → Assets/Items/items.json
-            Visual.ShopSystem.Save();              // shops → Assets/Shops/shops.json
-            Visual.QuestSystem.Save();             // quests → Assets/Quests/quests.json
-            DialogueLibrary.Save();                // dialogue assets/speakers/themes → Assets/Dialogue/dialogues.json
+            Visual.InventorySystem.SaveCatalog(); // items → Artifacts/Items/items.json
+            Visual.ShopSystem.Save();              // shops → Artifacts/Shops/shops.json
+            Visual.QuestSystem.Save();             // quests → Artifacts/Quests/quests.json
+            DialogueLibrary.Save();                // dialogue Artifacts/speakers/themes → Artifacts/Dialogue/dialogues.json
         }
         catch (Exception ex)
         {
@@ -653,8 +653,8 @@ public class IDE : IDisposable
     }
 
     /// <summary>Persist all current editor data before the project is closed or the app
-    /// exits: sprite sheets + animation clips (Assets/Sprites), the active level's map
-    /// file (Assets/Maps), the editor scenes (.ing, which also carries the level) and
+    /// exits: sprite sheets + animation clips (Artifacts/Sprites), the active level's map
+    /// file (Artifacts/Maps), the editor scenes (.ing, which also carries the level) and
     /// ALL catalogs (items/shops/quests/dialogues).
     /// Ran BEFORE ProjectManager clears the project root.</summary>
     private void PersistEditorData()
@@ -846,11 +846,11 @@ public class IDE : IDisposable
             Bridge.MapRedo = () => _mapEditor.RedoTilePaint();
 
             // Trigger Area runtime wiring: "Change Map" actions load from the project's
-            // Assets/Maps folder via the Map Editor's loader; "Camera Shake" nudges the
+            // Artifacts/Maps folder via the Map Editor's loader; "Camera Shake" nudges the
             // active camera (small decaying offsets applied in Camera.Update).
             Visual.TriggerEventSystem.OnChangeMap = mapName =>
             {
-                string rel = Path.Combine("Assets", "Maps", mapName + ".tilemap.json");
+                string rel = Path.Combine("Artifacts", "Maps", mapName + ".tilemap.json");
                 string path = Project.ProjectManager.IsProjectLoaded
                     ? Path.Combine(Project.ProjectManager.ProjectRoot!, rel)
                     : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, rel);

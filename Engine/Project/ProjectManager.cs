@@ -26,7 +26,7 @@ public class ProjectData
 ///   ├── {name}.projing      (metadata)
 ///   ├── game.ing             (combined scene file)
 ///   ├── settings.json        (editor settings, per-project)
-///   ├── Assets/
+///   ├── Artifacts/
 ///   │   ├── fonts/
 ///   │   ├── images/
 ///   │   └── models/
@@ -49,7 +49,7 @@ public static class ProjectManager
 
     // ── Derived paths (relative to ProjectRoot) ──
 
-    public static string AssetsDir => Path.Combine(ProjectRoot ?? "", "Assets");
+    public static string AssetsDir => Path.Combine(ProjectRoot ?? "", "Artifacts");
     public static string FontsDir => Path.Combine(AssetsDir, "fonts");
     public static string ImagesDir => Path.Combine(AssetsDir, "images");
     public static string ModelsDir => Path.Combine(AssetsDir, "models");
@@ -81,10 +81,10 @@ public static class ProjectManager
 
         // Create folder structure
         Directory.CreateDirectory(rootPath);
-        Directory.CreateDirectory(Path.Combine(rootPath, "Assets"));
-        Directory.CreateDirectory(Path.Combine(rootPath, "Assets", "fonts"));
-        Directory.CreateDirectory(Path.Combine(rootPath, "Assets", "images"));
-        Directory.CreateDirectory(Path.Combine(rootPath, "Assets", "models"));
+        Directory.CreateDirectory(Path.Combine(rootPath, "Artifacts"));
+        Directory.CreateDirectory(Path.Combine(rootPath, "Artifacts", "fonts"));
+        Directory.CreateDirectory(Path.Combine(rootPath, "Artifacts", "images"));
+        Directory.CreateDirectory(Path.Combine(rootPath, "Artifacts", "models"));
         Directory.CreateDirectory(Path.Combine(rootPath, "Scenes"));
 
         // Copy default fonts from the exe's Artifacts into the project
@@ -274,7 +274,7 @@ public static class ProjectManager
             if (File.Exists(projectPath))
                 return projectPath;
 
-            // Also try Assets/ subfolder
+            // Also try Artifacts/ subfolder
             string assetsPath = Path.Combine(AssetsDir, relativePath);
             if (File.Exists(assetsPath))
                 return assetsPath;
@@ -289,11 +289,11 @@ public static class ProjectManager
         return relativePath;
     }
 
-    /// <summary>Copy default fonts from the exe's Artifacts/fonts into the project's Assets/fonts.</summary>
+    /// <summary>Copy default fonts from the exe's Artifacts/fonts into the project's Artifacts/fonts.</summary>
     private static void CopyFontsToProject(string projectRoot)
     {
         string srcDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "fonts");
-        string dstDir = Path.Combine(projectRoot, "Assets", "fonts");
+        string dstDir = Path.Combine(projectRoot, "Artifacts", "fonts");
         if (!Directory.Exists(srcDir)) return;
         try
         {

@@ -11,7 +11,7 @@ using DarkEngine3D_gl_csharp.Engine.Project;
 namespace DarkEngine3D_gl_csharp.Engine.Visual;
 
 /// <summary>
-/// Quest bookkeeping for the HUD: a per-project catalog (Assets/Quests/quests.json)
+/// Quest bookkeeping for the HUD: a per-project catalog (Artifacts/Quests/quests.json)
 /// of QuestDefs — display name, description/objective lines, reward text. Quest
 /// STATE stays where it already lives (DialogueSystem flags quest_&lt;id&gt;_active /
 /// quest_&lt;id&gt;_done, set by the Activate Quest / Complete Quest trigger actions) —
@@ -52,8 +52,8 @@ public static class QuestSystem
     private static string GetFilePath()
     {
         string dir = ProjectManager.IsProjectLoaded
-            ? Path.Combine(ProjectManager.ProjectRoot!, "Assets", "Quests")
-            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Quests");
+            ? Path.Combine(ProjectManager.ProjectRoot!, "Artifacts", "Quests")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Quests");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "quests.json");
     }
@@ -125,7 +125,7 @@ public static class QuestSystem
         var def = GetQuest(questId);
         if (def == null)
         {
-            def = new QuestDef { Id = questId, Name = questId, Description = "(not set up yet - add it in Assets/Quests/quests.json)" };
+            def = new QuestDef { Id = questId, Name = questId, Description = "(not set up yet - add it in Artifacts/Quests/quests.json)" };
             Quests.Add(def);
             Console.WriteLine($"[Quest] Auto-registered placeholder for '{questId}'");
         }

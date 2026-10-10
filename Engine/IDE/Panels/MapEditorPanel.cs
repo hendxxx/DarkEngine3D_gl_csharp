@@ -560,7 +560,7 @@ public class MapEditorPanel
 
         // Adopt the level's own saved grid state (Show Grid + grid color) from the
         // tilemap itself (Tilemap2D.ShowGrid/GridColor). The grid state now lives on the
-        // tilemap so it's carried by both the standalone Assets/Maps/*.tilemap.json and
+        // tilemap so it's carried by both the standalone Artifacts/Maps/*.tilemap.json and
         // the scene's .ing (via EditorObjectData.Tilemap). Fall back to the EditorObject
         // only for compatibility with maps saved before this field existed.
         if (ActiveTilemap != null)
@@ -664,7 +664,7 @@ public class MapEditorPanel
             _showDeleteMapPopup = true;
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Remove the ACTIVE tilemap from the scene: its Map2D object is deleted\n(other tilemaps are untouched). The .tilemap.json file in\nAssets/Maps is also deleted via the confirmation popup.");
+            ImGui.SetTooltip("Remove the ACTIVE tilemap from the scene: its Map2D object is deleted\n(other tilemaps are untouched). The .tilemap.json file in\nArtifacts/Maps is also deleted via the confirmation popup.");
 
         ImGui.SameLine();
         if (ImGui.Button("Focus"))
@@ -768,7 +768,7 @@ public class MapEditorPanel
 
         ImGui.Text($"Delete tilemap '{target.Name}' from the scene?");
         ImGui.TextDisabled("Its Map2D object is deleted; other tilemaps are untouched.");
-        ImGui.Checkbox("Also delete the Assets/Maps/<name>.tilemap.json file", ref _deleteTilemapFileToo);
+        ImGui.Checkbox("Also delete the Artifacts/Maps/<name>.tilemap.json file", ref _deleteTilemapFileToo);
         ImGui.Separator();
 
         if (ImGui.Button("Delete", new Vector2(120, 0)))
@@ -820,7 +820,7 @@ public class MapEditorPanel
             try
             {
                 string dir = Engine.Project.ProjectManager.IsProjectLoaded
-                    ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Maps")
+                    ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Maps")
                     : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Maps");
                 string file = Path.Combine(dir, $"{target.Name}.tilemap.json");
                 if (File.Exists(file))
@@ -1719,7 +1719,7 @@ public class MapEditorPanel
                     break;
                 case TriggerActionTypes.ChangeMap:
                     if (ImGui.InputText("Map name", ref p1, 128)) act.Param = p1;
-                    ImGui.TextDisabled($"File: Assets/Maps/{(string.IsNullOrWhiteSpace(p1) ? "<name>" : p1)}.tilemap.json");
+                    ImGui.TextDisabled($"File: Artifacts/Maps/{(string.IsNullOrWhiteSpace(p1) ? "<name>" : p1)}.tilemap.json");
                     break;
                 case TriggerActionTypes.CameraShake:
                     if (ImGui.InputText("Intensity (default 1)", ref p1, 32)) act.Param = p1;
@@ -1865,7 +1865,7 @@ public class MapEditorPanel
                 {
                     if (ImGui.InputText("Shop ID##shopid", ref p1, 64)) act.Param = p1;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Shop id from the Shop Editor panel (Assets/Shops/shops.json).\nThe shop panel opens on top of the dialogue; Esc closes it.");
+                        ImGui.SetTooltip("Shop id from the Shop Editor panel (Artifacts/Shops/shops.json).\nThe shop panel opens on top of the dialogue; Esc closes it.");
                     if (Visual.ShopSystem.Shops.Count > 0)
                     {
                         foreach (var sh in Visual.ShopSystem.Shops)
@@ -2311,7 +2311,7 @@ public class MapEditorPanel
         // Render only the currently selected layer in the viewport.
         mapObj.Map2dActiveLayer = _selectedLayerIdx;
         // Grid state now lives on the tilemap itself (Tilemap2D.ShowGrid/GridColor) so it's
-        // carried by both the standalone Assets/Maps/*.tilemap.json and the scene's .ing.
+        // carried by both the standalone Artifacts/Maps/*.tilemap.json and the scene's .ing.
         // Fall back to the panel var only when the tilemap has no explicit grid state (old
         // maps saved before this field existed).
         mapObj.Map2dShowGrid = ActiveTilemap.ShowGrid;
@@ -2414,7 +2414,7 @@ public class MapEditorPanel
     private string GetDefaultSavePath()
     {
         string dir = Engine.Project.ProjectManager.IsProjectLoaded
-            ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Assets", "Maps")
+            ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Maps")
             : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Maps");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, $"{ActiveTilemap?.Name ?? "map"}.tilemap.json");
@@ -2438,7 +2438,7 @@ public class MapEditorPanel
         Console.WriteLine($"[MapEditor] Save snapshot -> Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, path='{path}'");
 
         // Also persist the tileset grid into the scene's .ing so project reload picks up the
-        // edited Cols/Rows/FlipV. The standalone Assets/Maps/*.tilemap.json is a convenience
+        // edited Cols/Rows/FlipV. The standalone Artifacts/Maps/*.tilemap.json is a convenience
         // export; the canonical storage for the level is the scene file.
         try { _bridge.SaveAllScenes?.Invoke(); } catch { }
         }
@@ -2491,7 +2491,11 @@ public class MapEditorPanel
     {
         try
         {
-            string json = File.ReadAllText(path);
+           string dir = Engine.Project.ProjectManager.IsProjectLoaded
+           ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, path)
+           : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+             
+            string json = File.ReadAllText(dir);
             // Binary sidecar fast path (JSON is the source of truth; any cache
             // miss/staleness/corruption silently falls back to this parse).
             var data = Engine.Helpers.BinaryObjectCache.TryLoad<MapSaveData>(path)
@@ -2646,7 +2650,7 @@ public class MapEditorPanel
             return;
         }
 
-        string mapsDir = Path.Combine(projectRoot, "Assets", "Maps");
+        string mapsDir = Path.Combine(projectRoot, "Artifacts", "Maps");
         if (!Directory.Exists(mapsDir)) return;
 
         // Load the first .tilemap.json found

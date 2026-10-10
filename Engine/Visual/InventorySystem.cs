@@ -11,7 +11,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 ///
 /// Item ICONS are cropped straight from any tileset/sprite-sheet texture (columns ×
 /// rows grid + per-item cell) — no dedicated icon assets required. The catalog
-/// persists per project as Assets/Items/items.json; the runtime grid/equipment/gold
+/// persists per project as Artifacts/Items/items.json; the runtime grid/equipment/gold
 /// persist through SaveData (save slots).
 /// </summary>
 public static class InventorySystem
@@ -532,7 +532,7 @@ public static class InventorySystem
 
     // ═══════════════════════ Catalog persistence (items.json) ═══════════════════════
 
-    /// <summary>items.json inside the active project (Assets/Items/).</summary>
+    /// <summary>items.json inside the active project (Artifacts/Items/).</summary>
     public static string CatalogPath =>
         System.IO.Path.Combine(
             DarkEngine3D_gl_csharp.Engine.Project.ProjectManager.AssetsDir, "Items", "items.json");
@@ -605,7 +605,7 @@ public static class InventorySystem
         Price = c.Price, Notes = c.Notes,
     };
 
-    /// <summary>Write the catalog to the project (Assets/Items/items.json).</summary>
+    /// <summary>Write the catalog to the project (Artifacts/Items/items.json).</summary>
     public static void SaveCatalog()
     {
         try
@@ -628,7 +628,7 @@ public static class InventorySystem
 
     /// <summary>Load the project's catalog (REPLACES the in-memory list — call on
     /// project open). Creates nothing when the file is missing (fresh project).
-    /// After the main file, EVERY other *.json catalog in Assets/Items/ is
+    /// After the main file, EVERY other *.json catalog in Artifacts/Items/ is
     /// auto-merged (see MergeExtraCatalogs).</summary>
     public static void LoadCatalog()
     {
@@ -665,7 +665,7 @@ public static class InventorySystem
         }
     }
 
-    /// <summary>Auto-load: merge EVERY other *.json file in Assets/Items/ (top-level,
+    /// <summary>Auto-load: merge EVERY other *.json file in Artifacts/Items/ (top-level,
     /// items.json excluded) as an extra item catalog — same idea as the sprite-anim
     /// auto-load. Files whose Items array is missing/empty (or invalid JSON) are
     /// skipped; ids already registered are KEPT as-is (the main items.json wins).

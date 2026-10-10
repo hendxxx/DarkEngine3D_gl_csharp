@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -16,5 +16,31 @@
     <PackageReference Include="StbImageSharp" Version="2.30.15" />
     <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
   </ItemGroup>
- 
+
+  <ItemGroup>
+    <!-- Engine shaders live under the project repo path; copy them to the exe output
+         folder so they load from "Artifacts/shaders/..." next to the executable
+         instead of from a bin/Debug path or any absolute project path. -->
+    <Content Include="Artifacts/shaders/**/*.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+
+    <!-- Fonts are loaded from "Artifacts/fonts/..." at runtime; copy them to the
+         exe output folder too so the path is exe-relative, not project-root/etc. -->
+    <Content Include="Artifacts/fonts/**/*.ttf">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Root-level runtime config files are loaded from the exe directory.
+         Copy them so their paths stay exe-relative instead of project-root/etc. -->
+    <None Include="imgui.ini">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="settings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

@@ -21,7 +21,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
 - **Terrain**: Heightmap terrain with dynamic PBR layers, painting, sculpting
 - **Scene Management**: Multiple scenes (MainMenu, GameScene, Loading), transitions
 - **2D Game Support** (sidescroller, orthographic front view over the 3D viewport):
-  - **Sprite Editor** — auto-detect/interactive sprite sheet slicing, animation clips with FPS + zoom, drag-drop import, saved to `Assets/Sprites/sprites.sheets.json`
+  - **Sprite Editor** — auto-detect/interactive sprite sheet slicing, animation clips with FPS + zoom, drag-drop import, saved to `Artifacts/Sprites/sprites.sheets.json`
   - **Map Editor** — tile painting (Paint/Erase/Fill/Pick + brush size) directly in the 3D viewport, multi-layers, marquee multi-select stamping, per-tile undo/redo (Ctrl+Z/Y)
   - **Tilemap in 3D** — rendered as an upright textured plane at world origin; camera auto-switches to ortho front view (editor and in-game)
   - **Parallax Backgrounds** — per-layer ScrollFactor/ZPosition/Alpha, aspect-preserving sizing, RepeatX/Y wrap, seamless scroll preview while panning, correct rendering in Play in Preview
@@ -34,7 +34,7 @@ OpenGL/C# game engine with ImGui-based IDE editor.
   - **Player Spawn** — draggable spawn marker; GameScene places the player at the map's spawn on scene enter
   - **Gizmo Frontmost** — transform gizmo always renders above the 2D grid/overlays
   - **Per-Map Camera Start** — saved view restored on Play in Preview; ortho/front locked for 2D levels
-  - **Persistence** — maps saved to `Assets/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
+  - **Persistence** — maps saved to `Artifacts/Maps/*.tilemap.json` + scene `.ing`, autoloaded on project open; editor aids (grid/collision/spawn gizmos) auto-hidden in-game
   - **Player Info Panel & Stats** — live monitor/editor of player status (menu *View → Player Info*); see [Player Stats Reference](#player-stats-reference) below
   - **UI Bar Component** — progress/status bar built from 3 images (Background frame / Empty interior / Progress fill, plus the element's own Image as back layer) with fill direction, frame inset, and **Stat Binding**: pick Health/Mana/Level/Experience/Fitness and the bar mirrors `Player2DStats` live in editor preview and in-game; persisted per scene
   - **Dialogue System** — data-driven RPG conversations + follow-bubbles, fully authored in the **Dialogue Editor** (2D Sidescroller menu): branching nodes with choices/speakers/portraits/emotions, reusable color themes, 7-language localization table, condition gates (level/flag/item/quest/gold) and trigger-action results; NPCs (Sprite2D/Player2D with a dialogue id) show an "[E] Talk" prompt and open the conversation window in-game and in preview; progress (completed/flags/variables) saves with the game

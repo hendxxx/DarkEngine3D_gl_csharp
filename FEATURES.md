@@ -38,7 +38,7 @@ ProjectRoot/
 ├── game.ing               — Combined scene file (auto-loaded on open)
 ├── saves/                 — Save game slots (per-project)
 │   └── slot_N/
-├── Assets/
+├── Artifacts/
 │   ├── fonts/             — Copied from exe on project create
 │   ├── images/
 │   ├── models/
@@ -124,11 +124,11 @@ Panel for slicing sprite sheets and building 2D animation clips.
 | **Zoom** | Independent zoom for sheet preview and animation preview (default 1x) |
 | **Animation Clips** | Create clip from frame range (Start/End), FPS control, play/stop preview |
 | **Frame Thumbnails** | Selected frame image shown in Frame Properties |
-| **Persistence** | All sheets + clips saved to `Assets/Sprites/sprites.sheets.json`; **auto-loaded on project open** via `IDE.OnProjectChanged(projectRoot)` → `SpriteEditorPanel.OnProjectChanged(projectRoot)` (canonical `sprites.sheets.json` only — `*-sprite-anim.json` pattern exports are NOT loaded here; they are only merged from the Sprite Editor "Auto Load" button / Load dialog); also available via the Sprite Editor "Auto Load" toolbar button; project close clears tracker sets + resets pattern-action defaults |
+| **Persistence** | All sheets + clips saved to `Artifacts/Sprites/sprites.sheets.json`; **auto-loaded on project open** via `IDE.OnProjectChanged(projectRoot)` → `SpriteEditorPanel.OnProjectChanged(projectRoot)` (canonical `sprites.sheets.json` only — `*-sprite-anim.json` pattern exports are NOT loaded here; they are only merged from the Sprite Editor "Auto Load" button / Load dialog); also available via the Sprite Editor "Auto Load" toolbar button; project close clears tracker sets + resets pattern-action defaults |
 
 | **Sheet Sections** | The sheet list is grouped into 4 collapsible sections — **Base / FX / Base Equipment / Items** — via a per-sheet `Category` persisted in sprites.sheets.json (files without the field load as Base; hand-edited unknown values fall back to Base instead of killing the file parse). A category combo above the list re-categorizes the whole current selection; with nothing selected it sets the section new imports land in (Import / drag-and-drop / pattern exports). Sections are display-only — the master list and indexes never change, so undo/delete keep working |
 | **Sheet Multi-Select** | Ctrl+Click toggles sheets into the selection, Shift+Click extends a range from the previous primary, plain click selects one. The primary selection still drives Sheet Settings + previews; **Delete Sheet** removes EVERY selected sheet (highest index first), and the category combo re-categorizes all of them at once — bulk-organize an imported folder into sections in two clicks |
-| **Save As JSON** | Toolbar `Save As JSON`: writes sheets + clips JSON to ANY path via save dialog (starts in `Assets/Sprites`, filter `*.json`, indented JSON + binary sidecar cache). Load dialog accepts both `*.sheets.json` and generated `*-sprite-anim.json` |
+| **Save As JSON** | Toolbar `Save As JSON`: writes sheets + clips JSON to ANY path via save dialog (starts in `Artifacts/Sprites`, filter `*.json`, indented JSON + binary sidecar cache). Load dialog accepts both `*.sheets.json` and generated `*-sprite-anim.json` |
 | **Save As Pattern** | Batch auto-clip per folder: copies the selected sheet's pattern (grid/padding/offset + **flip X/Y** + master box + render offsets) to EVERY image file in the same folder (png/jpg/jpeg/bmp/tga). Action names & count come from the free-text **`Pattern actions`** field (pipe-separated, default `idle|walk|run|jump start|jump end|attack|dead`, persisted in the save file; e.g. `effect` → a 1-row sheet saves one `<sheet>-effect` clip): one clip per ROW, rows past the action list are NOT saved. Empty frames (all alpha 0, or rect outside the image — JPEG has no alpha so never empty) are skipped, fully-empty rows produce no clip; **FPS = frame count** (1s per clip); clip name `<sheet>-<action>`; loop decided BY ACTION NAME — `jump start/jump end/attack/dead` play once, everything else (incl. custom names like `effect`) loops. Output per file: `<file name>-sprite-anim.json` next to the image (same `SpriteSheetsSaveData` schema → loadable via Load) |
 
 | **Pattern Export Auto-Load** | `Sprite Sheets` + `Animation Clips` auto-merge every `*-sprite-anim.json` (project `Assets` tree + each sheet's image folder) from the Sprite Editor "Auto Load" button / Load dialog and right after Save As Pattern — the SHEET entry and its clips both appear with no manual Load. Project open does NOT trigger this merge. Refresh-in-place: the previous auto-loaded set is replaced on re-run — tracked **BY INSTANCE** (a manual sheet/clip sharing a name is never removed or duplicated); files are enumerated before removal so a folder reachable only through an auto-loaded sheet's image path stays reachable; indicator line shows `(N sheets + M clips auto-loaded from *-sprite-anim.json)`.
@@ -154,7 +154,7 @@ Tilemap editor rendering into the 3D viewport as an upright textured plane (`Edi
 | **Grid Overlay** | Show/hide tile grid+ grid color, real-time; auto-hidden in preview/in-game |
 | **Camera Start** | Per-map saved view; "Set Current View"/"Reset" in Grid Settings; Play in Preview restores it; auto-captured on first framing |
 | **Player Spawn** | Draggable cyan cross marker in viewport (or "Set at Hover"); GameScene places the player there on Enter (unless a save slot loads) |
-| **Save/Load** | `Assets/Maps/{Name}.tilemap.json` (carries tiles+ parallax+ spawn+ camera start) and canonical scene `.ing`; autoload first map on project open |
+| **Save/Load** | `Artifacts/Maps/{Name}.tilemap.json` (carries tiles+ parallax+ spawn+ camera start) and canonical scene `.ing`; autoload first map on project open |
 | **Trigger Areas** | Dedicated Trigger tool: click-drag on the grid draws a snap-to-tile box; drag body to move, 8 handles to resize; Delete / Ctrl+C/X/V / Ctrl+D supported; amber translucent boxes (selected = brighter+ white handles); edited in the Trigger Areas panel (see §2.9) |
 | **Portals** | Portal / Portal One Way trigger actions render a 4-state sprite animation (NotActive/Active/Enter/Out clips from one Sprite Editor sheet, visual size px overrides the area size). Sheet with NO authored clips falls back to its implicit frame grid (8 FPS) — an authored portal never renders invisible. Arrival spawns at the destination portal center ± ONE PORTAL WIDTH (side = player travel direction)+ arrival-inside guard (auto portals only), so two-way pairs don't ping-pong. Button-mode portals (PortalAutoEnter off) show a `[KEY]` badge above the portal while the player stands inside |
 | **In-Game Parity** | Parallax layers/textures sync every frame in preview mode; startup `-load=` in-game re-anchors camera (lazy reframe when tilemap adopts late) |
@@ -233,12 +233,12 @@ Non-blocking event volumes on the tilemap: the player passes through them; enter
 | **Trigger Area** | Rectangle in grid pixel coords (LeftPx/TopPx/WidthPx/HeightPx) on the tilemap; no physical collision — detection only |
 | **Conditions** | On Enter / On Stay (with repeat interval in seconds) / On Exit; optional gate "only when moving right" |
 | **Actions (18 types)** | Save Game, Save Checkpoint, Load Checkpoint, Change Map, Play Sound, Play Music, Spawn Effect, Spawn Object, Start Dialogue, Show Bubble, Hide Bubble, Start Cutscene, Camera Shake, Unlock Door, Give Item, Activate Quest, Complete Quest, Run Script — each with Param/Param2/Delay |
-| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Assets/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration), Start Dialogue (opens the Dialogue System conversation), Show/Hide Bubble (player-following speech bubble; Param2 = `type\|duration`) |
+| **Wired Runtime** | Save Game (next empty slot), Save Checkpoint (records player position), Load Checkpoint (teleport to checkpoint, fallback = start point), Change Map (loads `Artifacts/Maps/{name}.tilemap.json` in place), Camera Shake (earthquake-style, intensity × duration), Start Dialogue (opens the Dialogue System conversation), Show/Hide Bubble (player-following speech bubble; Param2 = `type\|duration`) |
 | **Checkpoint Chain** | Save Checkpoint → player position stored for the session; Load Checkpoint zeroed velocity+ grounded reset; pit-death respawn prefers the checkpoint; checkpoint state resets on each new play session |
 | **Camera Shake** | View-height-relative amplitude (7% × intensity), 3-layer noise+ ±1.2° camera roll, quadratic decay, random seed per shake |
 | **Visual Editor** | Trigger tool: drag-create (snaps to tile bounds), move by dragging the body, resize via 8 handles, Delete/Ctrl+C/X/V/Ctrl+D; "Show Triggers" checkbox (persisted); Trigger Areas panel: list+ rename+ enable, conditions, per-action editor with contextual params+ reorder, precise geometry |
 | **Rendering** | Amber translucent boxes drawn in edit mode only (hidden in-game via `Editor2DAidsHidden`); overlay projected via `SceneToScreen` so it sticks to the viewport image |
-| **Persistence** | `Assets/Maps/{map}.tilemap.json` AND scene `.ing` (`Tilemap2DData.TriggerAreas`) — triggers load with the project |
+| **Persistence** | `Artifacts/Maps/{map}.tilemap.json` AND scene `.ing` (`Tilemap2DData.TriggerAreas`) — triggers load with the project |
 
 ### 2.9.1 Projectile Impact — Hit CLIP First (User Decision)
 
@@ -276,7 +276,7 @@ Data-driven dialogue: RPG conversation window+ world-space speech bubbles, autho
 
 | Feature | Description |
 |---------|-------------|
-| **Dialogue Assets** | `DialogueAsset` (Id, Name, StartNodeId, ThemeName) with `DialogueNode` pages — text, speaker, portrait, emotion, choices, auto-advance, per-node start/end actions; branching via NextNodeId / choice targets (empty = end). Stored in `Assets/Dialogue/dialogues.json` |
+| **Dialogue Assets** | `DialogueAsset` (Id, Name, StartNodeId, ThemeName) with `DialogueNode` pages — text, speaker, portrait, emotion, choices, auto-advance, per-node start/end actions; branching via NextNodeId / choice targets (empty = end). Stored in `Artifacts/Dialogue/dialogues.json` |
 | **Dialogue Editor** | Panel (2D Sidescroller menu): asset list+ add/duplicate/delete, node editor (speaker/emotion/portrait/text/next/choices/actions), speaker manager, theme editor (colors, fonts, typewriter speed), language dropdown+ translation table, ▶ Start/■ Stop preview |
 | **Conversation Runtime** | `DialogueSystem` — bottom window with portrait frame, colored speaker name, typewriter text, numbered choices (1-9 / arrows+ E / Space next / Esc close); closes with a fade; freezes player input+ editor camera via the `DialogueOverlay` modal gate |
 | **Speakers** | Reusable `SpeakerData` (Id, Name, portrait, name color); portraits support emotion variants (`<name>_Happy.png` tried before the base) |
@@ -411,8 +411,8 @@ Each layer in `TerrainLayerList`:
 
 ### 3.5 Save/Load Behavior
 
-- **Save All / Ctrl+S / F8**: Saves to current file; if no file active → opens Save As dialog. Also persists ALL per-project catalogs: items (`Assets/Items/items.json`), shops (`Assets/Shops/shops.json`), quests (`Assets/Quests/quests.json`), dialogues (`Assets/Dialogue/dialogues.json`) — not gated on scenes existing anymore
-- **Item catalog auto-merge**: on project open, `LoadCatalog` reads `items.json` FIRST, then merges EVERY other top-level `*.json` in `Assets/Items/` as an external catalog (e.g. `gear-items.json`). Ids already present win (the main file is authoritative); files without an `Items` array or with invalid JSON are skipped (logged `[Inventory] Auto-load skip …`); with no `items.json` at all the external files still load. Saving writes the merged list back to `items.json`
+- **Save All / Ctrl+S / F8**: Saves to current file; if no file active → opens Save As dialog. Also persists ALL per-project catalogs: items (`Artifacts/Items/items.json`), shops (`Artifacts/Shops/shops.json`), quests (`Artifacts/Quests/quests.json`), dialogues (`Artifacts/Dialogue/dialogues.json`) — not gated on scenes existing anymore
+- **Item catalog auto-merge**: on project open, `LoadCatalog` reads `items.json` FIRST, then merges EVERY other top-level `*.json` in `Artifacts/Items/` as an external catalog (e.g. `gear-items.json`). Ids already present win (the main file is authoritative); files without an `Items` array or with invalid JSON are skipped (logged `[Inventory] Auto-load skip …`); with no `items.json` at all the external files still load. Saving writes the merged list back to `items.json`
 - **Binary sidecar cache (warm load)**: big JSON loads (scene manifest, sheets, maps, catalogs) try the `.cache/<file>.bin` sidecar first; wire format **v2** = [magic][ver 2][root type][**layoutId** — hash of the DTO member layout][JSON stamp len/hash/mtime]. A sidecar with a wrong version OR a different member layout than the current build is rejected **silently** before decoding (JSON parses as usual, no console spam); the Sprite Editor then rewrites the sidecar (**self-heal**) so the next load is a binary hit. Stale v1 sidecars written by older builds (e.g. before the `PatternActions` field existed) are auto-rejected and healed — the `[BinCache] cache invalid … parsing JSON` log spam is gone
 - **New Scene**: Clears active file (does NOT overwrite game.ing)
 - **Save As**: Opens file dialog, saves JSON+ thumbnail PNG
@@ -451,10 +451,10 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 | `recent_files.json` | Recently opened scene files |
 | `game.ing` | Combined scene file (auto-loaded on project open) |
 | `saves/` | Save game slots (slot_0 through slot_4) |
-| `Assets/fonts/` | Project fonts (copied from exe on create) |
-| `Assets/images/` | Image assets |
-| `Assets/models/` | 3D model assets |
-| `Assets/Maps/` | Heightmaps |
+| `Artifacts/fonts/` | Project fonts (copied from exe on create) |
+| `Artifacts/images/` | Image assets |
+| `Artifacts/models/` | 3D model assets |
+| `Artifacts/Maps/` | Heightmaps |
 | `Scenes/` | Individual scene files (.ing) |
 
 ### 3.6.3 Project Lifecycle
@@ -470,7 +470,7 @@ Every project is a self-contained folder with a `{Name}.projing` metadata file:
 
 All asset paths are resolved via `PathHelpers.Resolve()`:
 1. Check project root (`ProjectRoot/relativePath`)
-2. Check project Assets (`ProjectRoot/Assets/relativePath`)
+2. Check project Assets (`ProjectRoot/Artifacts/relativePath`)
 3. Fallback to exe directory (`BaseDirectory/relativePath`)
 
 When saving, `PathHelpers.MakeRelative()` converts absolute paths to portable relative form.

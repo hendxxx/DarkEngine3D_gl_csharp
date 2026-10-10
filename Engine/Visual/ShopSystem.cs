@@ -13,7 +13,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual;
 
 /// <summary>
 /// Simple NPC shop: one shop = a named list of stock entries (item id + optional
-/// price override). Persisted per project to Assets/Shops/shops.json (load on
+/// price override). Persisted per project to Artifacts/Shops/shops.json (load on
 /// project open, clear on close — wired in IDE.cs like the item catalog).
 /// The dialogue/trigger action "Open Shop" shows the classic RPG panel
 /// (ShopHud: item grid + Buy/Sell buttons) while the conversation continues
@@ -60,8 +60,8 @@ public static class ShopSystem
     private static string GetFilePath()
     {
         string dir = ProjectManager.IsProjectLoaded
-            ? Path.Combine(ProjectManager.ProjectRoot!, "Assets", "Shops")
-            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Shops");
+            ? Path.Combine(ProjectManager.ProjectRoot!, "Artifacts", "Shops")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Artifacts", "Shops");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "shops.json");
     }

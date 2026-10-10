@@ -1,0 +1,2 @@
+- **Sprite Sheets Auto-Load**: `Artifacts/Sprites/sprites.sheets.json` is auto-loaded on project open via `IDE.OnProjectChanged(projectRoot)` → `SpriteEditorPanel.OnProjectChanged(projectRoot)` (canonical sheets only). 
+- `*-sprite-anim.json` pattern exports are NOT loaded on project open; they are only merged when triggered from the Sprite Editor "Auto Load" button / Load dialog.
