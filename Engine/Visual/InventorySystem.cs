@@ -735,6 +735,10 @@ public static class InventorySystem
         public float Age;
         /// <summary>Squash-and-stretch phase for the spawn bounce (0 = settled).</summary>
         public float BounceT = 1f;
+        /// <summary>Row-cache of the solid tile row under this drop (-1 = not cached).
+        /// A resting drop re-probes ONE cached row per frame instead of scanning the
+        /// whole map column. Invalidated on a hit-row change / map edit fallback.</summary>
+        public int FloorRow = -1;
         /// <summary>Set true by the magnet tick the frame it gets collected (FX +
         /// flash fire here, then the drop is removed).</summary>
         public bool Collected;
@@ -795,7 +799,9 @@ public static class InventorySystem
                 d.X += d.VelX * dt;
                 d.Y += d.VelY * dt;
                 d.VelX *= 1f - MathF.Min(1f, 3f * dt); // ground friction
-                float floor = FindDropFloor(mgr, activeMap, d.X, d.Y);
+                d_LastHitRow = -1;
+                float floor = FindDropFloor(mgr, activeMap, d.X, d.Y, d.FloorRow);
+                d.FloorRow = d_LastHitRow;   // row cache for the next tick
                 if (d.VelY <= 0f && d.Y <= floor)
                 {
                     d.Y = floor;
@@ -860,8 +866,16 @@ public static class InventorySystem
     /// <summary>Ground height for a drop: walk DOWN from its current Y through the
     /// collision tiles of every visible map (same flip convention as physics —
     /// grid row ty spans world [(mapH-1-ty)*cell, (mapH-ty)*cell]). Falls back to
-    /// the map bottom when nothing is below (loot over a pit just falls away).</summary>
-    private static float FindDropFloor(EditorObjectManager? mgr, Tilemap2D? activeMap, float x, float y)
+    /// the map bottom when nothing is below (loot over a pit just falls away).
+    /// PERF: the caller passes the drop's CACHED hit row (-1 = none yet) — while
+    /// non-magnetized and resting, the probe is repeated every frame per drop per
+    /// map/column (a 60-row map × 40 drops = 2.4k row tests per frame). Row hit-cache:
+    /// while the drop keeps the same row (resting) the cached hit stays valid; a
+    /// falling drop (row changes per frame) scans as before. Tiles painted ONTO an
+    /// existing column re-add via the runtime map object — a stale cached row posts
+    /// the drop ONCE through the pass-through until the next row change (acceptable:
+    /// resting drops rarely sit in a freshly-painted column live-session).</summary>
+    private static float FindDropFloor(EditorObjectManager? mgr, Tilemap2D? activeMap, float x, float y, int hitRowCached)
     {
         float best = float.NegativeInfinity;
         bool any = false;
@@ -872,6 +886,31 @@ public static class InventorySystem
             int col = (int)MathF.Floor(x / cell);
             if (col < 0 || col >= m.Width) continue;
             int hitRow = -1;
+            // Row cache: while resting (the row below the drop hasn't changed),
+            // reuse the previous hit row — skip the full map path scan entirely.
+            if (hitRowCached >= 0)
+            {
+                bool cachedSolid = false;
+                for (int li = 0; li < m.Layers.Count && !cachedSolid; li++)
+                {
+                    var layer = m.Layers[li];
+                    if (layer == null || !layer.IsVisible || layer.CollisionTileIds.Count == 0) continue;
+                    int t = m.GetTile(li, col, hitRowCached);
+                    if (t > 0 && layer.CollisionTileIds.Contains(t)) cachedSolid = true;
+                }
+                if (cachedSolid)
+                {
+                    // Same result as a fresh scan hit: record the row + the floor Y,
+                    // then move to the NEXT map (a higher-floor map must still be able
+                    // to win "best") — the old `break` skipped BOTH the floorY update
+                    // for THIS map and every other map's scan (a resting drop on a
+                    // lower map would snap to −20 / fall through the world).
+                    d_LastHitRow = hitRowCached;
+                    float cachedFloorY = (m.Height - 1 - hitRowCached) * cell;
+                    if (!any || cachedFloorY > best) { best = cachedFloorY; any = true; }
+                    continue;
+                }
+            }
             for (int li = 0; li < m.Layers.Count && hitRow < 0; li++)
             {
                 var layer = m.Layers[li];
@@ -887,12 +926,24 @@ public static class InventorySystem
             }
             if (hitRow >= 0)
             {
+                d_LastHitRow = hitRow;  // exposed below — cache for next frame
                 float floorY = (m.Height - 1 - hitRow) * cell; // top of the solid tile
                 if (!any || floorY > best) { best = floorY; any = true; }
             }
+            // else: cached row not solid here (map edited live / different map) —
+            // fall through to the fresh scan below for THIS map (the fresh scan runs
+            // in the loop above whenever hitRow still == -1).
         }
         return any ? best : -20f; // nothing below: fall out of the world like projectiles
     }
+
+    /// <summary>Last hit row written by FindDropFloor — the drop loop reads this
+    /// back into the drop's cache slot right after each tick (single drop at a
+    /// time; TickDrops is sequential).</summary>
+    internal static int d_LastHitRow = -1;
+
+    /// <summary>One loot drop (item + count + rest/pop state). FloorRow caches the
+    /// hit tile row so a resting drop doesn't rescan the whole map path per frame.</summary>
 
     private static IEnumerable<Tilemap2D> CollectCollisionMapsSafe(EditorObjectManager? mgr, Tilemap2D? activeMap)
     {

@@ -160,6 +160,23 @@ public class IDESettingsPanel
                 ImGui.SameLine();
                 ImGui.TextDisabled(stats ? "stats overlay ON" : "stats overlay hidden");
 
+                // Player2D collision telemetry — the 1 Hz [P2D-Tel] Console lines
+                // (FPS estimate, players, maps, collision layers, rows/tiles/solid
+                // probes per second, X-push + landing counts). Default OFF — turn on
+                // ONLY when diagnosing a frame dip; the counters are live physics
+                // readers, so the ratio (tiles/solid, rows per frame) pinpoints where
+                // the collision cost sits without a debugger.
+                bool tel = _bridge.Player2DTelemetry;
+                if (ImGui.Checkbox("Player2D Collision Telemetry", ref tel))
+                {
+                    _bridge.Player2DTelemetry = tel;
+                    Visual.Player2DSystem.TelemetryEnabled = tel;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Once-per-second [P2D-Tel] lines in the Console panel\n(players, maps, collision layers, rows/tiles/solid probes,\nX-pushes, landings). Diagnostic tool for FPS dips —\nkeep OFF during normal play/authoring.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(tel ? "telemetry ON (Console [P2D-Tel])" : "telemetry off");
+
                 ImGui.PushItemWidth(200);
                 if (ImGui.SliderInt("FOV", ref fov, 30, 120, "%d°"))
                 {
@@ -246,13 +263,13 @@ public class IDESettingsPanel
                 if (ImGui.SmallButton("Reset Zoom Limits"))
                 {
                     var s = Load();
-                    s.OrthoZoomMin = 2f;
-                    s.OrthoZoomMax = 200f;
+                    s.OrthoZoomMin = 32f;
+                    s.OrthoZoomMax = 32f;
                     Save(s);
-                    Engine.Visual.Camera.ApplyZoomLimits(2f, 200f);
+                    Engine.Visual.Camera.ApplyZoomLimits(32f, 32f);
                 }
                 ImGui.SameLine();
-                ImGui.TextDisabled("default 2 – 200");
+                ImGui.TextDisabled("default 32 – 32");
             }
 
             ImGui.Separator();

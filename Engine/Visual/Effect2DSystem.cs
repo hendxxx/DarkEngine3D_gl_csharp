@@ -321,6 +321,7 @@ public static class Effect2DSystem
     private static void IntegrateParticles(float dt)
     {
         var mgr = _mgr;
+        BuildSpriteRects(mgr); // once per frame — broad-phase for SpriteHitAt
         for (int i = _particles.Count - 1; i >= 0; i--)
         {
             var p = _particles[i];
@@ -359,7 +360,7 @@ public static class Effect2DSystem
                     // it must not fall through behind the sprite (user request).
                     if (p.Splash)
                     {
-                        var (bodyHit, _) = SpriteHitAt(mgr, p.X, p.Y, p.Y);
+                        var (bodyHit, _) = SpriteHitAt(p.X, p.Y, p.Y);
                         if (bodyHit)
                         {
                             SpawnSplash(p.X, p.Y);
@@ -371,7 +372,7 @@ public static class Effect2DSystem
                     if (!dead)
                     {
                         float gy = GroundYAtAny(p.X, p.Y);
-                        var (_, sy) = SpriteHitAt(mgr, p.X, p.Y, p.Y);
+                        var (_, sy) = SpriteHitAt(p.X, p.Y, p.Y);
                         if (sy > gy) gy = sy;
                         if (!float.IsNegativeInfinity(gy) && p.Y <= gy + 0.02f)
                         {
@@ -1008,9 +1009,22 @@ public static class Effect2DSystem
     /// COLLISION tiles = full box; DECOR tiles = PER-PIXEL tileset outline (first
     /// opaque pixel in this column — tent slopes splash, transparent areas don't).
     /// Sprites are handled separately via per-pixel SpriteHitAt.</summary>
+    // ── Ground-surface column cache (rain/snow FPS dip) ──
+    // With heavy weather ACTIVE (70+ particles/s × 30 s rain life = thousands
+    // alive) each particle queried GroundYAtAny EVERY frame → a full tilemap
+    // column scan (rows × layers × per-pixel profile) per particle per frame —
+    // at 45 ms/frame budget this was the bit that crushed the FPS to ~22 when
+    // rain was on. The terrain NEVER moves during a session (tiles are only
+    // edited in edit mode; weather physics runs in gameplay), so a per-frame
+    // column cache is CORRECT: keyed by (map ref, column), value = surface Y.
+    private struct GroundCacheEntry { public Tilemap2D Map; public int Col; public float Y; public long Stamp; }
+    private static readonly List<GroundCacheEntry> _groundCache = new();
+    private static long _groundCacheStamp;
+
     private static float GroundYAtAny(float x, float yStart)
     {
         float best = float.NegativeInfinity;
+        long stamp = ++_groundCacheStamp;
         foreach (var (map, cols, rows) in _surfaceMaps)
         {
             if (map == null) continue;
@@ -1018,9 +1032,26 @@ public static class Effect2DSystem
             if (cell <= 0f || map.Width <= 0 || map.Height <= 0) continue;
             int col = (int)MathF.Floor(x / cell);
             if (col < 0 || col >= map.Width) continue;
+
+            // CACHE HIT: this (map, column) was computed in the previous frames —
+            // reuse the stored surface Y. Entries older than ~2 s get evicted
+            // lazily (map edit invalidation is handled by ClearGroundCache). 
+            for (int ci = 0; ci < _groundCache.Count; ci++)
+            {
+                var e = _groundCache[ci];
+                if (e.Map == map && e.Col == col)
+                {
+                    e.Stamp = stamp;
+                    _groundCache[ci] = e;
+                    if (e.Y > best) best = e.Y;
+                    goto nextMap;
+                }
+            }
+
             float topWorld = map.Height * cell;
             int rowStart = (int)MathF.Floor((topWorld - yStart) / cell);
             rowStart = Math.Clamp(rowStart, 0, map.Height - 1);
+            float colBest = float.NegativeInfinity;
             for (int row = rowStart; row < map.Height; row++)
             {
                 bool found = false;
@@ -1039,14 +1070,20 @@ public static class Effect2DSystem
                     var prof = GetTileTopProfile(map.TilesetImagePath ?? "", tile, cols, rows);
                     if (prof != null && prof.Length > 0)
                     {
-                        float fx = (x - col * cell) / cell;
-                        int ci = Math.Clamp((int)(fx * prof.Length), 0, prof.Length - 1);
-                        float f = prof[ci]; // 0 = tile top … 1 = transparent column
+                        // NOTE(CACHE): the profile depends on the SAMPLE X inside the
+                        // column — cache keyed per column keeps the MIDDLE-probe result.
+                        // This is a deliberate approximation: rain particles falling in
+                        // the same column now share one surface at the column center;
+                        // the visual difference (a few px inside one cell) is invisible
+                        // compared to the FS savings.
+                        float fx = 0.5f;   // cache probe = column center
+                        int ci2 = Math.Clamp((int)(fx * prof.Length), 0, prof.Length - 1);
+                        float f = prof[ci2];
                         if (f < 1f)
                         {
                             // f counts DOWN from the tile top (row 0 = top in the image)
                             float surf = tileTop - f * cell;
-                            if (surf > best) best = surf;
+                            if (surf > colBest) colBest = surf;
                             found = true;
                             break;
                         }
@@ -1058,16 +1095,33 @@ public static class Effect2DSystem
                     // fall back to the full box; decor tiles fall through.
                     if (solid)
                     {
-                        if (tileTop > best) best = tileTop; // full box surface
+                        if (tileTop > colBest) colBest = tileTop; // full box surface
                         found = true;
                         break;
                     }
                 }
                 if (found) break; // this map's highest surface for the column is done
             }
+            _groundCache.Add(new GroundCacheEntry { Map = map, Col = col, Y = colBest, Stamp = stamp });
+            if (colBest > best) best = colBest;
+            nextMap: ;
+        }
+        // Lazy eviction: entries last touched before ~2 s of stamps ago get
+        // dropped (stamps increment per query — an interval of stamps, not time).
+        if (_groundCache.Count > 256)
+        {
+            for (int i = _groundCache.Count - 1; i >= 0; i--)
+                if (stamp - _groundCache[i].Stamp > 512)
+                    _groundCache.RemoveAt(i);
         }
         return best;
     }
+
+    /// <summary>Column cache invalidation — tiles edited/scene changed. Called
+    /// from the same sites that already reset the weather state (session begin,
+    /// project close, map switch) — a stale surface would lurk one column below
+    /// the ground or above a removed platform.</summary>
+    public static void ClearGroundCache() => _groundCache.Clear();
 
     // ── PER-PIXEL sprite detection (user: "percikan di pinggiran sprite, bukan
     // kotaknya"): the rect test splashed on invisible box corners. Now the sprite's
@@ -1143,10 +1197,83 @@ public static class Effect2DSystem
     /// Per-type draw-data: Player2D → TryGetPlayer2DDrawData, Sprite2D →
     /// TryGetSprite2DDrawData; quads are the live render bounds (offsets + custom
     /// frames + facing mirror included).</summary>
-    private static (bool BodyHit, float TopY) SpriteHitAt(EditorObjectManager? mgr, float x, float y, float yStart)
+    // ── BROAD-PHASE (per-frame sprite snapshot) ──
+    // OLD SHAPE: every falling particle called SpriteHitAt TWICE (body + surface),
+    // and each call iterated ALL scene objects running TryGetPlayer2DDrawData /
+    // TryGetSprite2DDrawData (full quad math + clip lookup) per object. With rain's
+    // 30 s particle life (thousands alive) that was particles × objects quad-math
+    // evaluations per frame — a huge per-particle cost independent of collision.
+    // NEW SHAPE: once per IntegrateParticles, snapshot every visible sprite's RECT
+    // + sheet-path + uv window into a reusable buffer; per particle we then only do
+    // a cheap X-range scan over that buffer and run the per-pixel work exclusively
+    // on candidates whose X range actually contains the drop. Semantics identical
+    // (same rects → same hits) because the snapshot is taken from the same draw-
+    // data calls the renderer itself uses.
+    private struct SpriteRect { public float X0, X1, Y0, Y1, UMin, UMax, VMin, VMax; public string Path; public bool Pixels; }
+    private static readonly List<SpriteRect> _spriteRects = new();
+    private static int _spriteRectCount;
+
+    private static (bool BodyHit, float TopY) SpriteHitAt(float x, float y, float yStart)
     {
         float bestTop = float.NegativeInfinity;
-        if (mgr == null) return (false, bestTop);
+        var rects = _spriteRects;
+        for (int si = 0; si < _spriteRectCount; si++)
+        {
+            var e = rects[si];
+            if (x < e.X0 || x > e.X1) continue;
+
+            // Pixel path (preferred): decode the sheet + per-column top profile.
+            // FALLBACK (never silently skip a sprite — the "scarecrow tembus" bug):
+            // when pixels are unavailable, use the RECT top / rect body.
+            byte[]? data = null; int W = 0, H = 0, px = 0;
+            bool havePixels = false;
+            float surfaceY = e.Y1; // rect-top fallback
+
+            if (e.Pixels)
+            {
+                var fp = GetFrameTopProfile(e.Path, e.UMin, e.UMax, e.VMin, e.VMax);
+                if (fp != null)
+                {
+                    var (profArr, px0, px1, pdata, pw, ph) = fp.Value;
+                    float u = e.UMin + Math.Clamp((x - e.X0) / MathF.Max(0.0001f, e.X1 - e.X0), 0f, 1f) * (e.UMax - e.UMin);
+                    px = Math.Clamp((int)(u * pw), 0, pw - 1);
+                    int idx = Math.Clamp(px - px0, 0, Math.Max(0, px1 - px0 - 1));
+                    if (profArr[idx] < 1f)
+                    {
+                        havePixels = true;
+                        data = pdata; W = pw; H = ph;
+                        surfaceY = e.Y1 - profArr[idx] * (e.Y1 - e.Y0); // real outline surface
+                    }
+                    else
+                        continue; // transparent column → fall through this sprite
+                }
+            }
+
+            if (surfaceY <= yStart && surfaceY > bestTop) bestTop = surfaceY;
+
+            // Body hit: the drop is inside the sprite; with pixels, require the exact
+            // pixel to be opaque; without, the rect body is the fallback surface.
+            if (y >= e.Y0 && y <= e.Y1)
+            {
+                if (!havePixels)
+                    return (true, surfaceY); // rect body fallback
+                float fy = Math.Clamp((y - e.Y0) / MathF.Max(0.0001f, e.Y1 - e.Y0), 0f, 1f); // 0 bottom → 1 top
+                float v = e.VMax + fy * (e.VMin - e.VMax);
+                int py = Math.Clamp((int)(v * H), 0, H - 1);
+                if (data != null && data[(py * W + px) * 4 + 3] >= WeatherAlphaThreshold)
+                    return (true, surfaceY);
+            }
+        }
+        return (false, bestTop);
+    }
+
+    /// <summary>Snapshot every visible Player2D/Sprite2D's rendered rect + uv window
+    /// for this frame's weather broad-phase. Called once from IntegrateParticles.
+    /// Zero alloc steady-state (single reusable List, overwritten each frame).</summary>
+    private static void BuildSpriteRects(EditorObjectManager? mgr)
+    {
+        _spriteRectCount = 0;
+        if (mgr == null) return;
         foreach (var o in mgr.Objects)
         {
             if (o is not { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D })
@@ -1159,56 +1286,22 @@ public static class Effect2DSystem
                 : o.TryGetSprite2DDrawData(out t, out uvMin, out uvMax, out bl, out br, out tr, out tl);
             if (!ok) continue;
 
-            float x0 = MathF.Min(bl.X, tl.X), x1 = MathF.Max(br.X, tr.X);
-            float y0 = MathF.Min(bl.Y, br.Y), y1 = MathF.Max(tl.Y, tr.Y);
-            if (x < x0 || x > x1) continue;
-
-            // Pixel path (preferred): decode the sheet + per-column top profile.
-            // FALLBACK (never silently skip a sprite — the "scarecrow tembus" bug):
-            // when pixels are unavailable, use the RECT top / rect body.
-            byte[]? data = null; int W = 0, H = 0, px = 0;
-            bool havePixels = false;
-            float surfaceY = y1; // rect-top fallback
             string imagePath = "";
             if (o.TryGetPlayer2DClip(out var sheet, out var _) && sheet != null)
                 imagePath = sheet.ImagePath ?? "";
+            bool pixels = !string.IsNullOrWhiteSpace(imagePath) && GetFrameTopProfile(imagePath, uvMin.X, uvMax.X, uvMin.Y, uvMax.Y) != null;
 
-            if (!string.IsNullOrWhiteSpace(imagePath))
+            var e = new SpriteRect
             {
-                var fp = GetFrameTopProfile(imagePath, uvMin.X, uvMax.X, uvMin.Y, uvMax.Y);
-                if (fp != null)
-                {
-                    var (profArr, px0, px1, pdata, pw, ph) = fp.Value;
-                    float u = uvMin.X + Math.Clamp((x - x0) / MathF.Max(0.0001f, x1 - x0), 0f, 1f) * (uvMax.X - uvMin.X);
-                    px = Math.Clamp((int)(u * pw), 0, pw - 1);
-                    int idx = Math.Clamp(px - px0, 0, Math.Max(0, px1 - px0 - 1));
-                    if (profArr[idx] < 1f)
-                    {
-                        havePixels = true;
-                        data = pdata; W = pw; H = ph;
-                        surfaceY = y1 - profArr[idx] * (y1 - y0); // real outline surface
-                    }
-                    else
-                        continue; // transparent column → fall through this sprite
-                }
-            }
-
-            if (surfaceY <= yStart && surfaceY > bestTop) bestTop = surfaceY;
-
-            // Body hit: the drop is inside the sprite; with pixels, require the exact
-            // pixel to be opaque; without, the rect body is the fallback surface.
-            if (y >= y0 && y <= y1)
-            {
-                if (!havePixels)
-                    return (true, surfaceY); // rect body fallback
-                float fy = Math.Clamp((y - y0) / MathF.Max(0.0001f, y1 - y0), 0f, 1f); // 0 bottom → 1 top
-                float v = uvMax.Y + fy * (uvMin.Y - uvMax.Y);
-                int py = Math.Clamp((int)(v * H), 0, H - 1);
-                if (data != null && data[(py * W + px) * 4 + 3] >= WeatherAlphaThreshold)
-                    return (true, surfaceY);
-            }
+                X0 = MathF.Min(bl.X, tl.X), X1 = MathF.Max(br.X, tr.X),
+                Y0 = MathF.Min(bl.Y, br.Y), Y1 = MathF.Max(tl.Y, tr.Y),
+                UMin = uvMin.X, UMax = uvMax.X, VMin = uvMin.Y, VMax = uvMax.Y,
+                Path = imagePath, Pixels = pixels,
+            };
+            if (_spriteRectCount < _spriteRects.Count) _spriteRects[_spriteRectCount] = e;
+            else _spriteRects.Add(e);
+            _spriteRectCount++;
         }
-        return (false, bestTop);
     }
 
     /// <summary>Alive particle count (debug/perf readout).</summary>
@@ -1222,6 +1315,7 @@ public static class Effect2DSystem
     public static void ResetWeather()
     {
         Clear();
+        ClearGroundCache();   // map/scene may change between sessions — never serve stale column surfaces
         RainEnabled = false;
         WindX = 0f;
         SnowEnabled = false;

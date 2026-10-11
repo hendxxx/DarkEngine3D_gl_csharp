@@ -13,6 +13,35 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     /// </summary>
 public unsafe class EditorObjectManager
 {
+    // ── 2D sprite pass scratch (per-frame reuse — zero steady-state alloc) ──
+    private static readonly List<EditorObject> _scratchSprites2D = new();
+
+    /// <summary>In-place insertion sort of the 2D sprite pass list: layer ascending,
+    /// Player2D first on same-layer ties (the exact ordering the old
+    /// OrderBy(layer).ThenBy(player-first) produced). Insertion sort is deliberately
+    /// chosen over List.Sort: the list is NEARLY SORTED frame-to-frame (same sprites,
+    /// same order) → steady-state ≈ O(n) with zero allocation; List.Sort would be
+    /// O(n log n) + comparer delegate.
+    private static void InsertionSortSprites2D(List<EditorObject> list)
+    {
+        for (int i = 1; i < list.Count; i++)
+        {
+            var key = list[i];
+            int keyLayer = key.PrimitiveType == EditorPrimitiveType.Player2D ? key.Player2DRenderLayer : key.Sprite2DRenderLayer;
+            int keyPlayer = key.PrimitiveType == EditorPrimitiveType.Player2D ? 0 : 1;
+            int j = i - 1;
+            while (j >= 0)
+            {
+                var cur = list[j];
+                int curLayer = cur.PrimitiveType == EditorPrimitiveType.Player2D ? cur.Player2DRenderLayer : cur.Sprite2DRenderLayer;
+                int curPlayer = cur.PrimitiveType == EditorPrimitiveType.Player2D ? 0 : 1;
+                if (curLayer < keyLayer || (curLayer == keyLayer && curPlayer <= keyPlayer)) break;
+                list[j + 1] = list[j];
+                j--;
+            }
+            list[j + 1] = key;
+        }
+    }
     // ═══════════ 2D sprite frustum culling (perf: render HANYA yang terlihat kamera) ═══════════
 
     /// <summary>Cull telemetry passthrough (set on the 2D sprite pass below, on the
@@ -446,6 +475,12 @@ public unsafe class EditorObjectManager
                 SplatSlopeLayer = source.SplatSlopeLayer,
                 SplatSlopeThreshold = source.SplatSlopeThreshold,
                 SplatSlopeFade = source.SplatSlopeFade,
+                SplatSlopeUseDegrees = source.SplatSlopeUseDegrees,
+                SplatSlopeAngleMin = source.SplatSlopeAngleMin,
+                SplatSlopeAngleMax = source.SplatSlopeAngleMax,
+                SplatSlopeOverridePaint = source.SplatSlopeOverridePaint,
+                SplatSlopePaintFloor = source.SplatSlopePaintFloor,
+                SplatSlopeTiling = source.SplatSlopeTiling,
                 // ── Everything the .ing save persists MUST travel with the duplicate:
                 // a clone used to lose the whole 2D/NPC block (sprite art, actions,
                 // camera follow, render layers…) and only healed after a save+reload.
@@ -629,12 +664,23 @@ public unsafe class EditorObjectManager
             bool cullDebug = EditorObject.Show2DCullDebug;
             EditorObject.Debug2DCullObjects.Clear();
             EditorObject.Debug2DCullCulled.Clear();
+            // PERF: the 2D sprite pass used `.Where(...).OrderBy(...).ThenBy(...)`
+            // EVERY frame — that allocates 3 delegates + 2 iterators + sort buffers
+            // 60×/s (GC stutter = the 22 FPS dip). Fix: fill a SCRATCH list in one
+            // plain pass, then INSERTION-SORT it in place. The scratch stays mostly
+            // sorted frame-to-frame (same sprites, same order) → insertion sort runs
+            // ~O(n) on the steady state (each frame costs a few swaps, not a sort).
             List<EditorObject> culledPlayers = new(); // host portal yang dibuang culling
+            var sprites2D = _scratchSprites2D;
+            sprites2D.Clear();
+            foreach (var o in _objects)
+            {
+                if (o is not { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D }) continue;
+                sprites2D.Add(o);
+            }
+            InsertionSortSprites2D(sprites2D);
 
-            foreach (var obj in _objects
-                .Where(o => o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D })
-                .OrderBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? o.Player2DRenderLayer : o.Sprite2DRenderLayer)
-                .ThenBy(o => o.PrimitiveType == EditorPrimitiveType.Player2D ? 0 : 1))
+            foreach (var obj in sprites2D)
             {
                 bool culled = Is2DSpriteCulled(obj, camera, viewProj);
                 if (culled) EditorObject.Cull2DCulled++;

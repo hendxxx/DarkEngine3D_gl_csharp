@@ -440,6 +440,19 @@ public class EditorObjectData
     public float SplatSlopeThreshold { get; set; } = 0.35f;
     /// <summary>Slope blend width above the threshold.</summary>
     public float SplatSlopeFade { get; set; } = 0.2f;
+    // ── Slope v2 params (absent in old scenes → default = legacy look) ──
+    /// <summary>Angle mode: threshold/fade derived from an ANGLE range in degrees.</summary>
+    public bool SplatSlopeUseDegrees { get; set; } = false;
+    /// <summary>Slope angle range start (degrees, alpha 0 at/below).</summary>
+    public float SplatSlopeAngleMin { get; set; } = 35f;
+    /// <summary>Slope angle range end (degrees, alpha 1 at/above).</summary>
+    public float SplatSlopeAngleMax { get; set; } = 65f;
+    /// <summary>Override mode: the slope layer displaces manual paint on steep texels.</summary>
+    public bool SplatSlopeOverridePaint { get; set; } = false;
+    /// <summary>Override mode: minimum slope-layer weight on masked texels.</summary>
+    public float SplatSlopePaintFloor { get; set; } = 0.25f;
+    /// <summary>Tiling of the slope layer's textures (slopes stretch — usually 2-4×).</summary>
+    public float SplatSlopeTiling { get; set; } = 1f;
     public int SplatHeightLayerCount { get; set; } = -1;      // absent = legacy → 4
     public float SplatHeightLayerFeather { get; set; } = -1f; // absent = legacy → 2
     /// <summary>Per-layer band edges (world units): 8 floats — L0.low, L0.high, L1.low, …</summary>

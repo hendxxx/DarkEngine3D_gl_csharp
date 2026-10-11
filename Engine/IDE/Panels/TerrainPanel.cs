@@ -345,7 +345,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Checkbox("Auto layer from slope (PBR)##terrain_splat", ref slopeOn))
                     obj.SplatSlopeEnabled = slopeOn;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Assign ONE texture layer by surface STEEPNESS automatically:\nflat ground keeps its layers, slopes take the slope layer.\nUses the REAL displaced-geometry normal (same as the PBR shading).\nManual paint always wins over the slope mask.");
+                    ImGui.SetTooltip("Assign ONE texture layer by surface STEEPNESS automatically:\nflat ground keeps its layers, slopes take the slope layer.\nUses the REAL displaced-geometry normal (same as the PBR shading).");
                 if (slopeOn)
                 {
                     ImGui.Indent();
@@ -354,16 +354,61 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                         obj.SplatSlopeLayer = slopeLayer;
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Which layer (1-3) takes the steep areas.\nAssign its textures in 'Layer textures' below.");
-                    float slopeTh = obj.SplatSlopeThreshold;
-                    if (ImGui.SliderFloat("Threshold##terrain_slope", ref slopeTh, 0f, 0.95f, "%.2f"))
-                        obj.SplatSlopeThreshold = slopeTh;
+
+                    // ANGLE RANGE in DEGREES (the intuitive axis — 45° walkable, 70° cliff).
+                    // Normal-abstract sliders stay under 'Advanced' for old-scene parity.
+                    bool deg = obj.SplatSlopeUseDegrees;
+                    if (ImGui.Checkbox("Angle mode (degrees)##terrain_slope", ref deg))
+                        obj.SplatSlopeUseDegrees = deg;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("0 = the layer appears on any non-flat surface,\n0.7 = near-vertical cliffs only (N.Y of the displaced mesh).");
-                    float slopeFade = obj.SplatSlopeFade;
-                    if (ImGui.SliderFloat("Blend##terrain_slope", ref slopeFade, 0.005f, 0.6f, "%.3f"))
-                        obj.SplatSlopeFade = slopeFade;
+                        ImGui.SetTooltip("ON = threshold/blend in surface ANGLE degrees\n(0° = flat, 90° = vertical wall).\nOFF = the legacy abstract N.Y units (old scenes).\nDefaults to ON for new params.");
+                    if (deg)
+                    {
+                        float aMin = obj.SplatSlopeAngleMin;
+                        if (ImGui.SliderFloat("Angle start##terrain_slope", ref aMin, 0f, 89f, "%.0f°"))
+                            obj.SplatSlopeAngleMin = aMin;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Slope ALPHA = 0 at/below this angle.\n45° = walkable slope, 70° = cliff-face rock.");
+                        float aMax = obj.SplatSlopeAngleMax;
+                        if (ImGui.SliderFloat("Angle full##terrain_slope", ref aMax, 1f, 90f, "%.0f°"))
+                            obj.SplatSlopeAngleMax = aMax;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Slope ALPHA = 1 at/above this angle\n(the slope layer fully replaces the base).\nKept ≥ start + 1° automatically.");
+                    }
+                    else
+                    {
+                        float slopeTh = obj.SplatSlopeThreshold;
+                        if (ImGui.SliderFloat("Threshold##terrain_slope", ref slopeTh, 0f, 0.95f, "%.2f"))
+                            obj.SplatSlopeThreshold = slopeTh;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("LEGACY abstract units: 0 = any non-flat surface,\n0.7 = near-vertical cliffs only (N.Y of the displaced mesh).\n Prefer Angle mode for new params.");
+                        float slopeFade = obj.SplatSlopeFade;
+                        if (ImGui.SliderFloat("Blend##terrain_slope", ref slopeFade, 0.005f, 0.6f, "%.3f"))
+                            obj.SplatSlopeFade = slopeFade;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Blend width above the threshold —\n0.02 = hard cliff edge, 0.4 = soft gradual transition.");
+                    }
+
+                    // PAINT INTERPLAY — does the slope layer displace manual paint?
+                    bool ovPaint = obj.SplatSlopeOverridePaint;
+                    if (ImGui.Checkbox("Override painted areas##terrain_slope", ref ovPaint))
+                        obj.SplatSlopeOverridePaint = ovPaint;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Blend width above the threshold —\n0.02 = hard cliff edge, 0.4 = soft gradual transition.");
+                        ImGui.SetTooltip("OFF = painted weights keep their share (v1: the slope\nfades into paint, often reads as 'the slope layer does nothing').\nON = on steep-enough ground the slope layer TAKES OVER\neven where a different layer was painted.");
+                    if (ovPaint)
+                    {
+                        float floor = obj.SplatSlopePaintFloor;
+                        if (ImGui.SliderFloat("Slope floor##terrain_slope", ref floor, 0f, 0.9f, "%.2f"))
+                            obj.SplatSlopePaintFloor = floor;
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Minimum weight the slope layer reaches on any texel\nits mask covers — 0.25 keeps a hint of the painted\nlayer visible at full slope alpha.");
+                    }
+
+                    float sTiling = obj.SplatSlopeTiling;
+                    if (ImGui.SliderFloat("Slope tiling##terrain_slope", ref sTiling, 0.25f, 16f, "%.2f", ImGuiSliderFlags.Logarithmic))
+                        obj.SplatSlopeTiling = sTiling;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Tiling of the slope layer's textures across the terrain.\nSLOPES STRETCH — a rock texture usually wants 2-4× the\nground's tiling here, without touching the other layers.");
                     ImGui.Unindent();
                 }
 

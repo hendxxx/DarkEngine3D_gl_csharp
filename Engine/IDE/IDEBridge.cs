@@ -348,6 +348,9 @@ public class IDEBridge
     // ── In-game stats overlay toggle (FPS/TRIS/Objects panel while playing) ──
     public bool ShowInGameStats { get; set; } = true;
 
+    // ── Player2D 1 Hz collision telemetry toggle (Console panel [P2D-Tel] lines) ──
+    public bool Player2DTelemetry { get; set; } = false;
+
     // ── Editor viewport shadows toggle (CSM on/off for editor objects) ──
     public bool ShowShadows { get; set; } = true;
 

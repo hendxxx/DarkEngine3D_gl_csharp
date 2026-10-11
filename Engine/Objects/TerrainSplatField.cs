@@ -171,6 +171,72 @@ public sealed class TerrainSplatField
     /// <summary>Frame stamp of the last stroke this field confirmed (bake-once guard).</summary>
     public int LastStrokeStamp { get; set; } = -1;
 
+    // ── Paint snapshot (ExportSnapshot/ImportSnapshot blend) — the OVERRIDE slope
+    //    fold needs to re-apply the captured paint ON TOP of the slope-folded base
+    //    without losing it, or rebase deterministically without the paint. ──
+
+    /// <summary>Export the FULL paint state (weights + flags) as a defense — the
+    /// caller captures it before a destructive rebase, then re-imports/blends.
+    /// 256 KB payload each, so callers must snapshot only when actually needed.</summary>
+    public byte[] ExportSnapshot()
+    {
+        return SnapshotRGBA();
+    }
+
+    /// <summary>Restore all 256² RGBA weights from a snapshot blob
+    /// (from <see cref="ExportSnapshot"/>/SnapshotRGBA — 256 KB, 8-bit per channel).</summary>
+    public void ImportSnapshot(byte[] snapshot, bool blendPaintOverBase = false)
+    {
+        if (snapshot == null || snapshot.Length < Res * Res * 4) return;
+        if (!blendPaintOverBase)
+        {
+            Restore(snapshot);   // verbatim restore (weights + flags + dirty)
+            return;
+        }
+        // BLENDED import — the OVERRIDE-mode path: the snapshot's TYPE-A texels
+        // (painted) get their paint weight re-applied ON TOP of the slope-folded
+        // base; unpainted texels keep the folded base untouched.
+        // We can distinguish painted vs. auto because the snapshot was taken from
+        // the PAINTED field (HasPaint was true then) while the base now in _w is
+        // bands/neutral. We simply LIFT the layer the paint carried wherever it
+        // carried substantial weight — using the previous dominant layer for each
+        // texel the paint covered.
+        for (int i = 0; i < Res * Res; i++)
+        {
+            int idx = i * 4;
+            // Was the snapshot texel painted? (any of channels 1-3 dominant and
+            // channel 0 NOT dominant — a neutral layer-0 texel is NOT paint).
+            float r = snapshot[idx] / 255f, g = snapshot[idx + 1] / 255f,
+                  b = snapshot[idx + 2] / 255f, a = snapshot[idx + 3] / 255f;
+            int paintLayer = -1;
+            float paintW = 0f;
+            if (g > 0.55f) { paintLayer = 1; paintW = g; }
+            else if (b > 0.55f) { paintLayer = 2; paintW = b; }
+            else if (a > 0.55f) { paintLayer = 3; paintW = a; }
+            if (paintLayer < 0) continue;   // unpainted texel → keep the folded base
+            float cur = _w[idx + paintLayer];
+            // Re-linearize the paint (weights were renormalized when folded over).
+            float want = MathF.Max(cur, paintW);
+            float gained = want - cur;
+            if (gained <= 0.0001f) continue;
+            _w[idx + paintLayer] = want;
+            float otherSum = 0f;
+            for (int l = 0; l < 4; l++)
+                if (l != paintLayer) otherSum += _w[idx + l];
+            if (otherSum > 0.0001f)
+            {
+                float f = 1f - gained / otherSum;
+                for (int l = 0; l < 4; l++)
+                    if (l != paintLayer) _w[idx + l] *= f;
+            }
+        }
+        HasPaint = true;         // re-importing paint keeps the painted state
+        HasAnyEdits = true;
+        SlopeApplied = true;     // the slope fold already ran on the base
+        MarkWholeDirty();
+        NeedsBake = true;
+    }
+
     private TerrainSplatField() { }
 
     /// <summary>An empty field: every texel = layer 0 full weight (sums to 1).
@@ -498,18 +564,24 @@ public sealed class TerrainSplatField
         NeedsBake = true;
     }
 
-    /// <summary>SLOPE layer (PBR): multiply a steepness mask into ONE layer's weight
-    /// and renormalize by taking the share from the others (sum stays 1). The mask is
-    /// smoothstep(threshold, threshold+fade, 1−N.Y) with N derived from the REAL
-    /// displaced elevation (base × BaseHeight + offset + sculpt delta) via central
+    /// <summary>SLOPE layer (PBR): fold a steepness mask into ONE layer's weight.
+    /// The mask is smoothstep(threshold, threshold+fade, 1−N.Y) with N derived from the
+    /// REAL displaced elevation (base × BaseHeight + offset + sculpt delta) via central
     /// differences in WORLD units — the same surface the vertex stage renders, so the
-    /// slope layer hugs the visible geometry (paint/bands keep their share underneath).
-    /// Call AFTER the base weights exist (ComputeHeightBands / FillNeutralLayer0); on
-    /// a painted field this must never run (paint wins — caller checks HasPaint).
+    /// slope layer hugs the visible geometry. Two interplay modes:
+    /// <list type="bullet"><item>Combine (default, v1): painted/banded weights keep
+    /// their share under the mask (paint still wins overall — the caller skips fully
+    /// painted fields; per-texel the mask scales INTO them).</item>
+    /// <item>Override: on steep texels the target layer takes over up to
+    /// max(current, paintFloor·alpha) — the slope texture stays visible where the user
+    /// painted a different layer, at the cost of displacing that paint there.</item></list>
+    /// Call AFTER the base weights exist (ComputeHeightBands / FillNeutralLayer0); the
+    /// pass is NOT idempotent — callers rebuild a fresh base each time.
     /// Requires a subsequent FlushTexture().</summary>
     public void ComputeSlopeWeights(TerrainHeightfield? hf, TerrainHeightfield? delta, float deltaAmp,
         float baseHeight, float offset, float tilingX, float tilingY,
-        float spanX, float spanZ, int layer, float threshold, float fade)
+        float spanX, float spanZ, int layer, float threshold, float fade,
+        bool overridePaint = false, float paintFloor = 0.25f)
     {
         if (hf == null || layer < 0 || layer > 3 || !HasWeights) return;
         float bh = Math.Clamp(baseHeight, 0f, 500f);
@@ -541,12 +613,44 @@ public sealed class TerrainSplatField
                 t = t * t * (3f - 2f * t);                    // smoothstep
                 if (t <= 0.001f) continue;
                 int idx = (z * Res + x) * 4;
-                // Target layer takes t·(everything it doesn't already have); the other
-                // layers keep (1−t) of their share — the sum stays exactly 1.
-                float keep = 1f - t;
-                _w[idx + layer] = _w[idx + layer] + t * (1f - _w[idx + layer]);
-                for (int l = 0; l < 4; l++)
-                    if (l != layer) _w[idx + l] *= keep;
+                if (overridePaint)
+                {
+                    // OVERRIDE mode — the slope layer takes over on steep ground even
+                    // over manual paint: its weight rises to max(paint, floor·t) and
+                    // the OTHER layers give up exactly the gained share (sum stays 1).
+                    // The floor keeps the slope from consuming 100% of a texel (a fully
+                    // opaque slope would eat painted detail outright at alpha 1).
+                    float cur = _w[idx + layer];
+                    float want = MathF.Max(cur, Math.Clamp(paintFloor, 0f, 0.9f) * t);
+                    float gained = want - cur;
+                    _w[idx + layer] = want;
+                    if (gained > 0.0001f)
+                    {
+                        float otherSum = 0f;
+                        for (int l = 0; l < 4; l++)
+                            if (l != layer) otherSum += _w[idx + l];
+                        if (otherSum > 0.0001f)
+                        {
+                            float f = 1f - gained / otherSum;
+                            for (int l = 0; l < 4; l++)
+                                if (l != layer) _w[idx + l] *= f;
+                        }
+                        else
+                        {
+                            _w[idx + layer] = Math.Clamp(want + gained, 0f, 1f);   // nothing to take from — over-floor directly
+                        }
+                    }
+                }
+                else
+                {
+                    // COMBINE mode (v1 semantics) — target layer takes t·(everything
+                    // it doesn't already have); the other layers keep (1−t) of their
+                    // share — the sum stays exactly 1.
+                    float keep = 1f - t;
+                    _w[idx + layer] = _w[idx + layer] + t * (1f - _w[idx + layer]);
+                    for (int l = 0; l < 4; l++)
+                        if (l != layer) _w[idx + l] *= keep;
+                }
             }
         }
         SlopeApplied = true;

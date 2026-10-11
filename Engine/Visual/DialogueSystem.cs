@@ -441,22 +441,31 @@ public static unsafe class DialogueSystem
         InteractableNpc = null;
         if (manager != null && Active == null)
         {
-            var player = manager.Objects.FirstOrDefault(o =>
-                o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D });
+            // PERF: the FirstOrDefault ran as a closure + enumerator per frame, and
+            // the NPC scan did a Sqrt per NPC — both replaced by a plain foreach and
+            // a dist² comparison (best² carries no Sqrt, same ordering semantics).
+            EditorObject? player = null;
+            foreach (var o in manager.Objects)
+            {
+                if (o is { IsVisible: true, PrimitiveType: EditorPrimitiveType.Player2D }) { player = o; break; }
+            }
             if (player != null)
             {
                 float best = InteractionRange;
+                float bestSq = best * best;
+                EditorObject? bestNpc = null;
                 foreach (var obj in manager.Objects)
                 {
                     if (obj == player || !obj.IsVisible || string.IsNullOrEmpty(obj.NpcDialogueId)) continue;
                     float dx = obj.Position.X - player.Position.X;
                     float dy = obj.Position.Y - player.Position.Y;
-                    float dist = MathF.Sqrt(dx * dx + dy * dy);
+                    float distSq = dx * dx + dy * dy;
                     // Only keep it interactable while the player is still within range.
                     // That makes the [E] prompt disappear when the player walks away from
                     // the NPC, and reappear when another / the same NPC comes back in range.
-                    if (dist < best) { best = dist; InteractableNpc = obj; }
+                    if (distSq < bestSq) { bestSq = distSq; bestNpc = obj; }
                 }
+                InteractableNpc = bestNpc;
             }
         }
 

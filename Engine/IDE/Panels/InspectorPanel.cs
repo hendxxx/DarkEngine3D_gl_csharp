@@ -3447,6 +3447,8 @@ public class InspectorPanel
         for (int i = 0; i < editorObj.Actions.Count; i++)
         {
             var act = editorObj.Actions[i];
+            if (editorObj.PrimitiveType == Engine.Objects.EditorPrimitiveType.Player2D)
+                editorObj.InvalidatePlayer2DActionCaches();   // Jump/Fall cache — re-probe on any action panel edit
             ImGui.PushID($"p2dact{i}");
             // Stable widget ID: the label's visible part changes while typing, but the
             // ID comes from the text after '##' — without it, renaming changed the ID

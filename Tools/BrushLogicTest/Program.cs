@@ -253,6 +253,82 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     Check("Slope layer index respected", sl.SlopeApplied, "SlopeApplied flag set");
 }
 
+// ── SLOPE OVERRIDE MODE (v2) — the slope layer must DISPLACE manual paint on
+// steep texels while keeping a paint hint (floor), and flat painted texels must
+// stay untouched. The floor raise must preserve the sum = 1 invariant.
+{
+    var so = TerrainSplatField.CreateDefault();
+    so.FillNeutralLayer0();
+    // Paint layer 1 over the CENTER (protecting a painted texel to probe later).
+    so.BeginStroke();
+    for (int i = 0; i < 30; i++)
+        so.ApplyBrush(0f, 0f, 100f, 100f, new SplatBrushSession { Layer = 1, Radius = 4f, Strength = 6f }, 1f / 60f, i);
+    var paintedFlat = so.SampleWeights(0.5f, 0.5f);   // painted + flat → override must NOT touch (t≈0)
+    Check("Override flat painted: untouched", paintedFlat.Y > 0.95f,
+        $"painted L1={paintedFlat.Y:F3} (flat texel, mask ≈ 0)");
+
+    // Steep flank via the sculpt-delta bump (same rig as the Combine test).
+    var delta = TerrainHeightfield.CreateFlat(0.5f);
+    for (int i = 0; i < 120; i++)
+        delta.ApplyBrush(0f, 0f, 100f, 100f, 12f, 3f, 0.5f, TerrainBrushMode.Raise, 1f / 60f, i);
+    so.FillNeutralLayer0();
+    // Re-paint layer 1 (FillNeutral wiped it) so the override has paint to displace.
+    // Radius 12 COVERS THE WHOLE BUMP incl. its steepest flank (bump brush radius =
+    // 12) — the first probe suite taught this: paint r=6 leaves the flank texels
+    // unpainted, so an override there legitimately displace nothing.
+    so.BeginStroke();
+    for (int i = 0; i < 30; i++)
+        so.ApplyBrush(0f, 0f, 100f, 100f, new SplatBrushSession { Layer = 1, Radius = 14f, Strength = 6f }, 1f / 60f, i);
+    const float floor = 0.4f;
+    so.ComputeSlopeWeights(TerrainHeightfield.CreateFlat(0.5f), delta, 60f, 20f, 0f, 1f, 1f,
+        100f, 100f, 2, 0.1f, 0.3f, overridePaint: true, paintFloor: floor);
+    // Probe the steepest flank texel on the v=0.5 line: the override layer (L2)
+    // must reach at least the floor·alpha there (alpha ≈ 1 on the steepest flank).
+    float maxL2 = 0f; var maxW = Vector4.Zero;
+    for (int i = 0; i <= 40; i++)
+    {
+        float u = 0.28f + 0.44f * i / 40f;
+        var w = so.SampleWeights(u, 0.5f);
+        if (w.Z > maxL2) { maxL2 = w.Z; maxW = w; }
+    }
+    Check("Override steep: slope ≥ floor", maxL2 >= floor - 0.02f,
+        $"steep L2={maxL2:F3} ≥ floor {floor:F2}");
+    Check("Override steep: sum = 1", MathF.Abs((maxW.X + maxW.Y + maxW.Z + maxW.W) - 1f) < 0.003f,
+        $"sum={maxW.X + maxW.Y + maxW.Z + maxW.W:F4}");
+    // The displaced painted layer must KEEP a visible share (not crushed to 0).
+    Check("Override keeps paint hint", maxW.Y > 0.01f,
+        $"painted L1 on steep texel = {maxW.Y:F3} (> 0)");
+
+    // IDEMPOTENCE — a SECOND fold pass over the same parameters must NOT push the
+    // slope layer beyond the first fold's result (the fold runs from a rebased base
+    // each time in the editor; two sequential runs equivalent to one = the
+    // double-apply guard). Verify via a fresh field + same pipeline twice.
+    var so2 = TerrainSplatField.CreateDefault();
+    so2.FillNeutralLayer0();
+    so2.ComputeSlopeWeights(TerrainHeightfield.CreateFlat(0.5f), delta, 60f, 20f, 0f, 1f, 1f,
+        100f, 100f, 2, 0.1f, 0.3f, overridePaint: true, paintFloor: floor);
+    float f1 = so2.SampleWeights(0.42f, 0.5f).Z;
+    so2.ComputeSlopeWeights(TerrainHeightfield.CreateFlat(0.5f), delta, 60f, 20f, 0f, 1f, 1f,
+        100f, 100f, 2, 0.1f, 0.3f, overridePaint: true, paintFloor: floor);
+    float f2 = so2.SampleWeights(0.42f, 0.5f).Z;
+    Check("Override fold stable (max-push)", MathF.Abs(f2 - f1) < 0.02f,
+        $"fold1 L2={f1:F3} → fold2 L2={f2:F3} (Δ ≤ 0.02)");
+}
+
+// ── DEGREES CONVERSION — the pipeline EditorObject uses: slope(abstract) =
+// g²/(1+g²) ← g = tan(angle). Verify: a 45° world gradient (g=1 → slope 0.5)
+// maps to threshold 0.5, and a 70° gradient (tan≈2.75 → slope ≈0.883) exceeds it
+// while a 20° gradient (tan≈0.364 → slope ≈0.117) does not.
+{
+    static float SlopeFromGrad(float g) => g * g / (1f + g * g);
+    static float SlopeThr(float angleDeg) => SlopeFromGrad(MathF.Tan(angleDeg * MathF.PI / 180f));
+    float t45 = SlopeThr(45f);
+    float s20 = SlopeThr(20f), s70 = SlopeThr(70f);
+    Check("Degrees: 45° → thr ≈ 0.5", MathF.Abs(t45 - 0.5f) < 0.01f, $"thr={t45:F3}");
+    Check("Degrees: 20° below 45°, 70° above", s20 < t45 && s70 > t45,
+        $"s20={s20:F3} s45={t45:F3} s70={s70:F3}");
+}
+
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
 WeatherProbe.Run();

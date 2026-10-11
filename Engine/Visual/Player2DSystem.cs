@@ -31,32 +31,99 @@ public static class Player2DSystem
     /// <summary>Sub-1 emission accumulator for action-bound follow FX (carry-over
     /// between frames so low rates still emit deterministically).</summary>
     private static float _actionFxEmit;
+
+    // ── Hot-path scratch buffers ──    // Update runs EVERY frame (in-game + preview). The per-frame collection below
+    // (boxes, collision maps, layers) used to allocate fresh Lists 60×/s — enqueue
+    // pressure the GC pays for with stutter spikes. These buffers are reused; the
+    // content is rebuilt each frame (single-threaded update — no aliasing risk).
+    private static readonly List<(Vector3 min, Vector3 max)> _scratchBoxes = new();
+    private static readonly List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)> _scratchMapData = new();
+    // CRITICAL BUG + FIX ("physics dead / player falls through everything with 2+ maps"):
+    // the first scratch version reused ONE _scratchLayers list for EVERY map in
+    // mapData. TryAddCollisionMap(map2) Clear()ed that shared list — and because the
+    // tuples in mapData hold the SAME list reference, every ALREADY-ADDED map's
+    // layer set became empty instantly → IsSolid() false everywhere → walls and
+    // floors vanished mid-physics. A per-map layer list MUST be its own instance:
+    // each map takes a pool slot (Clear per-slot per-frame, single-threaded update
+    // = no aliasing), referencing each map's OWN TileLayer objects (TileLayer is
+    // never mutated here — only the tuple list is).
+    private static readonly List<List<(TileLayer layer, int idx)>> _scratchLayerPool = new();
+    private static int _scratchLayerPoolIdx;
+
+    // ── 1 Hz collision telemetry (FPS-dip diagnosis) ──
+    // Counters accumulate across frames (zero alloc: plain int/float fields), and
+    // once per second a single Console.WriteLine flushes+resets them. Kept as
+    // STATIC fields so physics stays allocation-free; toggled OFF by default —
+    // bridge sets Player2DTelemetryEnabled=true (IDE Settings → Gameplay) to turn
+    // the log on.
+    public static bool TelemetryEnabled;
+    private static float _telemetryTimer;
+    private static int _teleFrames;
+    private static int _telePlayers;
+    private static int _teleMaps;
+    private static int _teleCollisionLayers;
+    private static long _teleRowsProbed;
+    private static long _teleTilesProbed;
+    private static long _teleSolidsProbed;
+    private static long _teleXPushes;
+    private static long _teleLandings;
+
+    /// <summary>Row-window probe counter — call ONCE per row-scanning loop with
+    /// the loop's row count (X-push window, landing sweep, MapTopAt, respawn snap).</summary>
+    private static void TelRow(int rows)
+    {
+        if (TelemetryEnabled && rows > 0) _teleRowsProbed += rows;
+    }
+
+    /// <summary>Per-frame aggregates → one Console line per second when enabled.
+    /// Format: [P2D-Tel] fps~N players M maps K layers L rows R tiles T solid S
+    /// xp X land C — rows/tiles per SECOND are the diagnosis signal: a rising line
+    /// over time (map grew, more collision layers, multi-map stacking) shows up
+    /// BEFORE the FPS actually falls.</summary>
+    private static void TelemetryTick(float dt)
+    {
+        if (!TelemetryEnabled) return;
+        _teleFrames++;
+        _telemetryTimer += dt;
+        if (_telemetryTimer < 1f) return;
+        float fps = _teleFrames / MathF.Max(0.001f, _telemetryTimer);
+        Console.WriteLine(
+            $"[P2D-Tel] fps~{fps:F0} players={_telePlayers}/f maps={_teleMaps} collLayers={_teleCollisionLayers} " +
+            $"rows/s={_teleRowsProbed} tiles/s={_teleTilesProbed} solid/s={_teleSolidsProbed} " +
+            $"xp/s={_teleXPushes} land/s={_teleLandings}");
+        // Reset — one clean 1 s window.
+        _telemetryTimer = 0f; _teleFrames = 0;
+        _telePlayers = 0; _teleMaps = 0; _teleCollisionLayers = 0;
+        _teleRowsProbed = 0; _teleTilesProbed = 0; _teleSolidsProbed = 0;
+        _teleXPushes = 0; _teleLandings = 0;
+    }
+
     /// <summary>Advance animation clocks + run physics for all Player2D objects.
     /// Call once per frame from GameScene/SceneManager update when in-game or
     /// preview is active (not in pure edit mode).</summary>
     public static void Update(Objects.EditorObjectManager? manager, Tilemap2D? activeMap, float dt, IDEBridge? bridge)
     {
         if (manager == null) return;
+        TelemetryTick(dt);
 
         // Refresh the trigger runtime's manager reference (bubble actions anchor to
         // the player object found here). Also drives dialogue NPC interaction input.
         TriggerEventSystem.LastEditorObjectManager = manager;
         DialogueSystem.UpdateInteraction(manager, dt);
 
-        // Start2D marker — used both for the deferred spawn below and for pit respawn.
-        var start2d = manager.Objects.FirstOrDefault(o =>
-            o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
-
         // Deferred spawn: in-game entry sets Player2DSpawnPending because the .ing
         // reload re-creates objects AFTER the setter runs. On the first update frame
         // the re-created objects exist — teleport them to the Start2D marker now.
+        // LAZY Start2D: the full-object FirstOrDefault scan used to run EVERY frame
+        // (only the pit-death path actually consumes the marker on temple frames).
+        Objects.EditorObject? start2d = null;
         if (Objects.EditorObject.Player2DSpawnPending)
         {
+            foreach (var o in manager.Objects)
+                if (o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D }) { start2d = o; break; }
             Objects.EditorObject.Player2DSpawnPending = false;
             // New play session: the follow camera must re-snap to its start point.
             Objects.EditorObject.CameraFollowInitialized = false;
-            start2d = manager.Objects.FirstOrDefault(o =>
-                o is { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Start2D });
             if (start2d != null)
             {
                 foreach (var p in manager.Objects)
@@ -115,7 +182,8 @@ public static class Player2DSystem
         // ── Scene Box objects = solid AABB colliders (capsule vs box) ──
         // Axis-aligned from Position/Scale (rotation ignored — 2D sidescroller boxes
         // are unrotated). Feet-anchored capsule spans Z: Position.Z ± radius.
-        var boxes = new List<(Vector3 min, Vector3 max)>();
+        // Buffer-reused (no per-frame List allocation — GC pressure showed as FPS dips).
+        var boxes = _scratchBoxes; boxes.Clear();
         foreach (var b in manager.Objects)
         {
             if (b is not { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Box }) continue;
@@ -124,26 +192,30 @@ public static class Player2DSystem
             boxes.Add((b.Position - half, b.Position + half));
         }
 
-        // ── Multi-map collision collection ──
+        // ── Multi-map collision collection (buffer-reused, ONE manager pass) ──
         // Collision applies from EVERY visible Map2D tilemap in the scene (the
         // active map first), each against ALL of its collision-carrying layers.
         // Maps all bake at the world origin — one shared world↔grid mapping — so a
         // collision tile painted on ANY map level stops the capsule wherever it
         // stands (player on map 1, wall on map 3 → still solid).
-        var mapData = new List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)>();
-        foreach (var m in CollectCollisionMaps(manager, activeMap))
+        // PERF: the maps+layers collection is built ONCE per frame (not per player)
+        // into scratch lists; CollectCollisionMaps (which re-enumerated the manager
+        // AGAIN plus allocates) folded in here — one pass over manager.Objects covers
+        // the active-map pick, collision-map filter, Box colliders and the layer scan.
+        var mapData = _scratchMapData; mapData.Clear();
+        _scratchLayerPoolIdx = 0;   // pool round-trips per frame (undo the pool index)
+        if (activeMap != null) TryAddCollisionMap(activeMap, mapData);
+        foreach (var o in manager.Objects)
         {
-            float cell = m.TileSize * Tilemap2D.WorldScale;
-            if (cell <= 0f) continue;
-            // Collision layers — resolve against EVERY layer that carries collision
-            // IDs, not just the palette-selected ActiveLayer (paint-only layer).
-            var collisionLayers = new List<(TileLayer layer, int idx)>();
-            for (int i = 0; i < m.Layers.Count; i++)
-            {
-                var l = m.Layers[i];
-                if (l != null && l.CollisionTileIds.Count > 0) collisionLayers.Add((l, i));
-            }
-            if (collisionLayers.Count > 0) mapData.Add((m, cell, collisionLayers));
+            if (o is not { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Map2D, Map2dTilemap: { } m }) continue;
+            if (ReferenceEquals(m, activeMap)) continue;
+            TryAddCollisionMap(m, mapData);
+        }
+        if (TelemetryEnabled)
+        {
+            _teleMaps = Math.Max(_teleMaps, mapData.Count);
+            int cl = 0; foreach (var md in mapData) cl += md.layers.Count;
+            _teleCollisionLayers = Math.Max(_teleCollisionLayers, cl);
         }
 
         // Pit-death threshold: the largest cell among collision maps (any level);
@@ -157,6 +229,7 @@ public static class Player2DSystem
         {
             if (player is not { IsVisible: true, PrimitiveType: Objects.EditorPrimitiveType.Player2D })
                 continue;
+            if (TelemetryEnabled) _telePlayers++;
 
             // NOTE: the animation clock advances inside DrawPlayer2D (single source of
             // truth) — updating it here too would double the playback speed.
@@ -194,7 +267,10 @@ public static class Player2DSystem
             // Physical press is EDGE-detected (wasUp → isDown): ImGui.IsKeyPressed
             // auto-repeats while held (OS key-repeat) which caused jump-spam and an
             // endless jump-action loop. One physical press = one jump.
-            var jumpAction = player.Actions.FirstOrDefault(a => a.Name == "Jump");
+            // jumpAction lookup — cached on the player (re-faced only when the
+            // action list identity changes); the old per-frame FirstOrDefault ran
+            // on EVERY physics frame for EVERY player.
+            var jumpAction = player.GetJumpActionCached();
             bool jumpOnRelease = jumpAction is { IsKeyUpTrigger: true };
             ImGuiKey jumpBoundKey = ImGuiKey.None;
             if (jumpAction != null && !string.IsNullOrEmpty(jumpAction.KeyBinding)
@@ -233,6 +309,12 @@ public static class Player2DSystem
             jumpPressed &= !inputFrozen;
             bool jump = jumpPressed;
             float targetVx = 0f;
+
+            static bool PortalKeyProbeCached(string? keyName)
+            {
+                return Enum.TryParse<ImGuiKey>(keyName, out var k) && k != ImGuiKey.None
+                    && ImGui.IsKeyPressed(k, false);
+            }
             if (left && !right) targetVx = -(runHeld ? runSpeed : walkSpeed);
             else if (right && !left) targetVx = runHeld ? runSpeed : walkSpeed;
             // Walk vs Run is a STATE (speed modifier held + actually moving), consumed by
@@ -345,7 +427,14 @@ public static class Player2DSystem
             // ── Action-bound follow FX (fireball trail, magic aura…): stream particles
             // from the character while the action is active. One-shot FX burst inside
             // TryStartAction; this handles the Follow style via the runtime anchor.
-            var fxCur = player.Actions.FirstOrDefault(a => a.Name == player.Player2DCurrentAction);
+            // PERF: plain foreach — FirstOrDefault allocated a closure + enumerator
+            // per frame per player; the name rarely repeats frame-to-frame so a plain
+            // loop with early exit is allocation-free and just as fast.
+            Player2DAction? fxCur = null;
+            foreach (var fa in player.Actions)
+            {
+                if (fa.Name == player.Player2DCurrentAction) { fxCur = fa; break; }
+            }
             if (fxCur != null && !string.IsNullOrWhiteSpace(fxCur.FxPreset) && fxCur.FxFollow)
             {
                 var anchor = new Vector3(player.Position.X,
@@ -406,40 +495,79 @@ public static class Player2DSystem
                 }
             }
 
-            if (velX > 0f)
+            if (velX != 0f)
             {
+                float dir = MathF.Sign(velX);
+
+                // ── SWEPT WALL SWEEP (multi-column tunneling fix) ──
+                // The old check tested ONLY the destination column (gxEdge from newX):
+                // at run/jump speed the capsule can skip 2+ columns in ONE frame, so a
+                // wall standing in a skipped MIDDLE column was never tested → the
+                // player phased through it ("works walking, fails running/jumping" —
+                // walking never skips a column, so it was the ONLY safe case).
+                // Fix: walk the leading edge column by column from the START column to
+                // the end column, pushing back at the FIRST solid wall. Each map is
+                // swept independently (different cell sizes = different column counts).
+                // Cap the iterations (32) as a runaway guard — even a maxed run speed on
+                // a tiny-cell map stays well below it.
                 foreach (var (cmap, ccell, clayers) in mapData)
                 {
-                    // Right wall: the capsule's right edge enters column gxEdge —
-                    // push back to that column's LEFT face (newX stores pos.X, so the
-                    // capsule center newX+capOffX lands skin-width from the face).
-                    int gxEdge = (int)MathF.Floor((newX + capOffX + r) / ccell);
-                    TryResolveXPush(cmap, ccell, clayers, gxEdge, yBot, yTop, +1f, r, capOffX, ref newX);
-                }
-            }
-            else if (velX < 0f)
-            {
-                foreach (var (cmap, ccell, clayers) in mapData)
-                {
-                    // Left wall: the capsule's left edge enters column gxEdge —
-                    // push back to that column's RIGHT face.
-                    int gxEdge = (int)MathF.Floor((newX + capOffX - r) / ccell);
-                    TryResolveXPush(cmap, ccell, clayers, gxEdge, yBot, yTop, -1f, r, capOffX, ref newX);
+                    const int maxCols = 32;
+                    // Leading-edge column BEFORE and AFTER the move (per-map cell size).
+                    int gxOldEdge = (int)MathF.Floor((capX + dir * r) / ccell);
+                    int gxNewEdge = (int)MathF.Floor((newX + capOffX + dir * r) / ccell);
+                    int span = Math.Abs(gxNewEdge - gxOldEdge);
+
+                    // Walk the NEWLY-ENTERED columns in order. Slow move → span==0
+                    // (edge stays in the same column): the DESTINATION-EDGE column
+                    // MUST still be tested — `TryResolveXPush` only blocks when feet
+                    // are BELOW the (ramp-lowered) top, so retesting the edge's own
+                    // column never double-blocks a legal stance and keeps the old
+                    // behavior for the slow case (step-up/launch frames where the
+                    // edge partially dips into a wall column still push back).
+                    int cols = Math.Clamp(span, 1, maxCols);
+                    for (int c = 1; c <= cols; c++)
+                    {
+                        int gxC = span > 0
+                            ? (dir > 0f ? gxOldEdge + c : gxOldEdge - c)
+                            : gxNewEdge;             // span 0: test the edge's own column
+                        TryResolveXPush(cmap, ccell, clayers, gxC, yBot, yTop, dir, r, capOffX, ref newX);
+                        if (TelemetryEnabled) _teleXPushes++;
+
+                        // A wall push rewrites newX — if that pulled the leading edge
+                        // back to/before the column we just tested, the sweep is done
+                        // (further columns are behind the wall now).
+                        int gxNow = (int)MathF.Floor((newX + capOffX + dir * r) / ccell);
+                        int remain = dir > 0f ? gxNewEdge - gxNow : gxNow - gxNewEdge;
+                        if (remain <= 0)
+                            break;
+                    }
                 }
             }
 
             // Box walls along X (same pass, least-penetration style push kept from
             // the original behavior but applied to the swept position).
+            // TUNNELING FIX for boxes too: the overlap test used only the END position
+            // — a thin box could be crossed entirely in one fast frame (start edge left
+            // of the box, end edge right of it = both tests false = pass-through).
+            // Correct test = the interval [old edge, new edge] overlaps the box span.
             foreach (var (bmin, bmax) in boxes)
             {
                 bool overlapZ = capZMax > bmin.Z && capZMin < bmax.Z;
                 bool overlapY = yTop > bmin.Y + 0.001f && yBot < bmax.Y - 0.001f;
                 if (!overlapZ || !overlapY) continue;
 
-                if (newX + capOffX + r > bmin.X && newX + capOffX - r < bmax.X)
+                float capOldL = capX - r, capOldR = capX + r;      // pre-move span
+                float capNewL = newX + capOffX - r, capNewR = newX + capOffX + r;
+                // Swept X span = [min(oldL,newL), max(oldR,newR)] — overlap with the
+                // box = the interval intersection test.
+                bool sweptHit = MathF.Min(capOldL, capNewL) < bmax.X
+                             && MathF.Max(capOldR, capNewR) > bmin.X;
+                if (!sweptHit) continue;
+                if (capNewR > bmin.X && capNewL < bmax.X)
                 {
-                    float pushLeft = bmin.X - (newX + capOffX + r);   // negative: eject left
-                    float pushRight = bmax.X - (newX + capOffX - r);  // positive: eject right
+                    float pushLeft = bmin.X - capNewR;    // negative: eject left
+                    float pushRight = bmax.X - capNewL;   // positive: eject right
                     newX += MathF.Abs(pushLeft) < MathF.Abs(pushRight) ? pushLeft : pushRight;
                 }
             }
@@ -451,12 +579,17 @@ public static class Player2DSystem
             // ════════════════════════════════════════════════════════
             player.Player2DVelocityY -= player.Player2DGravity * MathF.Max(0f, player.Player2DGravityScale) * dt;
             // Fall action while airborne and descending (auto-released on landing by action loop rules).
-            if (player.Player2DVelocityY < -0.5f && !player.Player2DGrounded)
+            // PERF: FirstOrDefault over Actions every airborne frame replaced by an
+            // edge-flag (actions don't change per frame; only the cache flag needs refresh).
+            bool hasFallAction = player.Player2DHasFallAction;
+            if (!hasFallAction)
             {
-                var fallAct = player.Actions.FirstOrDefault(a => a.Name == "Fall");
-                if (fallAct != null && player.Player2DCurrentAction == "")
-                    player.TryStartAction("Fall");
+                hasFallAction = player.Actions.Any(a => a.Name == "Fall");
+                player.Player2DHasFallAction = hasFallAction;
             }
+            if (player.Player2DVelocityY < -0.5f && !player.Player2DGrounded && hasFallAction
+                && player.Player2DCurrentAction == "")
+                player.TryStartAction("Fall");
             float newY = pos.Y + player.Player2DVelocityY * dt;
             // STEP-UP carry: yBot/yTop were already RAISED next to the step — persist
             // that lift as a floor so gravity doesn't instantly re-pull through it; the
@@ -486,6 +619,7 @@ public static class Player2DSystem
                     int rowFeetOld = WorldRowFloor(cmap, pos.Y + capOffY, ccell);
                     int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
                     int rowBottom = Math.Max(rowFeetOld, rowFeetNew);
+                    TelRow(rowBottom - rowTop + 1);              // landing sweep rows
                     // Cross rows in the order the feet pass them: highest band first.
                     for (int gy = rowTop; gy <= rowBottom; gy++)
                     {
@@ -551,6 +685,7 @@ public static class Player2DSystem
                     newY = landTop.Value - capOffY;
                     player.Player2DVelocityY = 0f;
                     grounded = true;
+                    if (TelemetryEnabled) _teleLandings++;
                 }
             }
             else
@@ -647,10 +782,10 @@ public static class Player2DSystem
             // re-fire every frame. Default edge = E; the probe lets each portal use its
             // OWN configured key (PortalEnterKey, ImGuiKey name).
             bool portalKeyE = ImGui.IsKeyPressed(ImGuiKey.E, false);
-            TriggerEventSystem.PortalKeyProbe = keyName =>
-                Enum.TryParse<ImGuiKey>(keyName, out var k) && k != ImGuiKey.None
-                    ? ImGui.IsKeyPressed(k, false)
-                    : false;
+            // PERF: the probe lambda + Enum.TryParse per frame → ONE cached delegate
+            // (stateless static) assigned once per player loop instead of a fresh
+            // closure built 60×/s. Semantics identical.
+            TriggerEventSystem.PortalKeyProbe = PortalKeyProbeCached;
             // Trigger areas are map-local pixel rects mapped through each map's own
             // cell — evaluate EVERY visible scene map so portals/doors on other map
             // levels fire too (active map first). Then re-pin the checkpoint/snapping
@@ -1000,7 +1135,12 @@ public static class Player2DSystem
             int gx = WorldColFloor(m, worldX, cell);
             if (gx < 0 || gx >= m.Width) continue;
             int gy0 = WorldRowFloor(m, feetY, cell);
-            for (int gy = Math.Max(0, gy0); gy < m.Height; gy++)
+            // PERF: the probe looks for ground BELOW the feet only — scan a bounded
+            // window (max 3 rows down covers any step height well past the worst-
+            // case StepHeight) instead of every row to the map bottom.
+            int gyMax = Math.Min(m.Height - 1, gy0 + 3);
+            TelRow(gyMax - Math.Max(0, gy0) + 1);   // step-up probe rows
+            for (int gy = Math.Max(0, gy0); gy <= gyMax; gy++)
             {
                 bool solid = false;
                 (TileLayer layer, int idx) topLayer = default;
@@ -1025,26 +1165,39 @@ public static class Player2DSystem
 
     private static bool IsSolid(Tilemap2D map, TileLayer layer, int layerIdx, int gx, int gy)
     {
+        if (TelemetryEnabled) _teleTilesProbed++;
         if (gx < 0 || gy < 0 || gx >= map.Width || gy >= map.Height) return false;
         int tile = map.GetTile(layerIdx, gx, gy);
-        return tile >= 0 && layer.TileHasCollision(tile);
+        bool solid = tile >= 0 && layer.TileHasCollision(tile);
+        if (solid && TelemetryEnabled) _teleSolidsProbed++;
+        return solid;
     }
 
-    /// <summary>Visible scene maps carrying collision: the ACTIVE map first, then
-    /// every other visible Map2D tilemap (multi-map 2D levels). A map qualifies when
-    /// ANY of its layers carries CollisionTileIds.</summary>
-    private static List<Tilemap2D> CollectCollisionMaps(Objects.EditorObjectManager manager, Tilemap2D? activeMap)
+    /// <summary>Add ONE map to the per-frame collision list if it carries ANY
+    /// collision-carrying layer. PERF: scratch buffers reused — ZERO allocation
+    /// per frame in steady state; each map gets its OWN pooled list slot (see the
+    /// aliasing warning on _scratchLayerPool). Maps all bake at the world origin,
+    /// so the shared world↔grid mapping holds.</summary>
+    private static void TryAddCollisionMap(Tilemap2D m,
+        List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)> mapData)
     {
-        var maps = new List<Tilemap2D>();
-        foreach (var m in TriggerEventSystem.EnumerateSceneMaps(manager, activeMap))
+        float cell = m.TileSize * Tilemap2D.WorldScale;
+        if (cell <= 0f) return;
+        // Collision layers — resolve against EVERY layer that carries collision
+        // IDs, not just the palette-selected ActiveLayer (paint-only layer).
+        // Pool round-robin: slot i reused for map i; a pool slot never exceeds the
+        // map count of one frame, and each map entry keeps a DISTINCT list.
+        if (_scratchLayerPoolIdx >= _scratchLayerPool.Count)
+            _scratchLayerPool.Add(new List<(TileLayer, int)>());
+        var collisionLayers = _scratchLayerPool[_scratchLayerPoolIdx];
+        _scratchLayerPoolIdx++;
+        collisionLayers.Clear();
+        for (int i = 0; i < m.Layers.Count; i++)
         {
-            if (m == null) continue;
-            foreach (var l in m.Layers)
-            {
-                if (l != null && l.CollisionTileIds.Count > 0) { maps.Add(m); break; }
-            }
+            var l = m.Layers[i];
+            if (l != null && l.CollisionTileIds.Count > 0) collisionLayers.Add((l, i));
         }
-        return maps;
+        if (collisionLayers.Count > 0) mapData.Add((m, cell, collisionLayers));
     }
 
     /// <summary>X-sweep push for ONE map: the capsule's leading edge entered column
@@ -1056,11 +1209,16 @@ public static class Player2DSystem
         List<(TileLayer layer, int idx)> layers, int gxEdge,
         float yBot, float yTop, float dir, float r, float capOffX, ref float newX)
     {
-        for (int gy = 0; gy < map.Height; gy++)
+        // PERF: the wall column is tested only over the ROWS the capsule actually
+        // spans — the old loop scanned ALL rows of the map for every push (a
+        // 100-row map = 100 row-bounds checks + IsSolid calls × layers, every
+        // frame, per map). Row bounds map inverts Y (row 0 = top): compute the
+        // window from the capsule's Y span directly.
+        int gy0 = Math.Max(0, (int)MathF.Floor((map.Height * cell - yTop) / cell));
+        int gy1 = Math.Min(map.Height - 1, (int)MathF.Floor((map.Height * cell - yBot) / cell));
+        TelRow(gy1 - gy0 + 1);   // X-push wall-column rows
+        for (int gy = gy0; gy <= gy1; gy++)
         {
-            float tMinY = (map.Height - 1 - gy) * cell;
-            float tMaxY = tMinY + cell;
-            if (yTop <= tMinY || yBot >= tMaxY) continue; // row outside the capsule span
             foreach (var (collisionLayer, layerIdx) in layers)
             {
                 if (!IsSolid(map, collisionLayer, layerIdx, gxEdge, gy)) continue;

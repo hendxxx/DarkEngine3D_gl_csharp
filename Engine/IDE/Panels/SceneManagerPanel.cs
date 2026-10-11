@@ -1066,6 +1066,12 @@ public class SceneManagerPanel
                         SplatSlopeLayer = obj.SplatSlopeLayer,
                         SplatSlopeThreshold = obj.SplatSlopeThreshold,
                         SplatSlopeFade = obj.SplatSlopeFade,
+                        SplatSlopeUseDegrees = obj.SplatSlopeUseDegrees,
+                        SplatSlopeAngleMin = obj.SplatSlopeAngleMin,
+                        SplatSlopeAngleMax = obj.SplatSlopeAngleMax,
+                        SplatSlopeOverridePaint = obj.SplatSlopeOverridePaint,
+                        SplatSlopePaintFloor = obj.SplatSlopePaintFloor,
+                        SplatSlopeTiling = obj.SplatSlopeTiling,
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
@@ -1503,6 +1509,15 @@ public class SceneManagerPanel
                         obj.SplatSlopeLayer = Math.Clamp(objData.SplatSlopeLayer, 1, 3);
                         obj.SplatSlopeThreshold = Math.Clamp(objData.SplatSlopeThreshold, 0f, 0.98f);
                         obj.SplatSlopeFade = Math.Clamp(objData.SplatSlopeFade, 0.002f, 1f);
+                        // Slope v2 params — absent (default values / legacy scene) keep
+                        // the built-in defaults, no migration needed (degrees default OFF
+                        // inside the default bool, Override default OFF, floor 0.25).
+                        obj.SplatSlopeUseDegrees = objData.SplatSlopeUseDegrees;
+                        obj.SplatSlopeAngleMin = Math.Clamp(objData.SplatSlopeAngleMin, 0f, 89f);
+                        obj.SplatSlopeAngleMax = Math.Clamp(objData.SplatSlopeAngleMax, 1f, 90f);
+                        obj.SplatSlopeOverridePaint = objData.SplatSlopeOverridePaint;
+                        obj.SplatSlopePaintFloor = Math.Clamp(objData.SplatSlopePaintFloor, 0f, 0.9f);
+                        obj.SplatSlopeTiling = Math.Clamp(objData.SplatSlopeTiling, 0.25f, 16f);
                         if (objData.SplatHeightLayerCount > 0)
                             obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
                         if (objData.SplatHeightLayerFeather >= 0f)
@@ -1984,6 +1999,12 @@ public class SceneManagerPanel
                             SplatSlopeLayer = obj.SplatSlopeLayer,
                             SplatSlopeThreshold = obj.SplatSlopeThreshold,
                             SplatSlopeFade = obj.SplatSlopeFade,
+                            SplatSlopeUseDegrees = obj.SplatSlopeUseDegrees,
+                            SplatSlopeAngleMin = obj.SplatSlopeAngleMin,
+                            SplatSlopeAngleMax = obj.SplatSlopeAngleMax,
+                            SplatSlopeOverridePaint = obj.SplatSlopeOverridePaint,
+                            SplatSlopePaintFloor = obj.SplatSlopePaintFloor,
+                            SplatSlopeTiling = obj.SplatSlopeTiling,
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,

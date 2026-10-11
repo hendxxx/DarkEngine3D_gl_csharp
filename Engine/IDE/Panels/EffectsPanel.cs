@@ -53,6 +53,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 for (int i = 0; i < obj.Actions.Count; i++)
                 {
                     var act = obj.Actions[i];
+                    if (obj.PrimitiveType == EditorPrimitiveType.Player2D)
+                        obj.InvalidatePlayer2DActionCaches();   // Jump/Fall cache — re-probe on any FX-panel edit
                     ImGui.PushID(i);
                     bool open = ImGui.TreeNodeEx($"{act.Name}", ImGuiTreeNodeFlags.Framed);
                     if (open)
