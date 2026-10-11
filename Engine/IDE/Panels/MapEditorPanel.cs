@@ -1542,6 +1542,49 @@ public class MapEditorPanel
         // Quick summary of how many distinct tile IDs currently collide.
         int count = layer.CollisionTileIds.Count;
         ImGui.TextDisabled($"{count} tile ID(s) flagged for collision on this layer");
+
+        // ── Per-ID collision TOP heights (kiri/kanan terpisah → ramp) ──
+        // NOTE: overrides live PER-TILE-CELL (TileLayer.TileTopOverrides, indexed by
+        // tile position), but the collision PALETTE works per TILE ID (a paint tool).
+        // Simplest editor UX that matches the palette's id-based model: the sliders
+        // below write the override onto EVERY COLLIDING INSTANCE of the selected id
+        // — set once, affects the whole run of that tile type. A single placed tile
+        // behaves identically. 1.0 = full cell height (default).
+        ImGui.Separator();
+        ImGui.Text("Collision Top (L/R) — ramp");
+        ImGui.TextDisabled("(Kiri/kanan terpisah: 1.0 = tinggi penuh; 0.3 kiri + 1.0 kanan = tanjakan)");
+        int[] selIds = targetIds.Count > 0 ? targetIds.ToArray() : [];
+        foreach (int id in selIds)
+        {
+            // Read from the FIRST placed collision instance of this id (or 1.0).
+            float curL = 1f, curR = 1f;
+            bool found = false;
+            for (int y = 0; y < layer.Height && !found; y++)
+                for (int x = 0; x < layer.Width && !found; x++)
+                {
+                    if (layer.GetTile(x, y) != id || !layer.TileHasCollision(id)) continue;
+                    (curL, curR) = layer.GetTileTopFracs(x, y);
+                    found = true;
+                }
+            ImGui.PushID(id);
+            ImGui.Text($"Tile {id}");
+            if (ImGui.DragFloat("Left##topfrac", ref curL, 0.02f, -1f, 1f, "%.2f"))
+            {
+                for (int y = 0; y < layer.Height; y++)
+                    for (int x = 0; x < layer.Width; x++)
+                        if (layer.GetTile(x, y) == id && layer.TileHasCollision(id))
+                            layer.SetTileTopFracs(x, y, curL, curR);
+            }
+            
+            if (ImGui.DragFloat("Right##topfrac", ref curR, 0.02f, -1f, 1f, "%.2f"))
+            {
+                for (int y = 0; y < layer.Height; y++)
+                    for (int x = 0; x < layer.Width; x++)
+                        if (layer.GetTile(x, y) == id && layer.TileHasCollision(id))
+                            layer.SetTileTopFracs(x, y, curL, curR);
+            }
+            ImGui.PopID();
+        }
     }
 
     // ── Trigger Areas UI ────────────────────────────────────────────────

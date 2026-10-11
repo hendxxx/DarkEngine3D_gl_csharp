@@ -314,6 +314,36 @@ public class TileLayer
     /// <summary>Collision tile IDs (tiles with these IDs have collision).</summary>
     public HashSet<int> CollisionTileIds = new();
 
+    /// <summary>PER-TILE TOP-EDGE OVERRIDE (kiri/kanan terpisah) — collision box
+    /// adjustable height: a collision tile normally spans its full cell (top = 100%);
+    /// a per-tile L/R top override makes the box a RAMP/WEDGE (e.g. 0.3 left, 1.0
+    /// right = a slope the player walks up). Key = tile INDEX (y*Width+x); value =
+    /// (LeftFrac, RightFrac) of the cell height, 1.0 = full. Tiles WITHOUT a key stay
+    /// full-height (backward compat with existing maps).</summary>
+    public Dictionary<int, (float LeftFrac, float RightFrac)> TileTopOverrides = new();
+
+    /// <summary>Top-edge L/R fractions of a collision tile (1.0 = full height).
+    /// Default full for tiles without an override.</summary>
+    public (float LeftFrac, float RightFrac) GetTileTopFracs(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= Width || y >= Height) return (1f, 1f);
+        return TileTopOverrides.TryGetValue(y * Width + x, out var f) ? f : (1f, 1f);
+    }
+
+    /// <summary>Set top-edge L/R fractions on a tile (fractions ≤0 remove the
+    /// override — the collision box returns to full height). Fractions clamp to
+    /// [0, 1]; RESIZE keeps per-tile modifiers whose key still maps to a valid index
+    /// (resizes copy row-major, so old keys survive only when width is unchanged —
+    /// cleared wholesale otherwise, a documented limitation).</summary>
+    public void SetTileTopFracs(int x, int y, float leftFrac, float rightFrac)
+    {
+        if (x < 0 || y < 0 || x >= Width || y >= Height) return;
+        int idx = y * Width + x;
+        float l = Math.Clamp(leftFrac, 0f, 1f), r = Math.Clamp(rightFrac, 0f, 1f);
+        if (l >= 0.999f && r >= 0.999f) TileTopOverrides.Remove(idx); // full = default
+        else TileTopOverrides[idx] = (l, r);
+    }
+
     public int GetTile(int x, int y)
     {
         if (_tiles.Length == 0 || x < 0 || x >= Width || y < 0 || y >= Height) return -1;
@@ -378,7 +408,10 @@ public class TileLayer
         Width = Width,
         Height = Height,
         Tiles = _tiles.ToArray(),
-        CollisionTileIds = CollisionTileIds.ToList()
+        CollisionTileIds = CollisionTileIds.ToList(),
+        TileTopOverrides = TileTopOverrides.Count > 0
+            ? TileTopOverrides.ToDictionary(kv => kv.Key, kv => new[] { kv.Value.LeftFrac, kv.Value.RightFrac })
+            : null
     };
 
     public static TileLayer FromData(TileLayerData data)
@@ -395,6 +428,14 @@ public class TileLayer
             _tiles = data.Tiles?.ToArray() ?? [],
             CollisionTileIds = new HashSet<int>(data.CollisionTileIds ?? [])
         };
+        if (data.TileTopOverrides != null)
+        {
+            foreach (var (k, v) in data.TileTopOverrides)
+            {
+                if (v is { Length: 2 } f && k >= 0 && k < layer.Width * layer.Height)
+                    layer.TileTopOverrides[k] = (Math.Clamp(f[0], 0f, 1f), Math.Clamp(f[1], 0f, 1f));
+            }
+        }
         // Normalize: an empty/null Tiles payload (new layer saved before any paint, or
         // hand-edited JSON) must become a real W×H array — GetTile on an empty array
         // reports -1 everywhere, so painting such a layer would mutate data the mesh
@@ -730,4 +771,7 @@ public class TileLayerData
     public int Height { get; set; }
     public int[]? Tiles { get; set; }
     public List<int>? CollisionTileIds { get; set; }
+    /// <summary>Per-tile collision top-edge override (tile index → [LeftFrac, RightFrac]
+    /// of the cell height, 1.0 = full). Ramp/wedge collision boxes.</summary>
+    public Dictionary<int, float[]>? TileTopOverrides { get; set; }
 }

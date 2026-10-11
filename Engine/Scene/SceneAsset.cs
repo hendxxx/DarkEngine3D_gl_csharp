@@ -244,6 +244,7 @@ public class EditorObjectData
     public float Player2DAirControl { get; set; } = 0.65f;
     // ── Platformer jump feel ──
     public float Player2DCoyoteTime { get; set; } = 0.1f;
+    public float Player2DStepHeight { get; set; } = 0.35f;
     public float Player2DJumpBuffer { get; set; } = 0.12f;
     public float Player2DJumpCutMultiplier { get; set; } = 0.5f;
     // ── Sprite2D decorative sprite (Player2D fields reused for sheet/clip/height) ──

@@ -462,6 +462,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Player2DCapsuleHeight = objData.Player2DCapsuleHeight;
                 obj.Player2DCapsuleOffsetX = objData.Player2DCapsuleOffsetX;
                 obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
+                obj.Player2DStepHeight = objData.Player2DStepHeight;
 
                 // ── Effect2D emitter payload (runtime twin of the editor load path) ──
                 obj.Effect2DPreset = objData.Effect2DPreset;

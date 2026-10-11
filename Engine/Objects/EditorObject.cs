@@ -405,6 +405,11 @@ public unsafe class EditorObject
     /// <summary>Grace period (s) after walking off a ledge where a jump still fires —
     /// forgiving near-edge jumps. 0 = disabled (must be grounded the exact frame).</summary>
     public float Player2DCoyoteTime { get; set; } = 0.1f;
+    /// <summary>STEP-UP height (world units): the max top-edge rise the player can
+    /// WALK UP without pressing jump (ramps/slopes/tile with a raised top). 0 = no
+    /// step-up (every rise above the feet is a wall). Typical ~0.35 world units ≈ a
+    /// third of a tile — covers small ramps.</summary>
+    public float Player2DStepHeight { get; set; } = 0.35f;
     /// <summary>Input buffer (s): a jump pressed slightly BEFORE landing still fires on
     /// touchdown. 0 = disabled (press must land on the exact frame).</summary>
     public float Player2DJumpBuffer { get; set; } = 0.12f;
@@ -6766,28 +6771,37 @@ void main() {
                             float yN = -halfDepth; // near face → world +Z (in front of grid)
                             float yF = +halfDepth; // far face → world -Z (behind grid) — tile centered
 
-                            // 6 shaded faces (top brightest, sides dimmer → 3D depth cue)
-                            ColFace(1.25f, wx0, yN, wy1, wx1, yN, wy1, wx1, yF, wy1, wx0, yF, wy1); // top
+                            // PER-TILE TOP OVERRIDE (collision box kiri/kanan terpisah):
+                            // L/R top fractions lower each EDGE independently → the box
+                            // preview becomes a RAMP/wedge matching the physics tops.
+                            var (lFrac, rFrac) = colLayer.GetTileTopFracs(tx, ty);
+                            float topL = wy1 - (1f - lFrac) * cell;
+                            float topR = wy1 - (1f - rFrac) * cell;
+
+                            // 6 shaded faces (top brightest, sides dimmer → 3D depth cue).
+                            // Top face is split by the L/R edge heights (one quad,formed
+                            // from tileX0-topL to tileX1-topR — a straight slope).
+                            ColFace(1.25f, wx0, yN, topL, wx1, yN, topR, wx1, yF, topR, wx0, yF, topL); // top (ramp when lFrac≠rFrac)
                             ColFace(0.55f, wx0, yN, wy0, wx1, yN, wy0, wx1, yF, wy0, wx0, yF, wy0); // bottom
-                            ColFace(0.80f, wx0, yN, wy0, wx0, yN, wy1, wx0, yF, wy1, wx0, yF, wy0); // left
-                            ColFace(0.80f, wx1, yN, wy0, wx1, yN, wy1, wx1, yF, wy1, wx1, yF, wy0); // right
-                            ColFace(1.00f, wx0, yN, wy0, wx1, yN, wy0, wx1, yN, wy1, wx0, yN, wy1); // near
-                            ColFace(0.45f, wx0, yF, wy0, wx1, yF, wy0, wx1, yF, wy1, wx0, yF, wy1); // far
+                            ColFace(0.80f, wx0, yN, wy0, wx0, yN, topL, wx0, yF, topL, wx0, yF, wy0); // left (edge at topL)
+                            ColFace(0.80f, wx1, yN, wy0, wx1, yN, topR, wx1, yF, topR, wx1, yF, wy0); // right (edge at topR)
+                            ColFace(1.00f, wx0, yN, wy0, wx1, yN, wy0, wx1, yN, topR, wx0, yN, topL); // near (L-leaning ramp face)
+                            ColFace(0.45f, wx0, yF, wy0, wx1, yF, wy0, wx1, yF, topR, wx0, yF, topL); // far
 
                             // 12 world-space edges (bright outline, drawn after the faces)
                             float zF = layerZ - halfDepth, zN = layerZ + halfDepth;
                             edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zF));
-                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zF));
-                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zF));
-                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zF));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, topR, zF));
+                            edgeVerts.Add(new Vector3(wx1, topR, zF)); edgeVerts.Add(new Vector3(wx0, topL, zF));
+                            edgeVerts.Add(new Vector3(wx0, topL, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zF));
                             edgeVerts.Add(new Vector3(wx0, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
-                            edgeVerts.Add(new Vector3(wx1, wy0, zN)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
-                            edgeVerts.Add(new Vector3(wx1, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
-                            edgeVerts.Add(new Vector3(wx0, wy1, zN)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
+                            edgeVerts.Add(new Vector3(wx1, wy0, zN)); edgeVerts.Add(new Vector3(wx1, topR, zN));
+                            edgeVerts.Add(new Vector3(wx1, topR, zN)); edgeVerts.Add(new Vector3(wx0, topL, zN));
+                            edgeVerts.Add(new Vector3(wx0, topL, zN)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
                             edgeVerts.Add(new Vector3(wx0, wy0, zF)); edgeVerts.Add(new Vector3(wx0, wy0, zN));
                             edgeVerts.Add(new Vector3(wx1, wy0, zF)); edgeVerts.Add(new Vector3(wx1, wy0, zN));
-                            edgeVerts.Add(new Vector3(wx1, wy1, zF)); edgeVerts.Add(new Vector3(wx1, wy1, zN));
-                            edgeVerts.Add(new Vector3(wx0, wy1, zF)); edgeVerts.Add(new Vector3(wx0, wy1, zN));
+                            edgeVerts.Add(new Vector3(wx1, topR, zF)); edgeVerts.Add(new Vector3(wx1, topR, zN));
+                            edgeVerts.Add(new Vector3(wx0, topL, zF)); edgeVerts.Add(new Vector3(wx0, topL, zN));
                         }
                     }
 

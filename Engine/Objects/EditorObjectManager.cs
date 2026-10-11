@@ -466,6 +466,7 @@ public unsafe class EditorObjectManager
                 Player2DDeceleration = source.Player2DDeceleration,
                 Player2DAirControl = source.Player2DAirControl,
                 Player2DCoyoteTime = source.Player2DCoyoteTime,
+                Player2DStepHeight = source.Player2DStepHeight,
                 Player2DJumpBuffer = source.Player2DJumpBuffer,
                 Player2DJumpCutMultiplier = source.Player2DJumpCutMultiplier,
                 Player2DFacingRight = source.Player2DFacingRight,

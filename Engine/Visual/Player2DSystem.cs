@@ -386,6 +386,26 @@ public static class Player2DSystem
             // only tiles whose world band overlaps the capsule [yBot, yTop] block —
             // so sweeping other maps with all their rows can't phantom-block from a
             // solid tile far above the head in the same column.
+            // STEP-UP (user: "tanjakan sedikit langsung naik saja") — walking INTO a
+            // collision tile whose (possibly interpolated) top is only ≤ StepHeight
+            // above the feet LIFTS the feet onto that top instead of stopping the
+            // character; the Y-resolve below keeps grounding. Only while grounded and
+            // moving — a jump passes over anything taller anyway.
+            float stepH = MathF.Max(0f, player.Player2DStepHeight);
+            bool steppedUp = false;
+            if (stepH > 0f && player.Player2DGrounded && velX != 0f)
+            {
+                float probeX = (velX > 0f ? newX + capOffX + r + 0.05f : newX + capOffX - r - 0.05f);
+                float aheadTop = MapTopAt(mapData, probeX, yBot + stepH);
+                // aheadTop within [yBot, yBot+stepH] → rise the feet onto it.
+                if (aheadTop > yBot + 0.005f && aheadTop <= yBot + stepH && aheadTop < yTop)
+                {
+                    float dy = aheadTop - yBot;
+                    yBot += dy; yTop += dy;
+                    steppedUp = true;
+                }
+            }
+
             if (velX > 0f)
             {
                 foreach (var (cmap, ccell, clayers) in mapData)
@@ -438,8 +458,13 @@ public static class Player2DSystem
                     player.TryStartAction("Fall");
             }
             float newY = pos.Y + player.Player2DVelocityY * dt;
+            // STEP-UP carry: yBot/yTop were already RAISED next to the step — persist
+            // that lift as a floor so gravity doesn't instantly re-pull through it; the
+            // falling probe below re-lands the feet exactly on the ramp top.
+            float stepFloor = steppedUp ? yBot - capOffY : float.MinValue;
+            if (newY < stepFloor) newY = stepFloor;
 
-            bool grounded = false;
+            bool grounded = steppedUp; // a step-up frame is grounded (feet on the suffered ramp top)
 
             if (player.Player2DVelocityY <= 0f)
             {
@@ -449,10 +474,14 @@ public static class Player2DSystem
                 // Across maps the HIGHEST qualifying surface wins (a bridge tile on
                 // map 3 lands the player even with map 1 open below).
                 float? landTop = null;
+                // Probe columns use the RESOLVED X (newX, cap center) — a step-up frame
+                // moved the capsule INTO the new column, so landing on the ramp top must
+                // consider where the capsule ended up, not where it started.
+                float landCapX = newX + capOffX;
                 foreach (var (cmap, ccell, clayers) in mapData)
                 {
-                    int gx0 = WorldColFloor(cmap, capX - r + 0.001f, ccell);
-                    int gx1 = WorldColFloor(cmap, capX + r - 0.001f, ccell);
+                    int gx0 = WorldColFloor(cmap, landCapX - r + 0.001f, ccell);
+                    int gx1 = WorldColFloor(cmap, landCapX + r - 0.001f, ccell);
                     int rowFeetNew = WorldRowFloor(cmap, newY + capOffY, ccell);
                     int rowFeetOld = WorldRowFloor(cmap, pos.Y + capOffY, ccell);
                     int rowTop = Math.Min(rowFeetOld, rowFeetNew); // smallest index = highest band
@@ -475,8 +504,39 @@ public static class Player2DSystem
                         }
                         if (!solid) continue;
 
-                        float tileTop = TileWorldMaxY(cmap, gy, ccell);
-                        if (pos.Y + capOffY >= tileTop - 0.01f)
+                        // RAMP-AWARE top: sample the interpolated tile top at the
+                        // capsule edge columns (the ramp slope spans the cell); the
+                        // higher edge is this frame's landing surface candidate.
+                        // BUGFIX ("stuck at the ramp base"): only edge columns that
+                        // actually carry a COLLISION tile in this row may contribute.
+                        // TileWorldTopAt falls back to the row's full-height baseTop
+                        // for a missing/empty tile — while one capsule edge stands on
+                        // a lowered RAMP top, the other edge sitting over an EMPTY
+                        // column reported that phantom full top, outranked the real
+                        // ramp surface, failed the "came from above" test, and the
+                        // Y-resolve then snapped the feet back onto the flat ground
+                        // row below → the player jittered in place and never climbed.
+                        // An empty edge now contributes NOTHING (−∞).
+                        float tileTop = float.NegativeInfinity;
+                        foreach (var (collisionLayer, layerIdx) in clayers)
+                        {
+                            // NOTE: gx1 MAY equal gx0 (capsule narrower than a cell) — the two
+                            // SAMPLE X positions still differ, and inside one ramp cell the left
+                            // sample can be the wedge's LOW side: both must be sampled so the
+                            // resting height is the HIGHEST surface point under the capsule.
+                            if (IsSolid(cmap, collisionLayer, layerIdx, gx0, gy))
+                                tileTop = MathF.Max(tileTop,
+                                    TileWorldTopAt(cmap, collisionLayer, layerIdx, gx0, gy, ccell, landCapX - r + 0.001f));
+                            if (IsSolid(cmap, collisionLayer, layerIdx, gx1, gy))
+                                tileTop = MathF.Max(tileTop,
+                                    TileWorldTopAt(cmap, collisionLayer, layerIdx, gx1, gy, ccell, landCapX + r - 0.001f));
+                        }
+                        if (tileTop == float.NegativeInfinity) continue; // no edge column solid here
+                        // STEP-UP frame: feet were lifted by the X pass this frame — the
+                        // landing check must compare against the LIFTED feet (yBot), not
+                        // the frame-start feet (pos.Y + capOffY), or the ramp top reads
+                        // as "came from below" and the step never lands → stuck.
+                        if (yBot >= tileTop - 0.01f)
                         {
                             // Came from above → candidate landing on this tile's top.
                             if (!landTop.HasValue || tileTop > landTop.Value) landTop = tileTop;
@@ -901,6 +961,64 @@ public static class Player2DSystem
     private static float TileWorldMaxY(Tilemap2D map, int gy, float cell)
         => (map.Height - gy) * cell;
 
+    /// <summary>PER-TILE TOP-EDGE OVERRIDE (collision box kiri/kanan terpisah): the
+    /// interpolated world Y of the tile's TOP at world X — the L/R top fractions form
+    /// a straight ramp across the tile. Full-height tiles (no override) return the
+    /// plain tile top. Used by the feet probes so the player WALKS a slope instead of
+    /// being blocked by a full-height box (walking up a wedge = feet follow the top).</summary>
+    private static float TileWorldTopAt(Tilemap2D map, TileLayer layer, int layerIdx, int gx, int gy, float cell, float worldX)
+    {
+        float baseTop = TileWorldMaxY(map, gy, cell);
+        int tile = map.GetTile(layerIdx, gx, gy);
+        if (tile < 0 || !layer.TileHasCollision(tile)) return baseTop;
+        var (lf, rf) = layer.GetTileTopFracs(gx, gy);
+        if (lf >= 0.999f && rf >= 0.999f) return baseTop; // full-height, no ramp
+        float t = Math.Clamp((worldX - gx * cell) / cell, 0f, 1f);
+        float frac = Math.Clamp(lf + (rf - lf) * t, 0f, 1f);
+        // frac = height FROM the tile's TOP edge downward? NO — frac is the top edge
+        // measured from the tile's BOTTOM: 1.0 = full cell top, 0.5 = half high.
+        return baseTop - (1f - frac) * cell;
+    }
+
+    /// <summary>Highest interpolated top across ALL collision layers in ONE map
+    /// (the surface the feet can land on at worldX). Returns −∞ when the column
+    /// holds NO ground anywhere — the step-up probe must then do nothing (the old
+    /// "fall back to feetY" invariant fed the fallback straight back into the
+    /// `aheadTop <= yBot + stepH` test as an exact-equality match, so walking off
+    /// a ledge over a pit "stepped up" 0.35 units EVERY frame and the player rose
+    /// into the sky instead of falling).</summary>
+    private static float MapTopAt(List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)> mapData,
+        float worldX, float feetY)
+    {
+        // BUGFIX (was "stuck"): best started AT feetY, so a caller passing feetY+stepH
+        // made MathF.Max pick the DEFAULT over the real (lower) ground top — the probe
+        // then "found" a step that wasn't there and the walk stride desynced. Start at
+        // -∞ and report −∞ (no ground) instead of inventing a surface.
+        float best = float.NegativeInfinity;
+        foreach (var (m, cell, ls) in mapData)
+        {
+            int gx = WorldColFloor(m, worldX, cell);
+            if (gx < 0 || gx >= m.Width) continue;
+            int gy0 = WorldRowFloor(m, feetY, cell);
+            for (int gy = Math.Max(0, gy0); gy < m.Height; gy++)
+            {
+                bool solid = false;
+                (TileLayer layer, int idx) topLayer = default;
+                foreach (var (layer, idx) in ls)
+                {
+                    if (IsSolid(m, layer, idx, gx, gy))
+                    {
+                        solid = true; topLayer = (layer, idx); break;
+                    }
+                }
+                if (!solid) continue;
+                best = MathF.Max(best, TileWorldTopAt(m, topLayer.layer, topLayer.idx, gx, gy, cell, worldX));
+                break; // topmost solid row of THIS map
+            }
+        }
+        return best; // −∞ = no ground in this column (the caller must not step)
+    }
+
     /// <summary>Skin width kept between the capsule and a resolved surface so the
     /// AABB never exactly touches the tile edge (prevents re-collision jitter).</summary>
     private const float SkinWidth = 0.001f;
@@ -946,6 +1064,14 @@ public static class Player2DSystem
             foreach (var (collisionLayer, layerIdx) in layers)
             {
                 if (!IsSolid(map, collisionLayer, layerIdx, gxEdge, gy)) continue;
+                // RAMP-AWARE walls: the leading edge's SIDE of the tile — pushing
+                // into a lowered top must only block if the feet are BELOW the tile's
+                // top edge at this X (walking onto a lowered/wedge top = no wall hit;
+                // the Y-step/landing logic handles the stride instead).
+                float capXWall = newX + capOffX + dir * r;
+                float topAtEdge = TileWorldTopAt(map, collisionLayer, layerIdx, gxEdge, gy, cell, capXWall);
+                if (yBot >= topAtEdge - 0.01f)
+                    continue; // feet at/above the (possibly lowered) top → walk onto it
                 newX = dir > 0f
                     ? TileWorldMinX(gxEdge, cell) - r - SkinWidth - capOffX
                     : TileWorldMaxX(gxEdge, cell) + r + SkinWidth - capOffX;
@@ -971,12 +1097,18 @@ public static class Player2DSystem
             for (int gy = Math.Max(0, gy0); gy < m.Height; gy++)
             {
                 bool solid = false;
+                (TileLayer layer, int idx) topLayer = default;
                 foreach (var (collisionLayer, layerIdx) in layers)
                 {
-                    if (IsSolid(m, collisionLayer, layerIdx, gx, gy)) { solid = true; break; }
+                    if (IsSolid(m, collisionLayer, layerIdx, gx, gy))
+                    {
+                        solid = true; topLayer = (collisionLayer, layerIdx); break;
+                    }
                 }
                 if (!solid) continue;
-                best = MathF.Max(best, (m.Height - gy) * cell + 0.001f);
+                // RAMP-AWARE: the interpolated top at the spawn column (a spawn ON a
+                // slope starts standing on the surface, not inside the wedge).
+                best = MathF.Max(best, TileWorldTopAt(m, topLayer.layer, topLayer.idx, gx, gy, cell, worldX) + 0.001f);
                 break; // topmost solid row of THIS map
             }
         }

@@ -971,6 +971,7 @@ public class SceneManagerPanel
                         Player2DDeceleration = obj.Player2DDeceleration,
                         Player2DAirControl = obj.Player2DAirControl,
                         Player2DCoyoteTime = obj.Player2DCoyoteTime,
+                        Player2DStepHeight = obj.Player2DStepHeight,
                         Player2DJumpBuffer = obj.Player2DJumpBuffer,
                         Player2DJumpCutMultiplier = obj.Player2DJumpCutMultiplier,
                         Sprite2DLoop = obj.Sprite2DLoop,
@@ -1601,6 +1602,7 @@ public class SceneManagerPanel
                         obj.Player2DDeceleration = objData.Player2DDeceleration;
                         obj.Player2DAirControl = objData.Player2DAirControl;
                         obj.Player2DCoyoteTime = objData.Player2DCoyoteTime;
+                        obj.Player2DStepHeight = objData.Player2DStepHeight;
                         obj.Player2DJumpBuffer = objData.Player2DJumpBuffer;
                         obj.Player2DJumpCutMultiplier = objData.Player2DJumpCutMultiplier;
                         obj.Sprite2DLoop = objData.Sprite2DLoop;

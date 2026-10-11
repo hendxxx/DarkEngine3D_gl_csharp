@@ -3352,6 +3352,12 @@ public class InspectorPanel
             if (ImGui.SliderFloat("Coyote Time", ref coyote, 0f, 0.3f, "%.2f s"))
                 editorObj.Player2DCoyoteTime = MathF.Max(0f, coyote);
 
+            float stepH = editorObj.Player2DStepHeight;
+            if (ImGui.SliderFloat("Step Height\uf3f3up", ref stepH, 0f, 2f, "%.2f"))
+                editorObj.Player2DStepHeight = MathF.Max(0f, stepH);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Max top-rise the player WALKS UP automatically (ramps/raised tiles) without pressing jump.\n0 = off (every rise is a wall); ~0.35 = a third of a tile — small slopes just work.");
+
             float jbuf = editorObj.Player2DJumpBuffer;
             if (ImGui.SliderFloat("Jump Buffer", ref jbuf, 0f, 0.3f, "%.2f s"))
                 editorObj.Player2DJumpBuffer = MathF.Max(0f, jbuf);
