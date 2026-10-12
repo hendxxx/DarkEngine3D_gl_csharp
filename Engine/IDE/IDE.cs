@@ -100,10 +100,17 @@ public class IDE : IDisposable
     };
     private bool _showNewProjectDialog = false;
     private bool _showOpenProjectDialog = false;
+    private bool _showSaveProjectAsDialog = false;
     private byte[] _newProjectNameBuf = new byte[256];
     private byte[] _newProjectPathBuf = new byte[512];
+    private byte[] _saveProjectNameBuf = new byte[256];
+    private byte[] _saveProjectDirBuf = new byte[512];
     private readonly ImGuiFileDialog _projectFolderDialog = new();
     private readonly ImGuiFileDialog _projingFileDialog = new();
+
+    private enum PendingFolderAction { None, NewProject, SaveProjectAs }
+    private PendingFolderAction _pendingFolderAction = PendingFolderAction.None;
+
     /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
     public bool InGameMode
     {
@@ -1059,14 +1066,11 @@ public class IDE : IDisposable
             // ════════════════════════════════════════════════════
             if (ImGui.BeginMenu("File"))
             {
-                // ═══ Project (top) ═══
+                // ── New Project ──
                 if (ImGui.MenuItem("New Project..."))
                 {
+                    _pendingFolderAction = PendingFolderAction.NewProject;
                     _projectFolderDialog.OpenForPickFolder("Select Project Location");
-                }
-                if (ImGui.MenuItem("Open Project..."))
-                {
-                    _projingFileDialog.OpenForLoad("*.projing", "Open Project (.projing)");
                 }
 
                 // ── Recent Projects ──
@@ -1083,17 +1087,23 @@ public class IDE : IDisposable
                             bool opened = ImGui.MenuItem(projName);
                             if (ImGui.IsItemHovered())
                                 ImGui.SetTooltip(projPath);
-                        if (opened)
-                        {
-                            // Persist the OUTGOING project first (switch without Close
-                            // Project would otherwise drop unsaved catalogs/scenes).
-                            PersistEditorData();
-                            if (Engine.Project.ProjectManager.OpenProject(projPath))
+                            if (opened)
                             {
-                                RecentProjectsManager.AddRecentProject(projPath);
-                                Console.WriteLine($"[IDE] Opened recent project: {projPath}");
+                                // Save the ACTIVE project first (persist everything), then
+                                // close it and load the project the user chose — no extra
+                                // OpenProject call, no double-load of scenes/sheets/catalogs.
+                                PersistEditorData();
+                                Engine.Project.ProjectManager.CloseProject();
+                                if (Engine.Project.ProjectManager.OpenProject(projPath))
+                                {
+                                    RecentProjectsManager.AddRecentProject(projPath);
+                                    Console.WriteLine($"[IDE] Opened recent project: {projPath}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"[IDE] Failed to open recent project: {projPath}");
+                                }
                             }
-                        }
                         }
                         ImGui.Separator();
                         if (ImGui.MenuItem("Clear Recent Projects"))
@@ -1110,7 +1120,19 @@ public class IDE : IDisposable
                     ImGui.Separator();
                     ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"  {Path.GetFileName(Engine.Project.ProjectManager.ProjectRoot)}");
                     ImGui.TextDisabled($"  {Engine.Project.ProjectManager.ProjectRoot}");
-                    if (ImGui.MenuItem("Close Project"))
+                    if (ImGui.MenuItem("Save Project", "Ctrl+Shift+P"))
+                    {
+                        // Persist editor data (scenes/sheets/catalogs) + stamp the .projing.
+                        PersistEditorData();
+                        Engine.Project.ProjectManager.TouchProject();
+                        Console.WriteLine($"[IDE] Project saved: {Engine.Project.ProjectManager.ProjectRoot}");
+                    }
+                    if (ImGui.MenuItem("Save Project As...", "Ctrl+Shift+Alt+S"))
+                {
+                    _pendingFolderAction = PendingFolderAction.SaveProjectAs;
+                    _projectFolderDialog.OpenForPickFolder("Select Project Location");
+                }
+                if (ImGui.MenuItem("Close Project"))
                     {
                         // Persist everything before the project root is cleared.
                         PersistEditorData();
@@ -1604,27 +1626,42 @@ public class IDE : IDisposable
     /// <summary>Render project management popups (New/Open Project, Folder Picker).
     /// Called after panels render so ImGui window context exists for OpenPopup.</summary>
     private void RenderProjectPopups()
-    {
-        // ── Folder picker for New Project ──
-        _projectFolderDialog.Render();
-        if (_projectFolderDialog.IsConfirmed && _projectFolderDialog.SelectedPath != null)
+    {        // ── Folder picker (shares one dialog instance across New/SaveAs project).
+        // Only one folder-picker request is pending at a time, so the dialog is rendered
+        // once per frame instead of twice (which previously produced a duplicated window).
+        if (_pendingFolderAction != PendingFolderAction.None)
         {
-            string selectedFolder = _projectFolderDialog.SelectedPath;
-            Array.Clear(_newProjectNameBuf);
-            Array.Clear(_newProjectPathBuf);
-            System.Text.Encoding.UTF8.GetBytes(selectedFolder, _newProjectPathBuf);
-            _showNewProjectDialog = true;
-            _projectFolderDialog.Close();
+            _projectFolderDialog.Render();
+            if (_projectFolderDialog.IsConfirmed && _projectFolderDialog.SelectedPath != null)
+            {
+                string selectedFolder = _projectFolderDialog.SelectedPath;
+                if (_pendingFolderAction == PendingFolderAction.NewProject)
+                {
+                    Array.Clear(_newProjectNameBuf);
+                    Array.Clear(_newProjectPathBuf);
+                    System.Text.Encoding.UTF8.GetBytes(selectedFolder, _newProjectPathBuf);
+                    _showNewProjectDialog = true;
+                }
+                else if (_pendingFolderAction == PendingFolderAction.SaveProjectAs)
+                {
+                    Array.Clear(_saveProjectNameBuf);
+                    Array.Clear(_saveProjectDirBuf);
+                    System.Text.Encoding.UTF8.GetBytes(selectedFolder, _saveProjectDirBuf);
+                    _showSaveProjectAsDialog = true;
+                }
+                _projectFolderDialog.Close();
+                _pendingFolderAction = PendingFolderAction.None;
+            }
         }
 
-        // ── New Project name dialog ──
+        // ── New Project name dialog (close current project first). ──
         if (_showNewProjectDialog)
         {
             ImGui.OpenPopup("New Project");
             _showNewProjectDialog = false;
         }
-        bool newProjOpen = true;
-        if (ImGui.BeginPopupModal("New Project", ref newProjOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        bool newProjOpenFirst = true;
+        if (ImGui.BeginPopupModal("New Project", ref newProjOpenFirst, ImGuiWindowFlags.AlwaysAutoResize))
         {
             ImGui.Text("Location:");
             ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 1f), $"  {System.Text.Encoding.UTF8.GetString(_newProjectPathBuf).TrimEnd('\0')}");
@@ -1643,6 +1680,8 @@ public class IDE : IDisposable
                     try
                     {
                         string rootPath = Path.Combine(dir, name);
+                        PersistEditorData();
+                        Engine.Project.ProjectManager.CloseProject();
                         Engine.Project.ProjectManager.CreateProject(rootPath, name);
                         Config.RecentProjectsManager.AddRecentProject(rootPath);
                         Console.WriteLine($"[IDE] Created project '{name}' ({name}.projing) at {rootPath}");
@@ -1660,13 +1699,13 @@ public class IDE : IDisposable
             ImGui.EndPopup();
         }
 
-        // ── Open Project file browser ──
+        // ── Open Project file browser (close outgoing project first). ──
         _projingFileDialog.Render();
         if (_projingFileDialog.IsConfirmed && _projingFileDialog.SelectedPath != null)
         {
             string projingPath = _projingFileDialog.SelectedPath;
-            // Persist the OUTGOING project first (switch without Close Project).
             PersistEditorData();
+            Engine.Project.ProjectManager.CloseProject();
             if (Engine.Project.ProjectManager.OpenProject(projingPath))
             {
                 Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(Path.GetDirectoryName(projingPath)!));
@@ -1677,6 +1716,102 @@ public class IDE : IDisposable
                 Console.WriteLine($"[IDE] Failed to open project at {projingPath}");
             }
             _projingFileDialog.Close();
+        }
+
+        // ── Render popup modals backing the pending folder requests ──
+        if (_showNewProjectDialog)
+        {
+            ImGui.OpenPopup("New Project");
+            _showNewProjectDialog = false;
+        }
+        if (_showSaveProjectAsDialog)
+        {
+            ImGui.OpenPopup("Save Project As");
+            _showSaveProjectAsDialog = false;
+        }
+        bool newProjOpenSecond = true;
+        if (ImGui.BeginPopupModal("Save Project As", ref newProjOpenSecond, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.Text("Location:");
+            ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 1f), $"  {System.Text.Encoding.UTF8.GetString(_saveProjectDirBuf).TrimEnd('\0')}");
+            ImGui.Spacing();
+            ImGui.Text("Project Name:");
+            ImGui.SetNextItemWidth(300);
+            ImGui.InputText("##proj_name", _saveProjectNameBuf, (uint)_saveProjectNameBuf.Length);
+
+            ImGui.Separator();
+            if (ImGui.Button("Save", new Vector2(120, 0)))
+            {
+                string name = System.Text.Encoding.UTF8.GetString(_saveProjectNameBuf).TrimEnd('\0');
+                string dir = System.Text.Encoding.UTF8.GetString(_saveProjectDirBuf).TrimEnd('\0');
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(dir))
+                {
+                    try
+                    {
+                        string rootPath = Path.Combine(dir, name);
+                        PersistEditorData();
+                        Engine.Project.ProjectManager.CloseProject();
+                        Engine.Project.ProjectManager.CreateProject(rootPath, name);
+                        Config.RecentProjectsManager.AddRecentProject(rootPath);
+                        Console.WriteLine($"[IDE] Created project '{name}' ({name}.projing) at {rootPath}");
+                        ImGui.CloseCurrentPopup();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[IDE] Failed to create project: {ex.Message}");
+                    }
+                }
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
+        }
+
+        // ── Save Project As name dialog ──
+        if (_showSaveProjectAsDialog)
+        {
+            ImGui.OpenPopup("Save Project As");
+            _showSaveProjectAsDialog = false;
+        }
+        bool saveAsOpen = true;
+        if (ImGui.BeginPopupModal("Save Project As", ref saveAsOpen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.Text("Location:");
+            ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 1f), $"  {System.Text.Encoding.UTF8.GetString(_saveProjectDirBuf).TrimEnd('\0')}");
+            ImGui.Spacing();
+            ImGui.Text("Project Name:");
+            ImGui.SetNextItemWidth(300);
+            ImGui.InputText("##proj_name", _saveProjectNameBuf, (uint)_saveProjectNameBuf.Length);
+
+            ImGui.Separator();
+            if (ImGui.Button("Save", new Vector2(120, 0)))
+            {
+                string name = System.Text.Encoding.UTF8.GetString(_saveProjectNameBuf).TrimEnd('\0');
+                string dir = System.Text.Encoding.UTF8.GetString(_saveProjectDirBuf).TrimEnd('\0');
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(dir))
+                {
+                    try
+                    {
+                        string rootPath = Path.Combine(dir, name);
+                        // Persist + close the current project first (clean handoff).
+                        PersistEditorData();
+                        Engine.Project.ProjectManager.CloseProject();
+                        Engine.Project.ProjectManager.CreateProject(rootPath, name);
+                        Config.RecentProjectsManager.AddRecentProject(rootPath);
+                        Console.WriteLine($"[IDE] Saved project as '{name}' ({name}.projing) at {rootPath}");
+                        ImGui.CloseCurrentPopup();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[IDE] Failed to save project as: {ex.Message}");
+                    }
+                }
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                ImGui.CloseCurrentPopup();
+            ImGui.EndPopup();
         }
     }
 

@@ -47,9 +47,9 @@ public class ShopEditorPanel
     public void Render()
     {
         if (!_show) return;
-        ImGui.SetNextWindowSize(new Vector2(760, 520), ImGuiCond.Appearing);
+        ImGui.SetNextWindowSize(new Vector2(760, 520), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(560, 380), new Vector2(1100, 860));
-        if (!ImGui.Begin("Shop Editor", ref _show))
+        if (!ImGui.Begin("Shop Editor##ShopEditorPanel", ref _show))
         {
             ImGui.End();
             return;
@@ -151,12 +151,11 @@ public class ShopEditorPanel
         }
 
         ImGui.Separator();
-        ImGui.TextDisabled("NPCs use this shop via the 'Open Shop' action (Param = shop Id).\nThe shop panel opens on top of the dialogue; Esc closes it back to the dialogue.");
-        if (ImGui.Button("Save Shops##saves"))
-        {
-            ShopSystem.Save();
-            _dirty = false;
-        }
+        ImGui.TextDisabled("NPCs use this shop via the 'Open Shop' action (Param = shop Id).\nThe shop panel opens on top of the dialogue; Esc closes it back to the dialogue.");            if (ImGui.Button("Save Shops"))
+            {
+                ShopSystem.Save();
+                _dirty = false;
+            }
         ImGui.SameLine();
         ImGui.TextDisabled("(also saved by Ctrl+S / Close Project / Exit)");
         ImGui.End();

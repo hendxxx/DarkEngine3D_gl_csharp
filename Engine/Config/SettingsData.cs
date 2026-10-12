@@ -8,13 +8,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public int Resolution { get; set; } = 2;       // 0=1920x1080, 1=1280x720, 2=2560x1440
         public bool Fullscreen { get; set; } = false;
         public bool BorderlessFullscreen { get; set; } = false;   // true = fullscreen windowed (borderless, uses work area)
-        public bool VSync { get; set; } = false;
-        public int ShadowQuality { get; set; } = 2;    // 0=Low, 1=Medium, 2=High, 3=Ultra
+        public bool VSync { get; set; } = false;   // OFF by default
+        public int ShadowQuality { get; set; } = 0;    // 0=Low, 1=Medium, 2=High, 3=Ultra (Shadows OFF when ShowShadows=false)
         /// <summary>Unified quality preset (0=Low, 1=Medium, 2=High, 3=Ultra) that
         /// drives MSAA samples + shadow quality + shadow filter together (QualitySettings).
         /// Defaults to Low so it runs clean on any GPU out of the box.</summary>
-        public int QualityPreset { get; set; } = 0;
-        public int OcclusionMode { get; set; } = 1;    // 0=Software, 1=HiZ, 2=OFF
+        public int QualityPreset { get; set; } = 0;   // Low by default (MSAA OFF / shadows Low / shadow filter Hard)
+        public int OcclusionMode { get; set; } = 2;    // 0=Software, 1=HiZ, 2=OFF (OFF by default)
         public int Fov { get; set; } = 70;
         public int MouseSensitivity { get; set; } = 4;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
         public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
@@ -31,7 +31,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public bool ShowDebugGrid { get; set; } = false;
         /// <summary>Editor viewport shadows on/off (viewport toolbar "Shadow").
         /// When off, the CSM shadow pass is skipped and shadow maps read as fully lit.</summary>
-        public bool ShowShadows { get; set; } = true;
+        public bool ShowShadows { get; set; } = false;   // OFF by default (CSM shadow pass skipped)
         /// <summary>UI snap-to-grid on/off (viewport toolbar "Snap").</summary>
         public bool SnapEnabled { get; set; } = true;
         /// <summary>UI snap grid size in px (viewport toolbar grid combo).</summary>
@@ -131,9 +131,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Strength of the CSM LOD color overlay (L key debug tint), 0..1.</summary>
         public float ShadowCascadeOverlayAlpha { get; set; } = 0.5f;
         /// <summary>Depth-map texture filtering: true = LINEAR, false = NEAREST.</summary>
-        public bool ShadowLinearMap { get; set; } = true;
+        public bool ShadowLinearMap { get; set; } = false;   // OFF by default (NEAREST)
         /// <summary>Shadow filter mode (0-9: PCF 16, Hard, PCF, PCSS...).</summary>
-        public int ShadowFilterMode { get; set; } = 1;   // Hard — crisp, unfiltered shadow edges
+        public int ShadowFilterMode { get; set; } = 1;   // Hard — crisp, unfiltered shadow edges (default)
 
         // ── Post-Processing (AAA: bloom + ACES tonemapping + gamma; tuned live via
         // PostFxSettings, persisted here so the look survives restarts) ──

@@ -61,9 +61,9 @@ public class ItemEditorPanel
         // FirstUseEver would never correct it. Appearing resets to 800×560 each time
         // the panel opens (user can still resize freely while it stays open), and the
         // constraints keep any session resize within a tidy tool window.
-        ImGui.SetNextWindowSize(new Vector2(800, 560), ImGuiCond.Appearing);
+        ImGui.SetNextWindowSize(new Vector2(800, 560), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(620, 430), new Vector2(1180, 880));
-        if (!ImGui.Begin("Item Editor", ref _show))
+        if (!ImGui.Begin("Item Editor##ItemEditorPanel", ref _show))
         {
             ImGui.End();
             return;
@@ -83,8 +83,7 @@ public class ItemEditorPanel
         ImGui.SameLine();
         DrawEditor(new Vector2(0, -footerH));
 
-        // ── Footer: save + status ──
-        if (ImGui.Button("Save Catalog", new Vector2(130, 0)))
+        // ── Footer: save + status ──            if (ImGui.Button("Save Catalog"))
         {
             InventorySystem.SaveCatalog();
             _dirty = false;

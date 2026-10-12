@@ -170,6 +170,15 @@ public static class ProjectManager
         OnProjectChanged?.Invoke();
     }
 
+    /// <summary>Persist the current project metadata (.projing) — last saved time + scene list.
+    /// Called by the IDE "Save Project" menu item (editor data itself is saved by Ctrl+S).
+    /// Does nothing when no project is loaded.</summary>
+    public static void SaveProject()
+    {
+        if (!IsProjectLoaded) return;
+        TouchProject();
+    }
+
     /// <summary>Update the .projing file's LastSaved timestamp. Called on every Save All.</summary>
     public static void TouchProject()
     {

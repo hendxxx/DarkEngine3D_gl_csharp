@@ -26,6 +26,15 @@ public class ImGuiFileDialog
 
     private const int InputBufSize = 256;
 
+    /// <summary>Default folder to create (for "New Folder" button in pick-folder mode).</summary>
+    public string NewFolderName { get; set; } = "New Folder";
+
+    /// <summary>Whether the "New Folder" button is shown in pick-folder mode.</summary>
+    public bool ShowNewFolderButton { get; set; } = true;
+
+    /// <summary>Button width for action buttons (Select/Open/Save and Cancel).</summary>
+    public float ActionButtonWidth { get; set; } = 160f;
+
     /// <summary>The full path the user selected (null if cancelled).</summary>
     public string? SelectedPath { get; private set; }
 
@@ -180,6 +189,29 @@ public class ImGuiFileDialog
                     ImGui.SetTooltip(_currentDir);
             }
 
+            // ── New Folder button (pick-folder mode only) ──
+            if (_mode == DialogMode.PickFolder && ShowNewFolderButton)
+            {
+                if (ImGui.Button("➕ New Folder", new Vector2(130f, 0)))
+                {
+                    string folderName = NewFolderName.Trim();
+                    if (!string.IsNullOrEmpty(folderName))
+                    {
+                        try
+                        {
+                            string newPath = Path.Combine(_currentDir, folderName);
+                            Directory.CreateDirectory(newPath);
+                            Refresh();
+                        }
+                        catch (Exception)
+                        {
+                            // Failed to create folder (e.g. permission / already exists).
+                        }
+                    }
+                }
+                ImGui.SameLine();
+            }
+
             // ── Filter (file modes only) ──
             if (_mode != DialogMode.PickFolder)
             {
@@ -254,10 +286,17 @@ public class ImGuiFileDialog
             if (_mode == DialogMode.PickFolder)
             {
                 ImGui.TextColored(new Vector4(0.3f, 0.9f, 0.5f, 1f), $"Selected: {_currentDir}");
-                if (ImGui.Button("Select This Folder", new Vector2(160, 0)))
+                ImGui.SetCursorPosX((ImGui.GetContentRegionAvail().X - ActionButtonWidth * 2f) / 2f);
+                if (ImGui.Button("Select This Folder", new Vector2(ActionButtonWidth, 0)))
                 {
                     SelectedPath = _currentDir;
                     IsConfirmed = true;
+                    _mode = DialogMode.None;
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(ActionButtonWidth, 0)))
+                {
+                    SelectedPath = null;
                     _mode = DialogMode.None;
                 }
             }
