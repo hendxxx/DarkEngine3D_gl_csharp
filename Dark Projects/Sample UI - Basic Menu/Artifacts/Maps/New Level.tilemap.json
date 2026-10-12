@@ -4581,7 +4581,8 @@
           72,
           90,
           191
-        ]
+        ],
+        "TileTopOverrides": null
       }
     ]
   },
