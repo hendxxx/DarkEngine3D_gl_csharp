@@ -1049,6 +1049,17 @@ public static class Effect2DSystem
             }
 
             float topWorld = map.Height * cell;
+            // PERF: the expensive profile build (per-pixel scan of a tileset sheet,
+            // first time per tile id) is skipped for particles already far ABOVE the
+            // map — they cannot be near any surface (p.Y > gy always), so the full
+            // column scan would return −∞ anyway. NOTE: deliberately NO cache entry
+            // here — a cached −∞ would poison SUBSEQUENT particles in this column that
+            // fall into range later (cache hits serve stored Y without knowing the
+            // caller's yStart), making rain fall through the ground until eviction.
+            // When a particle drops back in range, the normal path below computes and
+            // caches the real surface.
+            if (yStart > topWorld * 2f)
+                continue;
             int rowStart = (int)MathF.Floor((topWorld - yStart) / cell);
             rowStart = Math.Clamp(rowStart, 0, map.Height - 1);
             float colBest = float.NegativeInfinity;

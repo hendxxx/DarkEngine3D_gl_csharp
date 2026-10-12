@@ -1106,12 +1106,23 @@ public static class Player2DSystem
         float baseTop = TileWorldMaxY(map, gy, cell);
         int tile = map.GetTile(layerIdx, gx, gy);
         if (tile < 0 || !layer.TileHasCollision(tile)) return baseTop;
-        var (lf, rf) = layer.GetTileTopFracs(gx, gy);
-        if (lf >= 0.999f && rf >= 0.999f) return baseTop; // full-height, no ramp
-        float t = Math.Clamp((worldX - gx * cell) / cell, 0f, 1f);
-        float frac = Math.Clamp(lf + (rf - lf) * t, 0f, 1f);
-        // frac = height FROM the tile's TOP edge downward? NO — frac is the top edge
-        // measured from the tile's BOTTOM: 1.0 = full cell top, 0.5 = half high.
+        // PERF FAST-PATH (default = simple box): maps WITHOUT any ramp override —
+        // the overwhelmingly common case — return the full box top and skip the
+        // tuple lookup + interpolation + double Clamp entirely. The old code ran the
+        // full GetTileTopFracs dictionary path PER PROBE PER FRAME even for plain
+        // rectangle tiles (user report: massive FPS drop the moment a ramp tile
+        // existed anywhere nearby, and a constant tax for plain boxes too). The
+        // ramp path below only executes on layers that actually carry overrides.
+        if (!layer.HasAnyTileTopOverride) return baseTop;
+        layer.TryGetTileTopFracs(gx, gy, out float lf, out float rf);
+        // full-height override (1.0/1.0): no ramp
+        if (lf >= 0.999f && rf >= 0.999f) return baseTop;
+        float t = (worldX - gx * cell) / cell;
+        if (t <= 0f) t = 0f; else if (t >= 1f) t = 1f;
+        float frac = lf + (rf - lf) * t;
+        if (frac < 0f) frac = 0f; else if (frac > 1f) frac = 1f;
+        // frac is the top edge measured from the tile's BOTTOM: 1.0 = full cell top,
+        // 0.5 = half high.
         return baseTop - (1f - frac) * cell;
     }
 

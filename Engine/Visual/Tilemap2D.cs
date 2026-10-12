@@ -344,12 +344,38 @@ public class TileLayer
     /// full-height (backward compat with existing maps).</summary>
     public Dictionary<int, (float LeftFrac, float RightFrac)> TileTopOverrides = new();
 
+    /// <summary>PERF FAST-PATH GUARD: true only when this layer has at least ONE ramp
+    /// override. The physics hot path (TileWorldTopAt / landing / X-push, every frame
+    /// per player + NPC) checks this flag FIRST and returns the full-box top when it
+    /// is false — a plain box-collision map pays ZERO dictionary lookups, zero
+    /// interpolation, zero clamps for the ramp feature. Maintained by Set/Remove,
+    /// deserialization and Resize.</summary>
+    public bool HasAnyTileTopOverride;
+
+    private void RefreshHasAnyTileTopOverride()
+        => HasAnyTileTopOverride = TileTopOverrides.Count > 0;
+
     /// <summary>Top-edge L/R fractions of a collision tile (1.0 = full height).
-    /// Default full for tiles without an override.</summary>
+    /// Default full for tiles without an override. RESERVED fast-path: callers in the
+    /// per-frame hot loop prefer <see cref="TryGetTileTopFracs"/> (no tuple boxing).
+    /// </summary>
     public (float LeftFrac, float RightFrac) GetTileTopFracs(int x, int y)
     {
         if (x < 0 || y < 0 || x >= Width || y >= Height) return (1f, 1f);
         return TileTopOverrides.TryGetValue(y * Width + x, out var f) ? f : (1f, 1f);
+    }
+
+    /// <summary>Zero-alloc hot-path variant of <see cref="GetTileTopFracs"/>: writes into
+    /// caller fields, skips the tuple. Cheap even without the HasAny fast-path guard,
+    /// but callers SHOULD guard on <see cref="HasAnyTileTopOverride"/> first so plain box
+    /// maps never touch the dictionary at all.</summary>
+    public void TryGetTileTopFracs(int x, int y, out float leftFrac, out float rightFrac)
+    {
+        if (HasAnyTileTopOverride && TileTopOverrides.TryGetValue(y * Width + x, out var f))
+        {
+            leftFrac = f.LeftFrac; rightFrac = f.RightFrac;
+        }
+        else { leftFrac = 1f; rightFrac = 1f; } // fast default: full-height box
     }
 
     /// <summary>Set top-edge L/R fractions on a tile (fractions ≤0 remove the
@@ -364,6 +390,7 @@ public class TileLayer
         float l = Math.Clamp(leftFrac, 0f, 1f), r = Math.Clamp(rightFrac, 0f, 1f);
         if (l >= 0.999f && r >= 0.999f) TileTopOverrides.Remove(idx); // full = default
         else TileTopOverrides[idx] = (l, r);
+        RefreshHasAnyTileTopOverride();
     }
 
     public int GetTile(int x, int y)
@@ -414,6 +441,17 @@ public class TileLayer
                 for (int x = 0; x < copyW; x++)
                     _tiles[y * newWidth + x] = oldTiles[y * oldW + x];
         }
+
+        // PERF: overrides are keyed by tile INDEX — a width change makes every old
+        // key point at the wrong cell (a documented limitation), and keys may now
+        // exceed the new bounds. Prune + recompute the fast-path flag so the physics
+        // hot path never probes a stale ramp.
+        if (Width != oldW || Height != oldH)
+        {
+            if (TileTopOverrides.Count > 0)
+                TileTopOverrides.Clear(); // geometry changed → ramp positions invalid
+            RefreshHasAnyTileTopOverride();
+        }
     }
 
     public bool TileHasCollision(int tileId) => CollisionTileIds.Contains(tileId);
@@ -457,6 +495,7 @@ public class TileLayer
                 if (v is { Length: 2 } f && k >= 0 && k < layer.Width * layer.Height)
                     layer.TileTopOverrides[k] = (Math.Clamp(f[0], 0f, 1f), Math.Clamp(f[1], 0f, 1f));
             }
+            layer.RefreshHasAnyTileTopOverride();
         }
         // Normalize: an empty/null Tiles payload (new layer saved before any paint, or
         // hand-edited JSON) must become a real W×H array — GetTile on an empty array
