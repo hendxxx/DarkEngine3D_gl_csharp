@@ -335023,7 +335023,7 @@
     {
       "Name": "Cooking area - Off",
       "Category": "Base",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Artifacts\\images\\FX\\Cooking area - Off.png",
+      "ImagePath": "Artifacts\\images\\FX\\Cooking area - Off.png",
       "ImageWidth": 64,
       "ImageHeight": 64,
       "Columns": 1,
@@ -335062,7 +335062,7 @@
     {
       "Name": "Cooking area",
       "Category": "Base",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Artifacts\\images\\FX\\Cooking area.png",
+      "ImagePath": "Artifacts\\images\\FX\\Cooking area.png",
       "ImageWidth": 768,
       "ImageHeight": 64,
       "Columns": 12,
@@ -335277,7 +335277,7 @@
     {
       "Name": "GandalfHardcore Water Tiles sheet",
       "Category": "Base",
-      "ImagePath": "C:\\Users\\hend_\\source\\repos\\DarkEngine3D_gl_csharp\\Dark Projects\\Sample UI - Basic Menu\\Artifacts\\images\\FX\\GandalfHardcore Water Tiles sheet.png",
+      "ImagePath": "Artifacts\\images\\FX\\GandalfHardcore Water Tiles sheet.png",
       "ImageWidth": 160,
       "ImageHeight": 192,
       "Columns": 5,

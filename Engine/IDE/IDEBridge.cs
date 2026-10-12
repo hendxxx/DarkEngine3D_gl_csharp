@@ -172,7 +172,15 @@ public class IDEBridge
         _spriteSheets.Clear();
         foreach (var s in sheets)
         {
-            textures.TryGetValue(s.ImagePath, out uint tex);
+            // The preview cache keys on the RESOLVED absolute path; sheets whose image
+            // path is stored project-relative need the same resolution here or the
+            // in-game (Player2D) lookup would miss the texture (tex = 0 → no art).
+            uint tex = 0;
+            if (!string.IsNullOrEmpty(s.ImagePath))
+            {
+                if (!textures.TryGetValue(s.ImagePath, out tex))
+                    textures.TryGetValue(DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.ResolveProjectAsset(s.ImagePath), out tex);
+            }
             _spriteSheets[s.Name] = (s, tex, s.ImageWidth, s.ImageHeight);
         }
         _spriteClips.Clear();

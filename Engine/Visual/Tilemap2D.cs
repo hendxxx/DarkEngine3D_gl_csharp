@@ -263,7 +263,7 @@ public class Tilemap2D
             Width = data.Width,
             Height = data.Height,
             TileSize = data.TileSize,
-            TilesetImagePath = data.TilesetImagePath,
+            TilesetImagePath = MakeDataPathRelative(data.TilesetImagePath),
             TilesetColumns = data.TilesetColumns,
             TilesetRows = data.TilesetRows,
             TilesetFlipV = data.TilesetFlipV,
@@ -274,7 +274,12 @@ public class Tilemap2D
             PaletteCellSize = Math.Clamp(data.PaletteCellSize, 16f, 64f),
             PaletteShowGrid = data.PaletteShowGrid,
             PaletteGridColor = new Vector4(data.PaletteGridColorR, data.PaletteGridColorG, data.PaletteGridColorB, data.PaletteGridColorA),
-            ParallaxLayers = data.ParallaxLayers ?? new(),
+            // Migrate legacy absolute image paths ("C:\\...") to relative storage.
+            ParallaxLayers = data.ParallaxLayers == null ? new() : data.ParallaxLayers.Select(pl =>
+            {
+                pl.ImagePath = MakeDataPathRelative(pl.ImagePath);
+                return pl;
+            }).ToList(),
             TriggerAreas = data.TriggerAreas ?? new(),
             CameraStartPos = new Vector3(data.CameraStartX, data.CameraStartY, data.CameraStartZ),
             CameraStartYaw = data.CameraStartYaw,
@@ -286,6 +291,23 @@ public class Tilemap2D
             Layers = data.Layers.Select(l => TileLayer.FromData(l)).ToList()
         };
         return map;
+    }
+
+    /// <summary>Rule: paths saved in map/scene JSON (*.tilemap.json, .ing, .projing)
+    /// must NEVER contain a drive letter ("C:\\...") — stores are shared between
+    /// machines and the exe folder can move. OLD saves that already carry an absolute
+    /// path are normalized to a relative form here (project-relative when a project is
+    /// loaded), so simply loading a map migrates it; the next save keeps it clean.</summary>
+    public static string MakeDataPathRelative(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return path ?? "";
+        try
+        {
+            return Helpers.PathHelpers.IsWindowsAbsolutePath(path)
+                ? Helpers.PathHelpers.MakeProjectRelative(path)
+                : Helpers.PathHelpers.Normalize(path);
+        }
+        catch { return path; }
     }
 }
 

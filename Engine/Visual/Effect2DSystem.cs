@@ -1139,7 +1139,9 @@ public static class Effect2DSystem
         (byte[]? Data, int W, int H) result = (null, 0, 0);
         try
         {
-            string full = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.Resolve(path);
+            // Relative stored paths (sheet/anim JSON must be drive-letter free) resolve
+            // against the project root / exe folder — same rule as all project assets.
+            string full = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.ResolveProjectAsset(path);
             if (File.Exists(full))
             {
                 using var stream = File.OpenRead(full);

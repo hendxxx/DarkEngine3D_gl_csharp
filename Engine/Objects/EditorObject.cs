@@ -4293,7 +4293,7 @@ public unsafe class EditorObject
             var key = (sheet.Name ?? "", frameIdx, imgW, imgH);
             if (_opaqueTopCache.TryGetValue(key, out float cached)) return cached;
 
-            string path = PathHelpers.Resolve(sheet.ImagePath ?? "");
+            string path = PathHelpers.ResolveProjectAsset(sheet.ImagePath ?? "");
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
                 _opaqueTopCache[key] = 0f;
@@ -6454,7 +6454,9 @@ void main() {
     public uint EnsureMap2DTilesetTexture()
     {
         if (Map2dTilemap == null) return 0;
-        string tilesetPath = Map2dTilemap.TilesetImagePath ?? "";
+        // TilesetImagePath is stored PROJECT-RELATIVE in the JSON — resolve it against
+        // the project root / exe folder (fallbacks included for legacy absolute saves).
+        string tilesetPath = DarkEngine3D_gl_csharp.Engine.Helpers.PathHelpers.ResolveProjectAsset(Map2dTilemap.TilesetImagePath ?? "");
         if (!string.IsNullOrEmpty(tilesetPath) && tilesetPath != _map2dTilesetPath)
         {
             if (_map2dTilesetTex != 0) { uint t = _map2dTilesetTex; GL.DeleteTextures(1, &t); _map2dTilesetTex = 0; }

@@ -33,6 +33,15 @@ DarkEngine3D_gl_csharp/
 
 Project Folder (user-created): `ProjectRoot/` + `Artifacts/Sprites/sprites.sheets.json` + `Assets/Maps/{name}.tilemap.json` + `Artifacts/Items/`, `Artifacts/Shops/`, `Artifacts/Quests/`, `Artifacts/Dialogue/` + `*.ing` scene files + `*.projing`.
 
+## 1.0 No absolute paths in project JSON (drive-letter-free stores)
+
+Every path stored in project data files — `*.tilemap.json`, `*.ing`, `*.projing`, `*.sheets.json`, `*-sprite-anim.json` (tilemsets, parallax layers, sprite sheets, animation exports) — MUST be **relative** (project-relative, e.g. `Artifacts\\images\\Tiles\\Tiles.png`), never an absolute `C:\...` path. Stores are shared between machines and the exe folder can move.
+
+- **Write side:** file pickers return absolute paths; convert BEFORE storing with `PathHelpers.MakeProjectRelative(path)` (`Engine/Helpers/PathHelpers.cs`) — project-relative when a project is loaded, exe-relative fallback otherwise. All Map Editor tileset/parallax set-points and Sprite Editor import points (dialog, drag-and-drop, Save As Pattern) already do this.
+- **Read side:** resolve with `PathHelpers.ResolveProjectAsset(path)` — tries legacy absolute as-is → project root → exe folder → seeded by filename under the project's `Artifacts/`. Used by tilemap load, tileset texture load (panel + `EditorObject.EnsureMap2DTilesetTexture`), parallax cache (`GetParallaxTexture` — resolve BEFORE cache lookups so keys match), sprite preview textures, and weather/effect sheet-pixel profiler (`Effect2DSystem.GetSheetPixels`).
+- **Auto-migration:** `Tilemap2D.FromData` / `SpriteSheet.FromData` call `MakeDataPathRelative` on every stored path at load — old saves that still carry `C:\` are normalized when opened, and the next save writes them clean. Json stores must NEVER be edited to keep absolute paths.
+- **Cache-key rule:** any texture/path cache must resolve the path FIRST and use the RESOLVED path as the key consistently in store AND lookup (`LoadParallaxTexture`/`LoadPreviewTexture` pattern) — otherwise relative-stored paths miss the cache forever (symptom: art silently missing). `IDEBridge.SyncSpriteRegistry` resolves too, for the in-game Player2D registry.
+
 ## 1.1 Capsule-anchored coordinate model (2D)
 
 Player2D physics is **feet-anchored**: `Position.Y` is the object's origin, but the capsule's **feet** sit at `Position.Y + capOffY` and the body center (capX) at `Position.X + capOffX`. All probes/resolves use the capsule's horizontal center + vertical span [yBot, yBot+height]. Results are converted back to `Position.X/Y` at the end. The sprite anchor follows via rendering — the collider lands on the marker regardless of the capsule nudge.

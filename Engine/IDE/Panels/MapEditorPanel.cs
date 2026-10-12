@@ -398,8 +398,13 @@ public class MapEditorPanel
     {
         if (_tilesetDialog.IsConfirmed && _tilesetDialog.SelectedPath != null)
         {
-            string path = _tilesetDialog.SelectedPath;
-            LoadTilesetTexture(path);
+            // Store PROJECT-RELATIVE (no drive letter) — pickers return absolute paths
+            // but *.tilemap.json / .ing must never contain "C:\\...".
+            string relPath = Engine.Visual.Tilemap2D.MakeDataPathRelative(_tilesetDialog.SelectedPath);
+            LoadTilesetTexture(Engine.Helpers.PathHelpers.ResolveProjectAsset(relPath));
+            // Keep ONLY the relative path on the map payload — the JSON must stay clean.
+            if (ActiveTilemap != null)
+                ActiveTilemap.TilesetImagePath = relPath;
         }
     }
 
@@ -435,7 +440,7 @@ public class MapEditorPanel
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
             GL.BindTexture(Const.GL_TEXTURE_2D, 0);
 
-            ActiveTilemap!.TilesetImagePath = path;
+            ActiveTilemap!.TilesetImagePath = Engine.Visual.Tilemap2D.MakeDataPathRelative(path);
             ActiveTilemap.TilesetTextureId = _tilesetTextureId;
 
             // Auto-detect grid from the image ONLY when the loaded map predates the
@@ -548,9 +553,11 @@ public class MapEditorPanel
         // LoadTilesetTexture now reads/writes _tilesetCols/Rows/FlipV from the tilemap's
         // saved values (backfilling only when 8x8), so we don't set them here — doing so
         // would be overwritten by LoadTilesetTexture anyway.
-        if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(ActiveTilemap.TilesetImagePath))
+        string tilesetAbs = string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath)
+            ? "" : Engine.Helpers.PathHelpers.ResolveProjectAsset(ActiveTilemap.TilesetImagePath);
+        if (!string.IsNullOrEmpty(tilesetAbs) && File.Exists(tilesetAbs))
         {
-            LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
+            LoadTilesetTexture(tilesetAbs);
         }
         else
         {
@@ -593,7 +600,7 @@ public class MapEditorPanel
                     TopPx = pld.TopPx
                 };
                 ParallaxLayers.Add(layer);
-                if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
+                if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(layer.ImagePath)))
                     LoadParallaxTexture(layer.ImagePath, layer);
             }
         }
@@ -1038,7 +1045,7 @@ public class MapEditorPanel
             {
                 if (pl == null) continue;
                 uint tex = 0;
-                if (!string.IsNullOrEmpty(pl.ImagePath) && File.Exists(pl.ImagePath))
+                if (!string.IsNullOrEmpty(pl.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(pl.ImagePath)))
                     tex = GetParallaxTexture(pl.ImagePath);
                 renderLayers.Add(new MapParallaxRenderLayer
                 {
@@ -2607,14 +2614,14 @@ public class MapEditorPanel
                         TopPx = pld.TopPx
                     };
                     ParallaxLayers.Add(layer);
-                    if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(layer.ImagePath))
+                    if (!string.IsNullOrEmpty(layer.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(layer.ImagePath)))
                         LoadParallaxTexture(layer.ImagePath, layer);
                 }
             }
 
             // Load tileset texture if available
-            if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(ActiveTilemap.TilesetImagePath))
-                LoadTilesetTexture(ActiveTilemap.TilesetImagePath);
+            if (!string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(ActiveTilemap.TilesetImagePath)))
+                LoadTilesetTexture(Engine.Helpers.PathHelpers.ResolveProjectAsset(ActiveTilemap.TilesetImagePath));
 
             Console.WriteLine($"[MapEditor] Loaded map from: {path} ({ActiveTilemap.Width}x{ActiveTilemap.Height}, {ActiveTilemap.Layers.Count} layers)");
             Console.WriteLine($"[MapEditor] Load snapshot <- Cols={ActiveTilemap.TilesetColumns}, Rows={ActiveTilemap.TilesetRows}, FlipV={ActiveTilemap.TilesetFlipV}, ShowGrid={ActiveTilemap.ShowGrid}, GridColor={ActiveTilemap.GridColor}, tileset='{ActiveTilemap.TilesetImagePath}', json_exists={File.Exists(path)}");
@@ -2859,14 +2866,19 @@ public class MapEditorPanel
         {
             string path = _parallaxDialog.SelectedPath;
             var layer = ParallaxLayers[_selectedParallaxIdx];
-            layer.ImagePath = path;
-            LoadParallaxTexture(path, layer);
+            // Store PROJECT-RELATIVE (no drive letter) in the tilemap JSON.
+            string relPath = Engine.Visual.Tilemap2D.MakeDataPathRelative(path);
+            layer.ImagePath = relPath;
+            LoadParallaxTexture(Engine.Helpers.PathHelpers.ResolveProjectAsset(relPath), layer);
             Console.WriteLine($"[MapEditor] Loaded parallax image: {path}");
         }
     }
 
     private unsafe void LoadParallaxTexture(string path, ParallaxLayer? layer = null)
     {
+        // Relative stored paths are resolved against project root / exe (fallbacks
+        // included so legacy saves keep loading).
+        path = Engine.Helpers.PathHelpers.ResolveProjectAsset(path);
         // Cache hit: the texture exists but the layer may still be missing its image
         // dimensions (early return used to skip the dims — leaving ImageWidth/Height 0,
         // which made the proportional sizing fall back to stretch-to-grid, i.e. the
@@ -2915,6 +2927,10 @@ public class MapEditorPanel
     /// <summary>Get parallax texture ID for viewport rendering.</summary>
     public uint GetParallaxTexture(string path)
     {
+        // Resolve FIRST so the cache key matches what LoadParallaxTexture stored
+        // (the store keys on the resolved absolute path; keep the key consistent
+        // between the lookup and the load, otherwise the lookup misses forever).
+        path = Engine.Helpers.PathHelpers.ResolveProjectAsset(path);
         if (_parallaxTextures.TryGetValue(path, out uint tex)) return tex;
         LoadParallaxTexture(path);
         return _parallaxTextures.TryGetValue(path, out tex) ? tex : 0;

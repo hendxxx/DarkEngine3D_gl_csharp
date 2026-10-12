@@ -251,7 +251,10 @@ public class SpriteSheet
         // up in one of the 4 sections.
         Category = Enum.IsDefined(typeof(SpriteSheetCategory), data.Category)
             ? data.Category : SpriteSheetCategory.Base,
-        ImagePath = data.ImagePath,
+        // Rule: sheet/anim JSON (*-sprite-anim.json, *.sheets.json, .ing) must never
+        // contain "C:\\..." — old saves with absolute paths are migrated to relative
+        // here (project-relative when a project is loaded) at load time.
+        ImagePath = Tilemap2D.MakeDataPathRelative(data.ImagePath),
         ImageWidth = data.ImageWidth,
         ImageHeight = data.ImageHeight,
         Columns = data.Columns,

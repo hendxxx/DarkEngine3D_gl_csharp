@@ -570,7 +570,7 @@ public class SpriteEditorPanel
             {
                 var sheet = SpriteSheet.FromData(sd);
                 SpriteSheets.Add(sheet);
-                if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(sheet.ImagePath))
+                if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                     LoadPreviewTexture(sheet.ImagePath);
             }
             AnimationClips.Clear();
@@ -616,7 +616,7 @@ public class SpriteEditorPanel
 
         if (!_showPreview) return;
 
-        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !System.IO.File.Exists(SelectedSheet.ImagePath))
+        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !System.IO.File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath)))
         {
             ImGui.TextDisabled("No image loaded");
             return;
@@ -625,7 +625,7 @@ public class SpriteEditorPanel
         // Load texture if not cached
         LoadPreviewTexture(SelectedSheet.ImagePath);
 
-        if (!_previewTextures.TryGetValue(SelectedSheet.ImagePath, out uint texId) || texId == 0)
+        if (!_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath), out uint texId) || texId == 0)
         {
             ImGui.TextDisabled("Failed to load image");
             return;
@@ -729,11 +729,11 @@ public class SpriteEditorPanel
     private void RenderFrameThumbnail()
     {
         if (SelectedSheet == null || SelectedFrame == null) return;
-        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !File.Exists(SelectedSheet.ImagePath)) return;
+        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath))) return;
         if (SelectedSheet.ImageWidth <= 0 || SelectedSheet.ImageHeight <= 0) return;
 
         LoadPreviewTexture(SelectedSheet.ImagePath);
-        if (!_previewTextures.TryGetValue(SelectedSheet.ImagePath, out uint texId) || texId == 0) return;
+        if (!_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath), out uint texId) || texId == 0) return;
 
         // Calculate UV for this specific frame
         float u0 = (float)SelectedFrame.X / SelectedSheet.ImageWidth;
@@ -1050,7 +1050,7 @@ public class SpriteEditorPanel
         if (!string.IsNullOrEmpty(SelectedSheet.ImagePath) && SelectedSheet.ImageWidth > 0 && SelectedSheet.ImageHeight > 0)
         {
             LoadPreviewTexture(SelectedSheet.ImagePath);
-            if (_previewTextures.TryGetValue(SelectedSheet.ImagePath, out uint texId) && texId != 0)
+            if (_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath), out uint texId) && texId != 0)
             {
                 int cols = Math.Max(1, SelectedSheet.Columns);
                 int frameIdx = Math.Clamp(_currentPreviewFrame, 0, SelectedSheet.FrameCount - 1);
@@ -1282,7 +1282,7 @@ public class SpriteEditorPanel
     private void RenderClipEditingPreview()
     {
         if (_editingClip == null || SelectedSheet == null) return;
-        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !File.Exists(SelectedSheet.ImagePath)) return;
+        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath))) return;
 
         var clip = _editingClip;
         ImGui.Text($"  Clip: {clip.Name}  ");
@@ -1349,7 +1349,7 @@ public class SpriteEditorPanel
 
         // Draw the frame
         LoadPreviewTexture(SelectedSheet.ImagePath);
-        if (!_previewTextures.TryGetValue(SelectedSheet.ImagePath, out uint texId) || texId == 0) return;
+        if (!_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath), out uint texId) || texId == 0) return;
 
         int cols = Math.Max(1, SelectedSheet.Columns);
         int row = spriteFrameIdx / cols;
@@ -1589,7 +1589,7 @@ public class SpriteEditorPanel
                 Console.WriteLine($"[SpriteEditor] Save As Pattern: sheet '{pattern.Name}' has no source image.");
                 return;
             }
-            folder = Path.GetDirectoryName(Path.GetFullPath(pattern.ImagePath))!;
+            folder = Path.GetDirectoryName(Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(pattern.ImagePath)))!;
         }
         catch { folder = ""; }
 
@@ -1683,7 +1683,7 @@ public class SpriteEditorPanel
         var sheet = new SpriteSheet
         {
             Name = name,
-            ImagePath = imagePath,
+            ImagePath = Tilemap2D.MakeDataPathRelative(imagePath),
             Category = category,
             ImageWidth = image.Width,
             ImageHeight = image.Height,
@@ -1815,7 +1815,7 @@ public class SpriteEditorPanel
                     SpriteSheets.Add(sheet);
                     _autoLoadedPatternSheets.Add(sheet);
                     sheetsAdded++; touched = true;
-                    if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(sheet.ImagePath))
+                    if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                         LoadPreviewTexture(sheet.ImagePath);
                 }
 
@@ -1883,7 +1883,7 @@ public class SpriteEditorPanel
             try
             {
                 if (string.IsNullOrEmpty(sheet.ImagePath)) continue;
-                string? dir = Path.GetDirectoryName(Path.GetFullPath(sheet.ImagePath));
+                string? dir = Path.GetDirectoryName(Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)));
                 if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) roots.Add(dir);
             }
             catch { /* skip broken path */ }
@@ -1944,7 +1944,7 @@ public class SpriteEditorPanel
                 var sheet = SpriteSheet.FromData(sheetData);
                 SpriteSheets.Add(sheet);
                 // Load preview texture if image exists
-                if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(sheet.ImagePath))
+                if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                     LoadPreviewTexture(sheet.ImagePath);
             }
             // Load animation clips
@@ -2040,7 +2040,7 @@ public class SpriteEditorPanel
         var sheet = new SpriteSheet
         {
             Name = Path.GetFileNameWithoutExtension(path),
-            ImagePath = path,
+            ImagePath = Tilemap2D.MakeDataPathRelative(path),
             Category = _nextImportCategory,
             Columns = _editCols,
             Rows = _editRows,
@@ -2109,7 +2109,7 @@ public class SpriteEditorPanel
             var sheet = new SpriteSheet
             {
                 Name = System.IO.Path.GetFileNameWithoutExtension(path),
-                ImagePath = path,
+                ImagePath = Tilemap2D.MakeDataPathRelative(path),
                 Category = _nextImportCategory,
                 Columns = _editCols,
                 Rows = _editRows,
@@ -2181,14 +2181,13 @@ public class SpriteEditorPanel
 
     private unsafe void LoadPreviewTexture(string path)
     {
+        // Relative stored paths resolve against project root / exe (fallbacks included
+        // for legacy absolute saves); the cache keys on the RESOLVED path so hits match.
+        path = Engine.Helpers.PathHelpers.ResolveProjectAsset(path);
         if (_previewTextures.ContainsKey(path)) return;
         try
         {
-            string dir = Engine.Project.ProjectManager.IsProjectLoaded
-           ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, path)
-           : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
-
-            using var stream = File.OpenRead(dir);
+            using var stream = File.OpenRead(path);
             var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
 
             uint texId;
