@@ -71,6 +71,9 @@ public class IDE : IDisposable
     /// the overlay block runs every frame; without this the "navigable elements"
     /// line spams the console 60×/second).</summary>
     private string? _lastLoggedOverlayName = null;
+    /// <summary>Scratch list for in-game keyboard navigation (reused every frame —
+    /// the nav block used to allocate a new List per frame in in-game mode).</summary>
+    private readonly List<UIElement> _navScratch = new();
     // ── Project dialogs ──
 
     // ── Panel focus memory ──
@@ -959,7 +962,9 @@ public class IDE : IDisposable
     {
         if (!IsHealthy) return;
         _lastDeltaTime = deltaTime;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _imgui.NewFrame(deltaTime);
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.ImguiNewFrameMs, t0);
     }
 
     /// <summary>Called from engine's render loop, after all game rendering.</summary>
@@ -1029,7 +1034,14 @@ public class IDE : IDisposable
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var activeEditorScene))
         {
             Bridge.SceneRoot = activeEditorScene.Root;
-            Bridge.SceneRootElements = new List<UIElement> { activeEditorScene.Root }.AsReadOnly();
+            // Steady-state ZERO-ALLOC: the old code built a new List + ReadOnly wrapper
+            // every frame. Only rebuild the wrapper when the root element actually changes.
+            var curElems = Bridge.SceneRootElements;
+            if (curElems == null || curElems.Count != 1 ||
+                !ReferenceEquals(curElems[0], activeEditorScene.Root))
+            {
+                Bridge.SceneRootElements = new List<UIElement> { activeEditorScene.Root }.AsReadOnly();
+            }
 
             // Sync the editor object manager to match the current scene
             if (Bridge.EditorObjectManager != activeEditorScene.ObjectManager)
@@ -1050,7 +1062,9 @@ public class IDE : IDisposable
         Bridge.EnforceMapObjectSceneRule();
 
         // ── Model > Add GLB Reference... file dialog + placement ──
+        long _t0GlbDialog = System.Diagnostics.Stopwatch.GetTimestamp();
         _glbDialog.Render();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.PopupsMs, _t0GlbDialog);
         if (_glbDialog.IsConfirmed && _glbDialog.SelectedPath != null)
         {
             string path = _glbDialog.SelectedPath;
@@ -1065,6 +1079,7 @@ public class IDE : IDisposable
 
 
         // ── Build main menu bar ──
+        long _t0MenuBar = System.Diagnostics.Stopwatch.GetTimestamp();
         ImGui.BeginMainMenuBar();
         {
             // ════════════════════════════════════════════════════
@@ -1482,6 +1497,7 @@ public class IDE : IDisposable
 
             ImGui.EndMainMenuBar();
         }
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.MenuBarMs, _t0MenuBar);
 
 
 
@@ -1491,11 +1507,14 @@ public class IDE : IDisposable
 
 
         // ── Render panels ──
+        // Viewport is NOT inside this scope: it accumulates its own ViewportMs slot.
+        // FIXED double-count: the inner nested PanelsMs scope used to DOUBLE every
+        // panel time (outer accumulated the whole block INCLUDING the inner one).
         _viewport.Render();
-        _sceneView.Render();
-        _inspector.Render();
         using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.PanelsMs))
         {
+            _sceneView.Render();
+            _inspector.Render();
             _renderTime.Render();
             _shadowPanel.Render();
             _postFxPanel.Render();
@@ -1503,22 +1522,19 @@ public class IDE : IDisposable
             _pbrPanel.Render();
             _terrainPanel.Render();
             _playerInfo.Render();
-            using (Helpers.FrameProfiler.Scope(ref Helpers.FrameProfiler.PanelsMs))
-            {
-                _assetBrowser.Render();
-                _hierarchy.Render();
-                _console.Render();
-                _sceneManagerPanel.Render();
-                _transitionPanel.Render();
-                // ── 2D Sidescroller Panels ──
-                _spriteEditor.Render();
-                _mapEditor.Render();
-                _effectsPanel.Render();
-                _dialogueEditor.Render();
-                _itemEditor.Render();
-                _shopEditor.Render();
-                _ideSettings.Render();
-            }
+            _assetBrowser.Render();
+            _hierarchy.Render();
+            _console.Render();
+            _sceneManagerPanel.Render();
+            _transitionPanel.Render();
+            // ── 2D Sidescroller Panels ──
+            _spriteEditor.Render();
+            _mapEditor.Render();
+            _effectsPanel.Render();
+            _dialogueEditor.Render();
+            _itemEditor.Render();
+            _shopEditor.Render();
+            _ideSettings.Render();
         }
 
         // ── Global undo/redo routing (after panels, before popups) ──
@@ -1527,6 +1543,7 @@ public class IDE : IDisposable
         //   Sprite Editor / Map Editor → their snapshot & tile-paint stacks
         //   anything else              → hierarchy (UI elements + editor objects)
         // Skipped in in-game mode (F8) — gameplay keys must stay untouched.
+        long _t0MiscTail = System.Diagnostics.Stopwatch.GetTimestamp();
         if (!_inGameMode && ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
             RouteUndoRedo(undo: true);
         if (!_inGameMode && ImGui.GetIO().KeyCtrl &&
@@ -1535,9 +1552,12 @@ public class IDE : IDisposable
             RouteUndoRedo(undo: false);
 
         TrackAndRestorePanelFocus();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.EditorMiscMs, _t0MiscTail);
 
         // ── Project popups (rendered after panels, so window context exists) ──
+        long _t0Popups = System.Diagnostics.Stopwatch.GetTimestamp();
         RenderProjectPopups();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.PopupsMs, _t0Popups);
 
         // ── Render ImGui draw data ──
         // Render transition overlay (if any) while ImGui frame is active
@@ -1547,7 +1567,9 @@ public class IDE : IDisposable
         }
         catch { }
 
+        long _t0ImGuiRender = System.Diagnostics.Stopwatch.GetTimestamp();
         _imgui.Render();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.ImguiRenderMs, _t0ImGuiRender);
     }
 
     /// <summary>Re-focuses the panel persisted as last-focused. Runs ONCE at startup
@@ -2226,7 +2248,9 @@ public class IDE : IDisposable
 
             // ── Keyboard navigation ──
             // Collect all visible interactive elements (depth-first, flattened)
-            var navElements = new List<UIElement>();
+            // Steady-state ZERO-ALLOC: reused scratch list (Cleared each frame).
+            _navScratch.Clear();
+            var navElements = _navScratch;
 
             // Check if there's an active overlay (first visible Container at root level)
             // When an overlay is open, only elements INSIDE it are navigable (modal behavior).
@@ -2587,7 +2611,9 @@ public class IDE : IDisposable
         catch { }
 
         // No ImGui windows at all — just flush the draw list
+        long _t0ImGuiRender = System.Diagnostics.Stopwatch.GetTimestamp();
         _imgui.Render();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.ImguiRenderMs, _t0ImGuiRender);
     }
 
     /// <summary>Depth-first flatten visible interactive elements for keyboard navigation.</summary>

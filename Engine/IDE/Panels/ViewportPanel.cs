@@ -23,6 +23,10 @@ public unsafe class ViewportPanel
     private bool _visible = true;    // Snap-to-grid state 
     private bool _snapEnabled = true;
     private float _snapGridSize = 20f;
+    // Scratch partition lists for RenderUIElements (reused every frame — zero-alloc
+    // steady state; see the front/back split inside RenderUIElements).
+    private readonly List<UIElement> _frontScratch = new();
+    private readonly List<UIElement> _backScratch = new();
     private static readonly float[] SnapOptions = [5f, 10f, 20f, 40f, 50f];
 
     /// <summary>Snap a value to the nearest grid increment.</summary>
@@ -2313,13 +2317,19 @@ public unsafe class ViewportPanel
         // bar's layer order intact while putting whole overlay containers above
         // everything outside them. The two DrawEditorUIPreview calls see disjoint
         // sets, so every element still draws exactly once.
-        var front = new List<UIElement>(elements.Count);
-        var back = new List<UIElement>(elements.Count);
+        // Steady-state ZERO-ALLOC: reuse the scratch partition lists instead of
+        // allocating two new Lists EVERY frame (GC churn in in-game mode).
+        if (_frontScratch.Capacity < elements.Count) _frontScratch.Capacity = elements.Count;
+        if (_backScratch.Capacity < elements.Count) _backScratch.Capacity = elements.Count;
+        _frontScratch.Clear();
+        _backScratch.Clear();
         foreach (var e in elements)
         {
-            if (e.Type == UIElementType.Container) back.Add(e);
-            else front.Add(e);
+            if (e.Type == UIElementType.Container) _backScratch.Add(e);
+            else _frontScratch.Add(e);
         }
+        var front = _frontScratch;
+        var back = _backScratch;
 
         DrawBarUnderLayers(drawList, front);
         DrawEditorUIPreview(drawList, front, mouseScreen, leftClicked, isPreview, isMouseDown, focusedElement, keyboardActivate);

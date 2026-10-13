@@ -18,6 +18,9 @@ public class RenderTimePanel
 
     // Sort order: 0 = time desc, 1 = name asc, 2 = triangles desc
     private int _sortMode = 0;
+    // Reused sort buffer for the per-object table (avoids a List + ToList copy
+    // allocation every frame while the panel is open).
+    private readonly List<RenderTimingSample> _sortScratch = new();
 
     // ── CSM on/off performance sampling — measures the real cost of the shadow
     // pass by accumulating frame ms separately while shadows are ON vs OFF, and
@@ -134,8 +137,10 @@ public class RenderTimePanel
                 if (ImGui.RadioButton("Tris", _sortMode == 2)) _sortMode = 2;
                 ImGui.PopStyleVar();
 
-                // Build sorted copy
-                var sorted = timings.ToList();
+                // Sort in a reused buffer (no per-frame allocation)
+                _sortScratch.Clear();
+                foreach (var t in timings) _sortScratch.Add(t);
+                var sorted = _sortScratch;
                 switch (_sortMode)
                 {
                     case 1: sorted.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name)); break;
@@ -143,7 +148,9 @@ public class RenderTimePanel
                     default: sorted.Sort((a, b) => b.TimeMs.CompareTo(a.TimeMs)); break;
                 }
 
-                float totalObjMs = timings.Count > 0 ? timings.Sum(t => t.TimeMs) : 0f;
+                // Total computed once (the footer used to call Sum() again over all rows).
+                float totalObjMs = 0f; long totalTris = 0;
+                foreach (var t in timings) { totalObjMs += t.TimeMs; totalTris += t.Triangles; }
 
                 if (ImGui.BeginTable("render_time_table", 4,
                         ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.ScrollY,
@@ -187,7 +194,7 @@ public class RenderTimePanel
                     ImGui.TableNextColumn();
                     ImGui.TextDisabled("100%");
                     ImGui.TableNextColumn();
-                    ImGui.Text($"{timings.Sum(t => t.Triangles):N0}");
+                    ImGui.Text($"{totalTris:N0}");
 
                     ImGui.EndTable();
                 }
@@ -311,8 +318,48 @@ public class RenderTimePanel
         // Section rows: value, share of frame, colored bar.
         DrawSection("Editor frame (total)", FrameProfiler.FrameMs, frame, frame, new Vector4(1f, 1f, 1f, 1f));
         DrawSection("Scene render (engine 3D)", FrameProfiler.SceneMs, frame, frame, new Vector4(0.4f, 0.75f, 1f, 1f));
-        DrawSection("Viewport panel (UI/gizmo/brush)", FrameProfiler.ViewportMs, frame, frame, new Vector4(1f, 0.75f, 0.3f, 1f));
-        DrawSection("All other panels", FrameProfiler.PanelsMs, frame, frame, new Vector4(0.65f, 0.85f, 0.55f, 1f));
+
+        // ── Expandable sub-groups: the editor pipeline beyond Scene ──
+        if (ImGui.TreeNode("Editor breakdown (expand detail)"))
+        {
+            DrawSection("Viewport panel (UI/gizmo/brush)", FrameProfiler.ViewportMs, frame, frame, new Vector4(1f, 0.75f, 0.3f, 1f));
+            DrawSection("All other panels", FrameProfiler.PanelsMs, frame, frame, new Vector4(0.65f, 0.85f, 0.55f, 1f));
+
+            // ImGui costs, grouped and expandable one level further.
+            if (ImGui.TreeNode("ImGui (UI framework)"))
+            {
+                DrawSection("NewFrame (fonts + input poll)", FrameProfiler.ImguiNewFrameMs, frame, frame, new Vector4(0.75f, 0.6f, 1f, 1f));
+                DrawSection("Render (vtx/idx upload + draw)", FrameProfiler.ImguiRenderMs, frame, frame, new Vector4(0.6f, 0.7f, 1f, 1f));
+                DrawSection("Menu bar redraw", FrameProfiler.MenuBarMs, frame, frame, new Vector4(0.9f, 0.7f, 0.95f, 1f));
+                DrawSection("Popups + file dialogs", FrameProfiler.PopupsMs, frame, frame, new Vector4(0.85f, 0.85f, 0.6f, 1f));
+                DrawSection("Focus + undo/redo tail", FrameProfiler.EditorMiscMs, frame, frame, new Vector4(0.7f, 0.85f, 0.9f, 1f));
+
+                double imguiTotal = FrameProfiler.ImguiNewFrameMs + FrameProfiler.ImguiRenderMs
+                    + FrameProfiler.MenuBarMs + FrameProfiler.PopupsMs + FrameProfiler.EditorMiscMs;
+                double ioPct = frame > 0.0001 ? (imguiTotal + FrameProfiler.PanelsMs + FrameProfiler.ViewportMs) / frame * 100.0 : 0.0;
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.8f, 0.8f, 1f, 1f),
+                    $"ImGui total: {imguiTotal:F2} ms · editor UI overhead {ioPct:F0}% of frame");
+                ImGui.TreePop();
+            }
+
+            // Per-group frame history averages over the ring buffer (slow trend view).
+            if (ImGui.TreeNode("History averages (last 240 frames)"))
+            {
+                DrawHistRow("Frame", FrameProfiler.HistFrame);
+                DrawHistRow("Scene", FrameProfiler.HistScene);
+                DrawHistRow("Viewport", FrameProfiler.HistViewport);
+                DrawHistRow("Panels", FrameProfiler.HistPanels);
+                DrawHistRow("ImGui NewFrame", FrameProfiler.HistImguiNewFrame);
+                DrawHistRow("ImGui Render", FrameProfiler.HistImguiRender);
+                DrawHistRow("Menu bar", FrameProfiler.HistMenuBar);
+                DrawHistRow("Popups", FrameProfiler.HistPopups);
+                DrawHistRow("Misc tail", FrameProfiler.HistMisc);
+                ImGui.TreePop();
+            }
+
+            ImGui.TreePop();
+        }
 
         ImGui.Separator();
         ImGui.TextDisabled("Terrain sculpt (while a session is ON):");
@@ -325,6 +372,16 @@ public class RenderTimePanel
         if (sculptTotal > 0.5)
             ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f),
                 $"Sculpt is eating {sculptTotal / Math.Max(frame, 0.01) * 100f:F0}% of the frame!");
+    }
+
+    /// <summary>One compact history row: section name + ring average + last sample.</summary>
+    private void DrawHistRow(string label, double[] hist)
+    {
+        ImGui.Text(label);
+        ImGui.SameLine(230);
+        ImGui.Text($"{FrameProfiler.Average(hist),7:F2} ms");
+        ImGui.SameLine(330);
+        ImGui.Text($"{FrameProfiler.Sample(hist, Math.Max(0, FrameProfiler.HistCount - 1)),7:F2} last");
     }
 
     /// <summary>One labeled row: ms value + % of frame + proportional bar.</summary>

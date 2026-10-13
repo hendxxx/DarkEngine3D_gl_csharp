@@ -22,8 +22,25 @@ public static class FrameProfiler
     public static double SceneMs;
     /// <summary>Viewport panel Render() — scene texture display, gizmos, brushes, overlays.</summary>
     public static double ViewportMs;
-    /// <summary>All OTHER editor panels combined.</summary>
+    /// <summary>All OTHER editor panels combined (Scope ACCUMULATES — safe to nest
+    // multiple panels inside one using block; each panel contributes additively).</summary>
     public static double PanelsMs;
+    /// <summary>ImGui NewFrame path: pending-font processing, input polling (mouse+keyboard
+    /// every frame) and io setup + ImGui.NewFrame() itself.</summary>
+    public static double ImguiNewFrameMs;
+    /// <summary>ImGui.Render() + RenderDrawData: building ImGui's draw lists is included
+    /// in the section timers; this slot measures only the GPU-backed vertex/index buffer
+    /// upload + draw call submission + font-atlas texture bind.</summary>
+    public static double ImguiRenderMs;
+    /// <summary>Main menu bar (BeginMainMenuBar → EndMainMenuBar) — menu items, font menus,
+    /// panel toggles and the Help menu are redrawn EVERY frame.</summary>
+    public static double MenuBarMs;
+    /// <summary>Project popups (New/Open/Save-As Project file pickers) + the shared
+    /// GLB reference dialog rendered every frame in the editor path.</summary>
+    public static double PopupsMs;
+    /// <summary>Transition overlay + TrackAndRestorePanelFocus + undo/redo routing
+    /// (the small bookkeeping tail of the editor frame).</summary>
+    public static double EditorMiscMs;
     /// <summary>Terrain sculpt block in the viewport (pick + stamp + overlay gizmos).</summary>
     public static double SculptMs;
     /// <summary>Sculpt sub-section: CPU ray-march picking.</summary>
@@ -39,6 +56,11 @@ public static class FrameProfiler
     private static readonly double[] _histViewport = new double[History];
     private static readonly double[] _histPanels = new double[History];
     private static readonly double[] _histSculpt = new double[History];
+    private static readonly double[] _histImguiNewFrame = new double[History];
+    private static readonly double[] _histImguiRender = new double[History];
+    private static readonly double[] _histMenuBar = new double[History];
+    private static readonly double[] _histPopups = new double[History];
+    private static readonly double[] _histMisc = new double[History];
     private static int _head;
     private static int _count;
 
@@ -47,6 +69,11 @@ public static class FrameProfiler
     public static double[] HistViewport => _histViewport;
     public static double[] HistPanels => _histPanels;
     public static double[] HistSculpt => _histSculpt;
+    public static double[] HistImguiNewFrame => _histImguiNewFrame;
+    public static double[] HistImguiRender => _histImguiRender;
+    public static double[] HistMenuBar => _histMenuBar;
+    public static double[] HistPopups => _histPopups;
+    public static double[] HistMisc => _histMisc;
     /// <summary>Valid entries in the history buffers (grows to <see cref="History"/>).</summary>
     public static int HistCount => _count;
 
@@ -58,9 +85,15 @@ public static class FrameProfiler
         _histViewport[_head] = ViewportMs;
         _histPanels[_head] = PanelsMs;
         _histSculpt[_head] = SculptMs;
+        _histImguiNewFrame[_head] = ImguiNewFrameMs;
+        _histImguiRender[_head] = ImguiRenderMs;
+        _histMenuBar[_head] = MenuBarMs;
+        _histPopups[_head] = PopupsMs;
+        _histMisc[_head] = EditorMiscMs;
         _head = (_head + 1) % History;
         if (_count < History) _count++;
         FrameMs = SceneMs = ViewportMs = PanelsMs = 0;
+        ImguiNewFrameMs = ImguiRenderMs = MenuBarMs = PopupsMs = EditorMiscMs = 0;
         SculptMs = SculptPickMs = SculptStampMs = SculptOverlayMs = 0;
     }
 
@@ -89,6 +122,13 @@ public static class FrameProfiler
     /// <summary>Start a timing scope — dispose it to add the elapsed ms to the slot:
     /// <c>using (FrameProfiler.Scope(ref FrameProfiler.ViewportMs)) { … }</c></summary>
     public static ProfScope Scope(ref double slot) => new(ref slot);
+
+    /// <summary>Accumulate into a slot from a manually captured timestamp — for
+    /// regions where a using-block would require re-indenting hundreds of lines
+    /// (e.g. the whole main-menu-bar body).
+    /// <c>long t0 = Stopwatch.GetTimestamp(); … FrameProfiler.AddMs(ref slot, t0);</c></summary>
+    public static void AddMs(ref double slot, long startTimestamp)
+        => slot += (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 }
 
 /// <summary>Disposable timing scope for <see cref="FrameProfiler.Scope"/> — a ref
