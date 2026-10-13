@@ -4464,7 +4464,7 @@ public unsafe class EditorObject
     /// Start/Jump End actions and the single Jump/Fall actions.</summary>
     public bool HasActionOwnClip(string name)
     {
-        var act = Actions.FirstOrDefault(a => a.Name == name);
+        var act = FindAction(name);
         if (act == null) return false;
         string sheetName = string.IsNullOrEmpty(act.SpriteSheet) ? Player2DSpriteSheet : act.SpriteSheet;
         string clipName = string.IsNullOrEmpty(act.Clip) ? Player2DAnimationClip : act.Clip;
@@ -4501,7 +4501,7 @@ public unsafe class EditorObject
         // DrawPlayer2D; here we only handle the loop case (e.g. Run bound to J while held).
         if (!string.IsNullOrEmpty(Player2DCurrentAction))
         {
-            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            var cur = FindAction(Player2DCurrentAction);
             if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
             {
                 if (!keyStillHeld && cur.Loop)
@@ -4525,7 +4525,7 @@ public unsafe class EditorObject
         string desired = ComputeLocomotionDesired();
 
         if (desired == Player2DCurrentAction) return false;
-        var act = Actions.FirstOrDefault(a => a.Name == desired);
+        var act = FindAction(desired);
         if (act == null) return false;
 
         // Auto-fill the action's clip from the player's current clip when the sheet
@@ -4551,6 +4551,21 @@ public unsafe class EditorObject
         return true;
     }
 
+    /// <summary>PERF: allocation-free action lookup by exact (ordinal) name — replaces
+    /// the per-frame `Actions.FirstOrDefault(a => a.Name == X)` LINQ calls in the
+    /// draw/physics path (each one allocated a delegate + boxed the List enumerator
+    /// 60×/s per player = GC stutter). Empty/null name → null, matching the old
+    /// FirstOrDefault result for the guarded call sites.</summary>
+    private Player2DAction? FindAction(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        var list = Actions;
+        for (int i = 0; i < list.Count; i++)
+            if (string.Equals(list[i].Name, name, StringComparison.Ordinal))
+                return list[i];
+        return null;
+    }
+
     /// <summary>Advance the animation clock and draw the player as an upright textured
     /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
     /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
@@ -4562,6 +4577,20 @@ public unsafe class EditorObject
     // Glfw.FrameId) and kept accurate by EVERY sprite-path bind recording itself.
     private static uint _spriteTexBound;
     private static long _spriteTexBoundFrame = -1;
+
+    // ── 2D cull memo (runtime-only) ──
+    // The 2D pass culls every sprite once per frame (shared viewProj), then
+    // DrawPlayer2D/DrawSprite2D re-queried Is2DSpriteCulled with the SAME camera —
+    // paying the AABB resolve + 8 clip-space corner transforms a SECOND time per
+    // sprite. The memo (result + frame + camera identity) makes the inner query a
+    // field compare. Written by EditorObjectManager.Is2DSpriteCulled itself, so any
+    // caller (editor pass, per-camera in-game pass) stays correct automatically.
+    [JsonIgnore]
+    internal bool Cull2DMemoResult;
+    [JsonIgnore]
+    internal long Cull2DMemoFrame = -1;
+    [JsonIgnore]
+    internal object? Cull2DMemoCamera;
 
     /// <summary>Clear the sprite bind cache — called at the START of every sprite draw
     /// session so a skip is only ever valid INSIDE that session (other systems — terrain,
@@ -4607,7 +4636,7 @@ public unsafe class EditorObject
         bool keyHeld = false;
         if (!string.IsNullOrEmpty(Player2DCurrentAction))
         {
-            var cur = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+            var cur = FindAction(Player2DCurrentAction);
             if (cur != null && !string.IsNullOrEmpty(cur.KeyBinding) && cur.KeyBinding != "None")
             {
                 if (Enum.TryParse<ImGuiKey>(cur.KeyBinding, out var k) && k != ImGuiKey.None)
@@ -4666,7 +4695,7 @@ public unsafe class EditorObject
             // (no same-key replay) — only another action can follow.
             if (Player2DActionHoldingEnd)
             {
-                var holding = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+                var holding = FindAction(Player2DCurrentAction);
                 bool released = false;
                 // Movement / jump: any of these breaks the hold back to locomotion.
                 if (ImGui.IsKeyPressed(ImGuiKey.A) || ImGui.IsKeyPressed(ImGuiKey.D)
@@ -5748,7 +5777,7 @@ public unsafe class EditorObject
         actionSheet = null;
         if (string.IsNullOrEmpty(Player2DCurrentAction) || Actions.Count == 0)
             return null;
-        var act = Actions.FirstOrDefault(a => a.Name == Player2DCurrentAction);
+        var act = FindAction(Player2DCurrentAction);
         if (act == null) { Player2DCurrentAction = ""; return null; }
 
         // Base sheet/clip = the OVERRIDE art while a Change Sprite swap is active —

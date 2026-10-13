@@ -15,6 +15,7 @@ public unsafe class EditorObjectManager
 {
     // ── 2D sprite pass scratch (per-frame reuse — zero steady-state alloc) ──
     private static readonly List<EditorObject> _scratchSprites2D = new();
+    private static readonly List<EditorObject> _scratchCulledPlayers = new();
 
     /// <summary>In-place insertion sort of the 2D sprite pass list: layer ascending,
     /// Player2D first on same-layer ties (the exact ordering the old
@@ -58,9 +59,21 @@ public unsafe class EditorObjectManager
     /// sudut (aman di bawah rotasi, persis seperti chunk PBR).</summary>
     public static bool Is2DSpriteCulled(EditorObject obj, Camera camera, Matrix4x4? viewProj = null)
     {
+        // PERF memo: the 2D pass culls every sprite ONCE (shared viewProj), then the
+        // draw methods re-queried the SAME test with the same camera in the same frame
+        // (AABB resolve + 8 clip-space corner transforms each time). The memo keyed
+        // (frame, camera) makes that second query free; a new frame or a DIFFERENT
+        // camera (second viewport in the same frame) recomputes. Callers passing an
+        // explicit viewProj always compute fresh and refresh the memo.
+        if (viewProj == null
+            && obj.Cull2DMemoFrame == Glfw.FrameId
+            && ReferenceEquals(obj.Cull2DMemoCamera, camera))
+            return obj.Cull2DMemoResult;
+
         var vp = viewProj ?? camera.GetViewMatrix() * camera.GetProjectionMatrix();
         // AABB quad sprite (BUKAN box kapsul seleksi — strip repeat lebar butuh extent art nyata).
         var (amin, amax) = obj.Get2DSpriteAABB();
+        bool culled = true;
         for (int i = 0; i < 8; i++)
         {
             // Vector4.Transform (bukan Vector3) — hasilnya Vector4 clip-space dengan W.
@@ -71,9 +84,15 @@ public unsafe class EditorObjectManager
             if (corner.X >= -corner.W && corner.X <= corner.W
                 && corner.Y >= -corner.W && corner.Y <= corner.W
                 && corner.Z >= -corner.W && corner.Z <= corner.W)
-                return false; // satu sudut pun di dalam → gambar
+            {
+                culled = false; // satu sudut pun di dalam → gambar
+                break;
+            }
         }
-        return true; // seluruh AABB di luar clip volume → skip draw
+        obj.Cull2DMemoFrame = Glfw.FrameId;
+        obj.Cull2DMemoCamera = camera;
+        obj.Cull2DMemoResult = culled;
+        return culled; // seluruh AABB di luar clip volume → skip draw
     }
 
     /// <summary>Debug boxes for the 2D cull pass — RED wire = culled (skipped),
@@ -670,7 +689,8 @@ public unsafe class EditorObjectManager
             // plain pass, then INSERTION-SORT it in place. The scratch stays mostly
             // sorted frame-to-frame (same sprites, same order) → insertion sort runs
             // ~O(n) on the steady state (each frame costs a few swaps, not a sort).
-            List<EditorObject> culledPlayers = new(); // host portal yang dibuang culling
+            var culledPlayers = _scratchCulledPlayers; // host portal yang dibuang culling (scratch — nol alokasi/frame)
+            culledPlayers.Clear();
             var sprites2D = _scratchSprites2D;
             sprites2D.Clear();
             foreach (var o in _objects)
