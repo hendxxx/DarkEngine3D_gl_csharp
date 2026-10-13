@@ -1,6 +1,10 @@
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
+using System.Linq;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
+using System.IO;
 using System.Numerics;
   
 namespace DarkEngine3D_gl_csharp.Engine.IDE;
@@ -272,16 +276,19 @@ public class IDEBridge
         return dash >= 0 && dash < clipName.Length - 1 ? clipName[(dash + 1)..] : clipName;
     }
 
-    public static bool TryGetSpriteSheetTexture(string sheetName, out uint texId, out int imgW, out int imgH)
-    {
-        texId = 0; imgW = 0; imgH = 0;
-        if (sheetName != null && _spriteSheets.TryGetValue(sheetName, out var entry))
-        {
-            texId = entry.texId; imgW = entry.imgW; imgH = entry.imgH;
-            return true;
-        }
-        return false;
-    }
+    // Backing sprite registry accessor used by the runtime/editor to map sheet names to known texture ids.
+            // The SpriteEditor updates this registry when sheets change; callers in draw code should use this
+            // fast-path when the editor has already loaded the texture into the runtime entry.
+            public static bool TryGetSpriteSheetTexture(string sheetName, out uint texId, out int imgW, out int imgH)
+            {
+                texId = 0; imgW = 0; imgH = 0;
+                if (sheetName != null && _spriteSheets.TryGetValue(sheetName, out var entry))
+                {
+                    texId = entry.texId; imgW = entry.imgW; imgH = entry.imgH;
+                    return true;
+                }
+                return false;
+            }
 
     public static List<string> GetSpriteSheetNames()
         => _spriteSheets.Keys.OrderBy(k => k).ToList();

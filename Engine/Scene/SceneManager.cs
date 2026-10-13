@@ -73,6 +73,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _editorGridCreated = false;
 
         // ── VSync state tracking (for per-scene VSync switching) ──
+
+                // Process pending sprite atlas reloads/evictions on the render thread when the
+                // SceneManager's run loop is active (covers editor preview render path too).
+                private void ProcessSpriteAtlasOnRenderThread()
+                {
+                    try { Visual.SpriteAtlasManager.ProcessReloadQueue(); } catch (Exception ex) { Console.WriteLine($"[SceneManager] SpriteAtlasManager.ProcessReloadQueue failed: {ex.Message}"); }
+                }
+
+
         private bool _currentVSync = true;
 
         private void EnsureSharedFBO()
@@ -423,7 +432,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     OpenGL.ApplySceneProperties(_currentScene.RenderProperties, ref _currentVSync);
                 }
 
-                _currentScene?.Render();
+                // Process sprite atlas work on the render thread before rendering the current scene
+                                ProcessSpriteAtlasOnRenderThread();
+                                _currentScene?.Render();
 
                 // ── Render gizmo when a scene is active and an editor object is selected ──
                 if (_currentScene != null && _ide != null && _ide.IsActive)

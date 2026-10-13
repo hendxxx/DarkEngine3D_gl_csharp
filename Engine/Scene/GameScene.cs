@@ -1125,6 +1125,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             //  Record objects timing, start post-process timing
+
+                        // Process any pending sprite atlas reloads / evictions on the GL thread
+                        try { Visual.SpriteAtlasManager.ProcessReloadQueue(); } catch (Exception ex) { Console.WriteLine($"[GameScene] SpriteAtlasManager.ProcessReloadQueue failed: {ex.Message}"); }
+
+
             _objectsTimeMs = _renderTimer.Elapsed.TotalMilliseconds;
             _renderTimer.Restart();
 

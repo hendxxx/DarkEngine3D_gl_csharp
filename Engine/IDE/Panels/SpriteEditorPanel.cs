@@ -150,6 +150,11 @@ public class SpriteEditorPanel
         _bridge = bridge;
     }
 
+    public SpriteEditorPanel()
+    {
+        // Default ctor used by the IDE initialization; set bridge later if needed.
+    }
+
     public void ShowInMenu() => ImGui.MenuItem("Sprite Editor", null, ref _visible);
 
     /// <summary>Public one-liner for IDE in-game mode (panel Render() is skipped there):

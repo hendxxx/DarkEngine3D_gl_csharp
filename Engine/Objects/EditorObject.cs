@@ -231,10 +231,18 @@ public enum LightType
 /// world Z offset derived from the layer's ZPosition (positive = in front of the grid,
 /// negative = behind it), matching the sidescroller depth convention.</summary>
 public class MapParallaxRenderLayer
-{
+    {
     public string Name = "";
     public string ImagePath = "";
     public bool IsVisible = true;
+
+    // Sprite optimization visibility bookkeeping (separate from IsVisible)
+    public bool SpriteVisible = true;
+    public float TimeSinceVisible = 0f;
+    public bool CpuSpriteDataLoaded = true; // assume loaded on create
+    // Optional: resolved sheet path for lazy reload
+    public string? SpriteSourcePath = null;
+
     /// <summary>Depth factor: world-Z offset in tile cells. &gt; 0 = in front of the
     /// grid, &lt; 0 = behind it.</summary>
     public float ZPosition;
@@ -466,6 +474,16 @@ public unsafe class EditorObject
     public bool Sprite2DLoop { get; set; } = true;
     /// <summary>Playback speed multiplier (1 = clip FPS as authored).</summary>
     public float Sprite2DSpeed { get; set; } = 1f;
+
+    // Sprite optimization bookkeeping (visual-only; does not affect physics or game logic)
+    /// <summary>True when the sprite was visible to the current camera on the last cull pass.</summary>
+    public bool SpriteVisible { get; set; } = true;
+    /// <summary>Seconds elapsed since the sprite was last seen by the active camera. Used to gate visual clock advancement.</summary>
+    public float TimeSinceVisible { get; set; } = 0f;
+    /// <summary>Whether CPU-side sprite data (decoded pixels / atlas data) is currently resident.</summary>
+    public bool CpuSpriteDataLoaded { get; set; } = true;
+    /// <summary>Optional resolved image/sheet source path used by the atlas manager for lazy reloads.</summary>
+    public string? SpriteSourcePath { get; set; } = null;
     /// <summary>Playback offset in seconds (0 = start at frame 0). Useful to
     /// desynchronize several fire/candle sprites sharing one clip.</summary>
     public float Sprite2DStartOffset { get; set; }
@@ -5014,8 +5032,37 @@ public unsafe class EditorObject
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Sprite2D) return;
         if (!TryGetPlayer2DClip(out var sheet, out var clip) || sheet == null || clip == null) return;
-        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out uint texId, out int _, out int _))
-            return;
+
+                // Pause animation updates for offscreen sprites after idle timeout — physics and gameplay
+                // clocks are unchanged, only visual Sprite2DAnimTime/Player2DActionTime advancement is halted.
+                // EditorObject.SpriteVisible is maintained by the manager's Is2DSpriteCulled call path.
+                if (!SpriteVisible)
+                {
+                    // If not seen recently and time exceeded the idle pause, skip advancing clocks
+                    if (TimeSinceVisible >= Visual.SpriteAtlasManager.IdlePauseSeconds)
+                    {
+                        System.Threading.Interlocked.Increment(ref Visual.SpriteAtlasManager.SkippedSpriteUpdates);
+                        // Still draw the current frame (no frame advancement) — return early from places
+                        // that would advance Player2DActionTime / Sprite2DAnimTime. We'll implement the
+                        // per-frame gate below where clocks are advanced (frame-gated by _player2dLastClockFrame).
+                    }
+                }
+        uint texId = 0;
+        bool __usedAtlas = false;
+        if (!IDEBridge.TryGetSpriteSheetTexture(sheet.Name, out texId, out int _, out int _))
+        {
+            var __path = sheet.ImagePath;
+            if (string.IsNullOrEmpty(__path)) return;
+            texId = Visual.SpriteAtlasManager.AcquireTextureIfLoaded(__path);
+            if (texId == 0)
+            {
+                Visual.SpriteAtlasManager.GetOrQueueTexture(__path);
+                return;
+            }
+            Visual.SpriteAtlasManager.Retain(__path);
+            __usedAtlas = true;
+        }
+
         // ── Cull PRE-clock (final design): an off-screen decorative sprite freezes
         // here, OFF-SCREEN — when it scrolls back in, the time spent outside the
         // view is absent from its clock and its phase completes smoothly just
@@ -5023,8 +5070,11 @@ public unsafe class EditorObject
         // instead of ON-SCREEN time (water/wave strips visibly speeding up while
         // the camera pans), so culling MUST gate this advance.
         if (EditorObjectManager.Is2DSpriteCulled(this, camera))
+        {
+            if (__usedAtlas) Visual.SpriteAtlasManager.Release(sheet.ImagePath);
             return;
-        if (texId == 0) return;
+        }
+        if (texId == 0) { if (__usedAtlas) Visual.SpriteAtlasManager.Release(sheet.ImagePath); return; }
 
         // Clock: frame-gated like the player clock (DrawSprite2D can run for the
         // editor pass AND per camera in the same rendered frame).

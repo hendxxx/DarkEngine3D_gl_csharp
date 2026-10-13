@@ -104,6 +104,17 @@ public static class Player2DSystem
     public static void Update(Objects.EditorObjectManager? manager, Tilemap2D? activeMap, float dt, IDEBridge? bridge)
     {
         if (manager == null) return;
+
+                // Advance per-sprite visibility timers early so Update loops can decide
+                // whether to pause animation updates.
+                foreach (var o in manager.Objects)
+                {
+                    if (o == null) continue;
+                    if (o.SpriteVisible)
+                        o.TimeSinceVisible = 0f;
+                    else
+                        o.TimeSinceVisible += dt;
+                }
         TelemetryTick(dt);
 
         // Refresh the trigger runtime's manager reference (bubble actions anchor to
