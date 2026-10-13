@@ -154,8 +154,28 @@ public class SpriteEditorPanel
 
     /// <summary>Public one-liner for IDE in-game mode (panel Render() is skipped there):
     /// refresh the static sheet/clip registry so Player2D keeps animating in-game.</summary>
+    /// <summary>Throttle: sync the sprite registry at most every N editor frames.
+    /// The registry sync's signature gate (IDEBridge.SyncSpriteRegistry) already skips
+    /// no-op rebuilds, but the signature itself + enumerable walks still cost per
+    /// frame; with the throttle the steady-state cost is ~1/N of that. Any COUNT
+    /// change (sheets/clips/textures added or removed) syncs IMMEDIATELY so imports
+    /// stay instant; same-count edits (rename/FPS) settle within N frames (~0.13s at
+    /// 60fps — imperceptible).</summary>
+    private int _syncFrameCounter = 0;
+    private int _lastSheetCount = -1;
+    private int _lastClipCount = -1;
+    private int _lastTextureCount = -1;
+    private const int SyncEveryNFrames = 8;
+
     public void SyncRegistry()
-        => IDEBridge.SyncSpriteRegistry(SpriteSheets, _previewTextures, AnimationClips);
+    {
+        int sc = SpriteSheets.Count, cc = AnimationClips.Count, tc = _previewTextures.Count;
+        bool countsChanged = sc != _lastSheetCount || cc != _lastClipCount || tc != _lastTextureCount;
+        if (!countsChanged && _syncFrameCounter++ % SyncEveryNFrames != 0)
+            return; // throttled — signature gate made full syncs conditional anyway
+        _lastSheetCount = sc; _lastClipCount = cc; _lastTextureCount = tc;
+        IDEBridge.SyncSpriteRegistry(SpriteSheets, _previewTextures, AnimationClips);
+    }
 
     public void Render()
     {

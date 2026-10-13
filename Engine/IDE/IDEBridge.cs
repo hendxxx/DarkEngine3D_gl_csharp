@@ -169,6 +169,35 @@ public class IDEBridge
         IEnumerable<SpriteSheet> sheets, Dictionary<string, uint> textures,
         IEnumerable<AnimationClip2D> clips)
     {
+        // ── CHANGE-DTECTION GATE (per-frame sync fix) ──
+        // SyncRegistry() runs EVERY frame (even with the Sprite Editor hidden), and the
+        // old code unconditionally cleared + rebuilt the dictionaries, invalidated the
+        // auto-match cache and bumped SpriteRegistryVersion. That made EVERY cached
+        // clip match die after one frame → every animated sprite re-ran GetClipNames
+        // (LINQ + sort + List alloc) per frame per layer — FPS dropped in proportion to
+        // the number of sprite animations. Now we compute an allocation-light signature
+        // (names + texture ids) and only rebuild when it actually changed.
+        int sig = 17;
+        foreach (var s in sheets)
+        {
+            sig = sig * 31 + s.Name.GetHashCode(StringComparison.OrdinalIgnoreCase);
+            sig = sig * 31 + (s.ImagePath?.GetHashCode(StringComparison.OrdinalIgnoreCase) ?? 0);
+        }
+        foreach (var c in clips)
+        {
+            sig = sig * 31 + c.Name.GetHashCode(StringComparison.OrdinalIgnoreCase);
+            sig = sig * 31 + (c.SpriteSheetName?.GetHashCode(StringComparison.OrdinalIgnoreCase) ?? 0);
+        }
+        // Texture ids are part of the signature: a re-imported image gets a NEW texId
+        // under the same path — the registry must refresh so Player2D picks it up.
+        foreach (var kv in textures)
+            sig = sig * 31 + kv.Key.GetHashCode(StringComparison.OrdinalIgnoreCase)
+                + (int)kv.Value;
+
+        if (sig == _lastRegistrySig)
+            return; // nothing changed — keep dictionaries + caches warm
+        _lastRegistrySig = sig;
+
         _spriteSheets.Clear();
         foreach (var s in sheets)
         {
@@ -187,8 +216,13 @@ public class IDEBridge
         foreach (var c in clips)
             _spriteClips[(c.SpriteSheetName, c.Name)] = c;
         _autoClipMatchCache.Clear(); // sheet/clip lists changed — cached matches are stale
+        _clipNamesCache.Clear();     // per-sheet name lists are stale too
         SpriteRegistryVersion++;
     }
+
+    /// <summary>Signature of the last SyncSpriteRegistry content (11 = initial empty
+    /// state) — the per-frame sync early-exits when the content is unchanged.</summary>
+    private static int _lastRegistrySig = 11;
 
     /// <summary>Find the clip on <paramref name="sheetName"/> that follows the base
     /// animation <paramref name="baseName"/>: an EXACT name match first (case-insensitive),
@@ -266,9 +300,24 @@ public class IDEBridge
     /// when the caller has no world position, e.g. a plain click → spawn at camera).</summary>
     public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
 
+    /// <summary>Per-sheet clip-name list cache. GetClipNames is called from UI code
+    /// and from the per-frame sprite/equipment resolve paths; with many animations the
+    /// old per-call LINQ + OrderBy + ToList turned into per-frame GC churn. Cached per
+    /// sheet and versioned by SpriteRegistryVersion — invalidated automatically when
+    /// the registry rebuilds.</summary>
+    private static readonly Dictionary<string, (List<string> names, int ver)> _clipNamesCache = new(StringComparer.OrdinalIgnoreCase);
+
     public static List<string> GetClipNames(string sheetName)
-        => _spriteClips.Where(kv => string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
+    {
+        if (sheetName == null) return [];
+        if (_clipNamesCache.TryGetValue(sheetName, out var hit) && hit.ver == SpriteRegistryVersion)
+            return hit.names;
+
+        var names = _spriteClips.Where(kv => string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
             .Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
+        _clipNamesCache[sheetName] = (names, SpriteRegistryVersion);
+        return names;
+    }
 
     public static bool TryGetSpriteClip(string sheetName, string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)
     {

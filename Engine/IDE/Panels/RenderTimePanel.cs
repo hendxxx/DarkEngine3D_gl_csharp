@@ -324,6 +324,11 @@ public class RenderTimePanel
         {
             DrawSection("Viewport panel (UI/gizmo/brush)", FrameProfiler.ViewportMs, frame, frame, new Vector4(1f, 0.75f, 0.3f, 1f));
             DrawSection("All other panels", FrameProfiler.PanelsMs, frame, frame, new Vector4(0.65f, 0.85f, 0.55f, 1f));
+            // Animated sprites: registry sync cost — should read ~0 in steady state
+            // (throttled every-8-frames + signature-gated). A sustained value here
+            // means the sprite registry is rebuilding every frame (perf regression).
+            if (FrameProfiler.SpriteRegistryMs > 0.01)
+                DrawSection("Sprite registry sync", FrameProfiler.SpriteRegistryMs, frame, frame, new Vector4(0.5f, 0.9f, 0.9f, 1f));
 
             // ImGui costs, grouped and expandable one level further.
             if (ImGui.TreeNode("ImGui (UI framework)"))
@@ -355,6 +360,7 @@ public class RenderTimePanel
                 DrawHistRow("Menu bar", FrameProfiler.HistMenuBar);
                 DrawHistRow("Popups", FrameProfiler.HistPopups);
                 DrawHistRow("Misc tail", FrameProfiler.HistMisc);
+                DrawHistRow("Sprite registry sync", FrameProfiler.HistSpriteRegistry);
                 ImGui.TreePop();
             }
 

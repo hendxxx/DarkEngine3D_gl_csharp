@@ -1012,7 +1012,11 @@ public class IDE : IDisposable
         _mapEditor?.SyncForGameplay();
         // Keep the sprite-sheet/clip registry fresh in in-game mode too (Player2D
         // resolves its animated sprite through it — a stale registry = frozen sprite).
+        // MEASURED: throttled + signature-gated, see its slot in the Render Time panel
+        // (steady state should read ~0 on most frames).
+        long _t0SpriteReg = System.Diagnostics.Stopwatch.GetTimestamp();
         _spriteEditor?.SyncRegistry();
+        Helpers.FrameProfiler.AddMs(ref Helpers.FrameProfiler.SpriteRegistryMs, _t0SpriteReg);
 
         // ── In-Game Mode: render full-screen viewport with no ImGui chrome ──
         if (_inGameMode)

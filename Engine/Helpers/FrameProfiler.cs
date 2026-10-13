@@ -38,6 +38,10 @@ public static class FrameProfiler
     /// <summary>Project popups (New/Open/Save-As Project file pickers) + the shared
     /// GLB reference dialog rendered every frame in the editor path.</summary>
     public static double PopupsMs;
+    /// <summary>Sprite-sheet/clip registry sync (Sprite Editor → IDEBridge): the
+    /// per-frame refresh that keeps Player2D/Sprite2D resolving their art. Throttled
+    /// + signature-gated, so in steady state this should be ~0 most frames.</summary>
+    public static double SpriteRegistryMs;
     /// <summary>Transition overlay + TrackAndRestorePanelFocus + undo/redo routing
     /// (the small bookkeeping tail of the editor frame).</summary>
     public static double EditorMiscMs;
@@ -60,6 +64,7 @@ public static class FrameProfiler
     private static readonly double[] _histImguiRender = new double[History];
     private static readonly double[] _histMenuBar = new double[History];
     private static readonly double[] _histPopups = new double[History];
+    private static readonly double[] _histSpriteReg = new double[History];
     private static readonly double[] _histMisc = new double[History];
     private static int _head;
     private static int _count;
@@ -73,6 +78,7 @@ public static class FrameProfiler
     public static double[] HistImguiRender => _histImguiRender;
     public static double[] HistMenuBar => _histMenuBar;
     public static double[] HistPopups => _histPopups;
+    public static double[] HistSpriteRegistry => _histSpriteReg;
     public static double[] HistMisc => _histMisc;
     /// <summary>Valid entries in the history buffers (grows to <see cref="History"/>).</summary>
     public static int HistCount => _count;
@@ -89,11 +95,13 @@ public static class FrameProfiler
         _histImguiRender[_head] = ImguiRenderMs;
         _histMenuBar[_head] = MenuBarMs;
         _histPopups[_head] = PopupsMs;
+        _histSpriteReg[_head] = SpriteRegistryMs;
         _histMisc[_head] = EditorMiscMs;
         _head = (_head + 1) % History;
         if (_count < History) _count++;
         FrameMs = SceneMs = ViewportMs = PanelsMs = 0;
         ImguiNewFrameMs = ImguiRenderMs = MenuBarMs = PopupsMs = EditorMiscMs = 0;
+        SpriteRegistryMs = 0;
         SculptMs = SculptPickMs = SculptStampMs = SculptOverlayMs = 0;
     }
 

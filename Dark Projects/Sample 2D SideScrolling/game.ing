@@ -13435,7 +13435,7 @@
               }
             ]
           },
-          "tilemapShowGrid": false,
+          "tilemapShowGrid": true,
           "tilemapShowTriggers": true,
           "tilemapGridColorR": 1,
           "tilemapGridColorG": 1,
@@ -23198,11 +23198,29 @@
                   565,
                   566,
                   567
-                ]
+                ],
+                "tileTopOverrides": {
+                  "3656": [
+                    0,
+                    0.62
+                  ],
+                  "3657": [
+                    0.58,
+                    1
+                  ],
+                  "3661": [
+                    0.7,
+                    0
+                  ],
+                  "3660": [
+                    1,
+                    0.7
+                  ]
+                }
               }
             ]
           },
-          "tilemapShowGrid": true,
+          "tilemapShowGrid": false,
           "tilemapShowTriggers": true,
           "tilemapGridColorR": 1,
           "tilemapGridColorG": 1,
@@ -30274,6 +30292,451 @@
               "randomTiling": false
             }
           ]
+        },
+        {
+          "name": "Water",
+          "primitiveType": "Sprite2D",
+          "tilemapShowGrid": true,
+          "tilemapShowTriggers": true,
+          "tilemapGridColorR": 0.4,
+          "tilemapGridColorG": 0.5,
+          "tilemapGridColorB": 0.68,
+          "tilemapGridColorA": 0.5,
+          "glbFilePath": "",
+          "posX": 230,
+          "posY": 0,
+          "posZ": 0,
+          "rotX": 0,
+          "rotY": 0,
+          "rotZ": 0,
+          "scaleX": 1,
+          "scaleY": 1,
+          "scaleZ": 1,
+          "colorR": 0.8,
+          "colorG": 0.8,
+          "colorB": 0.8,
+          "castShadow": true,
+          "isVisible": true,
+          "npcDialogueId": "",
+          "npcAlertImagePath": "",
+          "npcDisplayName": "",
+          "npcBadgeSize": 0,
+          "npcBadgeLift": 0,
+          "npcPromptPos": 1,
+          "player2DSpriteSheet": "GandalfHardcore Water Tiles sheet",
+          "player2DAnimationClip": "Water wave",
+          "player2DWalkSheet": "",
+          "player2DWalkClip": "",
+          "player2DHeight": 6.9,
+          "player2DCapsuleRadius": 0.35,
+          "player2DCapsuleHeight": 1.8,
+          "player2DCapsuleOffsetX": 0,
+          "player2DCapsuleOffsetY": 0,
+          "player2DShowCapsule": true,
+          "player2DGravity": 25,
+          "player2DMoveSpeed": 8,
+          "player2DRunSpeed": 14,
+          "player2DJumpForce": 9,
+          "player2DGravityScale": 1.6,
+          "player2DAcceleration": 200,
+          "player2DDeceleration": 220,
+          "player2DAirControl": 0.25,
+          "player2DCoyoteTime": 0.1,
+          "player2DStepHeight": 0.35,
+          "player2DJumpBuffer": 0.12,
+          "player2DJumpCutMultiplier": 0.5,
+          "sprite2DLoop": true,
+          "sprite2DSpeed": 1,
+          "sprite2DStartOffset": 0,
+          "sprite2DFacingRight": true,
+          "sprite2DGlow": 0,
+          "player2DGlow": 0,
+          "sprite2DGlowColorX": 1,
+          "sprite2DGlowColorY": 1,
+          "sprite2DGlowColorZ": 1,
+          "player2DGlowColorX": 1,
+          "player2DGlowColorY": 1,
+          "player2DGlowColorZ": 1,
+          "sprite2DGlowFlicker": false,
+          "player2DGlowFlicker": false,
+          "effect2DPreset": "Fire",
+          "effect2DEmitRate": -1,
+          "effect2DWindFactor": -1,
+          "effect2DOffsetY": 0,
+          "effect2DEnabled": true,
+          "sprite2DRenderLayer": 0,
+          "sprite2DWorldWidth": 65,
+          "player2DRenderLayer": 0,
+          "cameraFollowSpeed": 6,
+          "cameraDeadZoneWidth": 96,
+          "cameraDeadZoneHeight": 64,
+          "cameraVerticalThreshold": 64,
+          "cameraReturnSpeed": 3,
+          "cameraLookAhead": 150,
+          "cameraViewOffset": {
+            "X": 0,
+            "Y": 0,
+            "Z": 0
+          },
+          "cameraFov": 60,
+          "cameraNear": 0.1,
+          "cameraFar": 500,
+          "lightDirX": -0.5,
+          "lightDirY": 0.8,
+          "lightDirZ": -0.3,
+          "lightIntensity": 1,
+          "lightType": 0,
+          "lightConeAngle": 30,
+          "lightPointRadius": 50,
+          "skyTimeOfDay": 12,
+          "skyCloudCoverage": 0.3,
+          "skySunIntensity": 1,
+          "skyTimeAnimSpeed": 0,
+          "skyTimeAnimPaused": false,
+          "showFrustum": true,
+          "showLightGizmo": true,
+          "showSkyGizmo": true,
+          "skySettings": {
+            "type": 0,
+            "skyboxFaces": {
+              "right": "",
+              "left": "",
+              "top": "",
+              "bottom": "",
+              "front": "",
+              "back": ""
+            },
+            "dome": {
+              "texturePath": "",
+              "radius": 500,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "rotationY": 0,
+              "autoRotate": false,
+              "rotateSpeed": 10,
+              "rotateAxis": 0,
+              "rotateVariation": 0,
+              "pingPong": false,
+              "pingPongAmplitude": 30
+            },
+            "sun": {
+              "size": 1,
+              "softness": 0.8,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "glowIntensity": 1
+            },
+            "scattering": {
+              "intensity": 18,
+              "rayleigh": 0.5,
+              "rayColor": {
+                "X": 0.6,
+                "Y": 0.8,
+                "Z": 1
+              },
+              "rayHeight": 0.8,
+              "mie": 0.35,
+              "mieColor": {
+                "X": 1,
+                "Y": 0.6,
+                "Z": 0.35
+              },
+              "mieFocus": 0.8,
+              "mieHeight": 0.6
+            },
+            "clouds": {
+              "density": 0.3,
+              "altitude": 2.5,
+              "speed": 0.035,
+              "detail": 0.35,
+              "erosion": 0.25,
+              "shadowStrength": 0.65,
+              "scatter": 0.25,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "cirrusStrength": 0.1,
+              "enabled": true
+            },
+            "moon": {
+              "brightness": 1.25,
+              "size": 1,
+              "glowRadius": 1,
+              "tintColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "texturePath": "Artifacts/Textures/moon.png",
+              "rotationSpeed": 0,
+              "phaseOffset": 0.5
+            },
+            "stars": {
+              "brightness": 1,
+              "density": 1,
+              "twinkleSpeed": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            },
+            "eclipses": {
+              "solarEclipse": 0,
+              "lunarEclipse": 0,
+              "glowColor": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              }
+            },
+            "sunRays": {
+              "intensity": 0.3,
+              "rayCount": 12,
+              "length": 1,
+              "color": {
+                "X": 1,
+                "Y": 1,
+                "Z": 1
+              },
+              "enabled": true
+            }
+          },
+          "pbrAlbedoPath": "",
+          "pbrNormalPath": "",
+          "pbrMetallicPath": "",
+          "pbrRoughnessPath": "",
+          "pbrAoPath": "",
+          "pbrHeightPath": "",
+          "terrainHeightPath": "",
+          "pbrEmissionPath": "",
+          "pbrTexTiling": 1,
+          "pbrParallaxScale": 0,
+          "pbrPomShadowStrength": 0,
+          "pbrRandomTiling": 0,
+          "pbrHeightContrast": 1,
+          "pbrHeightContrastCenter": 0.5,
+          "pbrHeightOffset": 0,
+          "pbrHeightScaleCenter": 0.5,
+          "pbrVertexDisplaceScale": 0.15,
+          "pbrVertexDisplaceEnabled": false,
+          "pbrPrimTessellation": 1,
+          "pbrVertexOffset": 0,
+          "terrainBaseHeight": 0.15,
+          "terrainHeightScale": 0,
+          "terrainHeightOffset": 0,
+          "terrainHeightStrength": 1,
+          "terrainHeightTilingX": 1,
+          "terrainHeightTilingY": 1,
+          "sculptDeltaPath": "",
+          "terrainSculptAmp": 2,
+          "splatMapPath": "",
+          "splatLayerAlbedo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerNormal": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerMetallic": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerRoughness": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerAo": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerHeight": [
+            "",
+            "",
+            ""
+          ],
+          "splatLayerTints": [
+            1,
+            1,
+            1,
+            0.55,
+            0.45,
+            0.35,
+            0.5,
+            0.55,
+            0.5,
+            0.75,
+            0.72,
+            0.7
+          ],
+          "splatLayerTilings": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "splatHeightBandsEnabled": false,
+          "splatSlopeEnabled": false,
+          "splatSlopeLayer": 1,
+          "splatSlopeThreshold": 0.35,
+          "splatSlopeFade": 0.2,
+          "splatSlopeUseDegrees": false,
+          "splatSlopeAngleMin": 35,
+          "splatSlopeAngleMax": 65,
+          "splatSlopeOverridePaint": false,
+          "splatSlopePaintFloor": 0.25,
+          "splatSlopeTiling": 1,
+          "splatHeightLayerCount": 4,
+          "splatHeightLayerFeather": 2,
+          "splatHeightBands": [
+            0,
+            8,
+            6,
+            14,
+            12,
+            20,
+            18,
+            100000
+          ],
+          "pbrVertexSegments": 256,
+          "pbrVertexChunk": 1,
+          "texSettings": {
+            "filterPreset": 2,
+            "minFilter": 5,
+            "magFilter": 1,
+            "generateMipmaps": true,
+            "mipmapBias": 0,
+            "anisotropy": 16,
+            "wrapS": 0,
+            "wrapT": 0,
+            "tilingX": 1,
+            "tilingY": 1,
+            "offsetX": 0,
+            "offsetY": 0,
+            "randomTiling": false
+          },
+          "pbrTexSettings": [
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            },
+            {
+              "filterPreset": 2,
+              "minFilter": 5,
+              "magFilter": 1,
+              "generateMipmaps": true,
+              "mipmapBias": 0,
+              "anisotropy": 16,
+              "wrapS": 0,
+              "wrapT": 0,
+              "tilingX": 1,
+              "tilingY": 1,
+              "offsetX": 0,
+              "offsetY": 0,
+              "randomTiling": false
+            }
+          ]
         }
       ],
       "transitionType": "slideright",
@@ -30286,14 +30749,14 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        148.93263,
-        28.7393,
-        258.26776
+        202.98134,
+        26.950632,
+        275.89786
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
       "editorCameraOrtho": true,
-      "editorCameraOrthoSize": 35.5488,
+      "editorCameraOrthoSize": 33.600002,
       "renderProperties": {
         "backgroundColor": [
           0.4962963,

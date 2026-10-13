@@ -4554,6 +4554,39 @@ public unsafe class EditorObject
     /// <summary>Advance the animation clock and draw the player as an upright textured
     /// quad showing the current clip frame. Works in edit mode (preview) and in-game.
     /// Called from Draw() after the Map2D branch so the player draws over the level.</summary>
+    // ── Sprite texture bind cache (driver state skip) ──
+    // Every Player2D/Sprite2D/equipment draw called GL.BindTexture unconditionally.
+    // Consecutive sprites sharing a sheet repeated the same bind dozens of times per
+    // frame — a driver state change each time. This cache skips a bind when the SAME
+    // texture is already current on unit 0, verified per frame (cache resets each
+    // Glfw.FrameId) and kept accurate by EVERY sprite-path bind recording itself.
+    private static uint _spriteTexBound;
+    private static long _spriteTexBoundFrame = -1;
+
+    /// <summary>Clear the sprite bind cache — called at the START of every sprite draw
+    /// session so a skip is only ever valid INSIDE that session (other systems — terrain,
+    /// tilemap, HUD flush — bind their own textures between sprite Ashley passes; a
+    /// cross-frame cache would skip a bind whose target was unbound in between).</summary>
+    private static void SpriteResetBindCache()
+    {
+        _spriteTexBound = 0;
+        _spriteTexBoundFrame = -1;
+    }
+
+    /// <summary>Bind a sprite texture on unit 0, skipping redundant binds.</summary>
+    private static void SpriteBindTexture(uint texId)
+    {
+        long frame = Glfw.FrameId;
+        if (_spriteTexBoundFrame != frame)
+        {
+            _spriteTexBoundFrame = frame;
+            _spriteTexBound = 0;
+        }
+        if (_spriteTexBound == texId) return; // already current — skip driver state change
+        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        _spriteTexBound = texId;
+    }
+
     public unsafe void DrawPlayer2D(Camera camera)
     {
         if (!IsVisible || PrimitiveType != EditorPrimitiveType.Player2D) return;
@@ -4852,7 +4885,8 @@ public unsafe class EditorObject
         GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
 
         GL.ActiveTexture(Const.GL_TEXTURE0);
-        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        SpriteResetBindCache();
+        SpriteBindTexture(texId);
         GL.Uniform1i(_map2dLocTex, 0);
         GL.Enable(Const.GL_BLEND);
         GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
@@ -5046,7 +5080,8 @@ public unsafe class EditorObject
         GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
 
         GL.ActiveTexture(Const.GL_TEXTURE0);
-        GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+        SpriteResetBindCache();
+        SpriteBindTexture(texId);
         GL.Uniform1i(_map2dLocTex, 0);
         GL.Enable(Const.GL_BLEND);
         GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
@@ -5335,7 +5370,7 @@ public unsafe class EditorObject
             if (!def.IsEquipment || string.IsNullOrEmpty(def.EquipSheet)) continue;
             if (!IDEBridge.TryGetSpriteSheetTexture(def.EquipSheet, out uint otex, out int _, out int _)
                 || otex == 0) continue;
-            GL.BindTexture(Const.GL_TEXTURE_2D, otex);
+            SpriteBindTexture(otex);
 
             // Resolve the overlay sheet + clip. No clip authored (or missing) →
             // animate the sheet's implicit grid at 8 FPS (same fallback as portals).
@@ -5543,7 +5578,7 @@ public unsafe class EditorObject
                 var identity = Matrix4x4.Identity;
                 GL.UniformMatrix4fv(_map2dLocModel, 1, false, &identity.M11);
                 GL.ActiveTexture(Const.GL_TEXTURE0);
-                GL.BindTexture(Const.GL_TEXTURE_2D, texId);
+                SpriteBindTexture(texId);
                 GL.Uniform1i(_map2dLocTex, 0);
                 GL.Enable(Const.GL_BLEND);
                 GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
