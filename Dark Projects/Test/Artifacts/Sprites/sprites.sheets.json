@@ -1,9 +1,0 @@
-{
-  "Sheets": [],
-  "AnimationClips": [],
-  "PreviewStartFrame": -1,
-  "PreviewEndFrame": -1,
-  "PreviewFps": 12,
-  "PreviewLoop": true,
-  "PatternActions": "idle|walk|run|jump start|jump end|attack|dead"
-}
