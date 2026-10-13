@@ -99,7 +99,6 @@ public class IDE : IDisposable
         "PBR Material", "Transition", "Sprite Editor", "Map Editor", "IDE Settings"
     };
     private bool _showNewProjectDialog = false;
-    private bool _showOpenProjectDialog = false;
     private bool _showSaveProjectAsDialog = false;
     private byte[] _newProjectNameBuf = new byte[256];
     private byte[] _newProjectPathBuf = new byte[512];
@@ -110,6 +109,13 @@ public class IDE : IDisposable
 
     private enum PendingFolderAction { None, NewProject, SaveProjectAs }
     private PendingFolderAction _pendingFolderAction = PendingFolderAction.None;
+    /// <summary>One-shot: the user requested File > Open Project... and the file
+    /// browser (*.projing) should open this frame.</summary>
+    private bool _showOpenProjectFileDialog = false;
+    /// <summary>True while the Open Project file browser is on screen. The picker is
+    /// rendered EVERY frame until the user picks a file (opens the project directly)
+    /// or closes the window (X / popup close = cancel).</summary>
+    private bool _openProjectDialogActive = false;
 
     /// <summary>When true, all ImGui panels are hidden and the game scene fills the entire screen.</summary>
     public bool InGameMode
@@ -1073,6 +1079,14 @@ public class IDE : IDisposable
                     _projectFolderDialog.OpenForPickFolder("Select Project Location");
                 }
 
+                // ── Open Project ──
+                if (ImGui.MenuItem("Open Project...", "Ctrl+O"))
+                {
+                    // Defer the actual dialog open to RenderProjectPopups so the file picker is
+                    // opened outside the menu bar context (avoids popup/title quirks).
+                    _showOpenProjectFileDialog = true;
+                }
+
                 // ── Recent Projects ──
                 var recentProjects = RecentProjectsManager.GetRecentProjects();
                 if (recentProjects.Count > 0)
@@ -1149,7 +1163,7 @@ public class IDE : IDisposable
                     _sceneManagerPanel.OpenAddScenePopup();
 
                 // Open Scene — opens file dialog to load .ing
-                if (ImGui.MenuItem("Open Scene...", "Ctrl+O"))
+                if (ImGui.MenuItem("Open Scene...", "Ctrl+Shift+O"))
                     _sceneManagerPanel.OpenLoadFileDialog();
 
                 // ── Recent Files ──
@@ -1183,11 +1197,11 @@ public class IDE : IDisposable
                 // + ALL catalogs (items/shops/quests/dialogues). No longer gated on editor
                 // scenes existing: a fresh project authoring its shop/item catalog (before
                 // any scene exists) still needs a working Save.
-                if (ImGui.MenuItem("Save", "Ctrl+S"))
+                if (ImGui.MenuItem("Save Scene", "Ctrl+S"))
                     SaveAllData();
 
                 // Save As...
-                if (ImGui.MenuItem("Save As...", "Ctrl+Shift+S"))
+                if (ImGui.MenuItem("Save Scene As...", "Ctrl+Shift+S"))
                     _sceneManagerPanel.OpenSaveAsDialog();
 
                 ImGui.Separator();
@@ -1699,23 +1713,44 @@ public class IDE : IDisposable
             ImGui.EndPopup();
         }
 
-        // ── Open Project file browser (close outgoing project first). ──
-        _projingFileDialog.Render();
-        if (_projingFileDialog.IsConfirmed && _projingFileDialog.SelectedPath != null)
+        // ── Open Project file browser (*.projing, opens the project directly). ──
+        // One-shot request from the menu: open the picker with its unique ID.
+        if (_showOpenProjectFileDialog)
         {
-            string projingPath = _projingFileDialog.SelectedPath;
-            PersistEditorData();
-            Engine.Project.ProjectManager.CloseProject();
-            if (Engine.Project.ProjectManager.OpenProject(projingPath))
+            _projingFileDialog.OpenForLoad("*.projing", "Open Project (.projing)");
+            _openProjectDialogActive = true;
+            _showOpenProjectFileDialog = false;
+        }
+        // Render the picker EVERY frame while it is open so navigation, double-click
+        // and the Open button all work. Ends via confirm (opens the project) or the
+        // window's X button / popup close (cancel). The title is UNIQUE — it must not
+        // collide with any other ImGui popup ID.
+        if (_openProjectDialogActive)
+        {
+            bool stillOpen = _projingFileDialog.Render();
+            if (_projingFileDialog.IsConfirmed && _projingFileDialog.SelectedPath != null)
             {
-                Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(Path.GetDirectoryName(projingPath)!));
-                Console.WriteLine($"[IDE] Opened project from {projingPath}");
+                string projingPath = _projingFileDialog.SelectedPath;
+                _projingFileDialog.Close();
+                _openProjectDialogActive = false;
+                PersistEditorData();
+                Engine.Project.ProjectManager.CloseProject();
+                if (Engine.Project.ProjectManager.OpenProject(projingPath))
+                {
+                    Config.RecentProjectsManager.AddRecentProject(Path.GetFullPath(Path.GetDirectoryName(projingPath)!));
+                    Console.WriteLine($"[IDE] Opened project from {projingPath}");
+                }
+                else
+                {
+                    Console.WriteLine($"[IDE] Failed to open project at {projingPath}");
+                }
             }
-            else
+            else if (!stillOpen)
             {
-                Console.WriteLine($"[IDE] Failed to open project at {projingPath}");
+                // User closed the window (X) — treat as cancel.
+                _projingFileDialog.Close();
+                _openProjectDialogActive = false;
             }
-            _projingFileDialog.Close();
         }
 
         // ── Render popup modals backing the pending folder requests ──

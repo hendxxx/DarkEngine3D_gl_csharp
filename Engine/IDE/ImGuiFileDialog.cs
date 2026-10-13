@@ -319,15 +319,18 @@ public class ImGuiFileDialog
                     ConfirmSelection();
                 }
                 ImGui.SameLine();
-            }
-
-            if (ImGui.Button("Cancel", new Vector2(100, 0)))
-            {
-                SelectedPath = null;
-                _mode = DialogMode.None;
-            }
+            } 
 
             ImGui.EndPopup();
+        }
+
+        // The window's ✕ (X) button sets ref open=false — mark the dialog closed
+        // (and the popup ID released) so callers polling Render() see a real cancel.
+        if (!open)
+        {
+            SelectedPath = null;
+            IsConfirmed = false;
+            _mode = DialogMode.None;
         }
 
         return _mode != DialogMode.None;
