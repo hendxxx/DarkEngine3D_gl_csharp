@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
@@ -65,7 +66,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
     }
 
-    public unsafe class StaticObjectManager
+    public unsafe class StaticObjectManager : IDisposable
     {
         /// <summary>Display label used by the Render Time panel (e.g. "Trees", "Wall").</summary>
         public string Label { get; set; } = "Static";
@@ -116,6 +117,62 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
         public IReadOnlyList<StaticObject> GetObjects() => _objects;
+
+        public void Dispose()
+        {
+            try
+            {
+                // Free cached model GPU resources
+                foreach (var kv in _modelCache)
+                {
+                    try
+                    {
+                        kv.Value.FreeGpu();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[StaticObjectManager.Dispose] FreeGpu failed for {kv.Key}: {ex.Message}");
+                    }
+                }
+                _modelCache.Clear();
+
+                // Delete any billboard atlas textures created in groups
+                foreach (var kv in _modelGroups)
+                {
+                    var groups = kv.Value;
+                    foreach (var g in groups)
+                    {
+                        if (g.BillboardAtlasTexture != 0)
+                        {
+                            uint id = g.BillboardAtlasTexture;
+                            try { GL.DeleteTextures(1, &id); }
+                            catch { }
+                            g.BillboardAtlasTexture = 0;
+                        }
+                    }
+                }
+                _modelGroups.Clear();
+
+                // Delete instance VBOs
+                foreach (var kv in _instanceVBOs)
+                {
+                    uint id = kv.Value;
+                    if (id != 0)
+                    {
+                        try { GL.DeleteBuffers(1, &id); }
+                        catch { }
+                    }
+                }
+                _instanceVBOs.Clear();
+
+                // Clear objects list
+                _objects.Clear();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[StaticObjectManager.Dispose] Exception: {ex.Message}");
+            }
+        }
 
         public Vector3 RotationCorrection = Vector3.Zero;
         public bool UseNodeHierarchy =  false;

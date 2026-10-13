@@ -162,7 +162,25 @@ public unsafe class Program
         // via the Scene Manager panel's Load button.
         sceneManager.Run(/* startScene = null — blank UI Editor mode */);
 
-        // Shutdown
+        // Shutdown — dispose IDE and free GL resources while context is current.
+        try
+        {
+            ide?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Program] IDE.Dispose failed: {ex.Message}");
+        }
+
+        try
+        {
+            DarkEngine3D_gl_csharp.Engine.Libs.Shader.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Program] Shader.Shutdown failed: {ex.Message}");
+        }
+
         Console.WriteLine("Program Shutdown.");
     }
 }

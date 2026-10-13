@@ -1008,10 +1008,34 @@ public unsafe class EditorObjectManager
             GL.Uniform1i(GlbUniforms.HasOcclusionTexture, 0);
             GL.Uniform1i(GlbUniforms.HasEmissiveTexture, 0);
 
+            // Precompute view-projection once for per-object frustum culling (editor preview).
+            var vp = view * proj;
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
                 if (obj.PrimitiveType != EditorPrimitiveType.GlbReference || !obj.IsVisible) continue;
+
+                // Frustum culling: conservative 8-corner AABB test in clip-space. Skip draw if fully outside.
+                try
+                {
+                    var aabb = obj.GetWorldAABB();
+                    bool culled = true;
+                    for (int c = 0; c < 8; c++)
+                    {
+                        var corner = Vector4.Transform(new Vector4(
+                            (c & 1) != 0 ? aabb.Max.X : aabb.Min.X,
+                            (c & 2) != 0 ? aabb.Max.Y : aabb.Min.Y,
+                            (c & 4) != 0 ? aabb.Max.Z : aabb.Min.Z, 1f), vp);
+                        if (corner.X >= -corner.W && corner.X <= corner.W
+                            && corner.Y >= -corner.W && corner.Y <= corner.W
+                            && corner.Z >= -corner.W && corner.Z <= corner.W)
+                        {
+                            culled = false; break;
+                        }
+                    }
+                    if (culled) continue;
+                }
+                catch { /* conservative: if AABB test fails, render the object */ }
 
                 // A GLB mesh with an emissive texture binds it to unit 6 (GltfObject.Draw,
                 // same as the game) which would clobber shadowMap0 — re-bind the cascade maps

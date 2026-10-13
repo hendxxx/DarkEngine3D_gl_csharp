@@ -3687,7 +3687,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 2,
+          "posX": 5,
           "posY": 6.5,
           "posZ": 40,
           "rotX": 0,
@@ -3708,7 +3708,7 @@
           "npcBadgeLift": 0,
           "npcPromptPos": 1,
           "player2DSpriteSheet": "Male Skin1",
-          "player2DAnimationClip": "Male 1 - Idle",
+          "player2DAnimationClip": "Male Skin1-idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 16,
@@ -5030,9 +5030,9 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        61.997982,
-        32,
-        307.0999
+        31.667192,
+        13.831023,
+        302.30652
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,

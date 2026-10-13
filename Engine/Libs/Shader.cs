@@ -49,7 +49,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
 
         public Shader(string vs, string fs)
         {
-            ProgramId = Helpers.ShaderHelpers.LoadShaderFromString(vs, fs);
+            try
+            {
+                ProgramId = Helpers.ShaderHelpers.LoadShaderFromString(vs, fs);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Shader] LoadShaderFromString FAILED: {ex.Message}");
+                ProgramId = 0;
+            }
             Init();
         }
 
@@ -302,6 +310,42 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
         {
             int loc = GL.GetUniformLocation(ProgramId, name);
             GL.Uniform2f(loc, x, y);
+        }
+
+        public static void Shutdown()
+        {
+            if (!_initialized) return;
+
+            // Delete all statically cached shader programs (ignore zeros)
+            uint[] programs = new uint[] {
+                shaderProgram, lineShaderProgram, hudShaderProgram, skyShaderProgram,
+                invertPassShaderProgram, blurPassShaderProgram, dofSpriteMaskShaderProgram, outlineShaderProgram,
+                postFxBrightShaderProgram, postFxBloomDownsampleShaderProgram, postFxBloomUpsampleShaderProgram,
+                postFxCompositeShaderProgram, postFxDofShaderProgram, shadowShaderProgram, shadowSkinnedShaderProgram,
+                shadowStaticAlphaShaderProgram, objectPbrShaderProgram, objectPbrDisplaceShaderProgram,
+                objectPbrSplatShaderProgram, objectPbrSplatDisplaceShaderProgram, rainStreakShaderProgram,
+                rainOverlayShaderProgram, rainGlassShaderProgram
+            };
+
+            for (int i = 0; i < programs.Length; i++)
+            {
+                if (programs[i] != 0)
+                {
+                    try { GL.DeleteProgram(programs[i]); }
+                    catch { }
+                }
+            }
+
+            // Reset static ids to zero
+            shaderProgram = lineShaderProgram = hudShaderProgram = skyShaderProgram = 0;
+            invertPassShaderProgram = blurPassShaderProgram = dofSpriteMaskShaderProgram = outlineShaderProgram = 0;
+            postFxBrightShaderProgram = postFxBloomDownsampleShaderProgram = postFxBloomUpsampleShaderProgram = 0;
+            postFxCompositeShaderProgram = postFxDofShaderProgram = 0;
+            shadowShaderProgram = shadowSkinnedShaderProgram = shadowStaticAlphaShaderProgram = 0;
+            objectPbrShaderProgram = objectPbrDisplaceShaderProgram = objectPbrSplatShaderProgram = objectPbrSplatDisplaceShaderProgram = 0;
+            rainStreakShaderProgram = rainOverlayShaderProgram = rainGlassShaderProgram = 0;
+
+            _initialized = false;
         }
 
         public void Dispose()

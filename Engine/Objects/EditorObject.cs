@@ -723,7 +723,10 @@ public unsafe class EditorObject
 
     // ── Terrain elevation heightmap (SEPARATE from the PBR height detail map) ──
     // Two DIFFERENT sources by design: this one drives the base SHAPE (vertex
-    // displacement of the plane grid — grayscale, white = peaks) while    // <see cref="PbrHeightPath"/> stays a POM surface-detail map consumed by the    // fragment shader's parallax. Keeping them apart means a terrain can be shaped    // by one image and micro-detailed by another.
+    // displacement of the plane grid — grayscale, white = peaks) while
+    // <see cref="PbrHeightPath"/> stays a POM surface-detail map consumed by the
+    // fragment shader's parallax. Keeping them apart means a terrain can be shaped
+    // by one image and micro-detailed by another.
     private string _terrainHeightPath = "";
     private uint _terrainHeightTex;   // GPU texture for the elevation source (unit 15)    /// <summary>Grayscale terrain elevation heightmap — the base shape. Empty = flat
     /// plane (PBR maps may still apply). Changing it drops the GPU texture (lazy reload).</summary>

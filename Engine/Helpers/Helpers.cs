@@ -531,6 +531,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         // ===========================================================================
         public unsafe class GltfModelGpuData
         {
+            // Cached copy of original animations so we can lazy-unload and restore them
+            public Engine.Objects.GltfAnimation[]? SavedAnimations = null;
+
             public readonly GltfData Data;
             public readonly MeshGpu[] Meshes;
             public readonly AABB LocalAABB;
@@ -552,7 +555,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             // Generate simplified LOD meshes via vertex clustering
             GenerateSimplifiedLODs(data);
 
-            TextureIDs = UploadTextures(data);
+            // Cache original animations for lazy unload/reload
+                SavedAnimations = data.Animations != null && data.Animations.Length > 0 ? data.Animations : null;
+                TextureIDs = UploadTextures(data);
                 Meshes = new MeshGpu[data.Meshes.Length];
                 MeshToNode = new int[data.Meshes.Length];
                 for (int i = 0; i < MeshToNode.Length; i++) MeshToNode[i] = -1;

@@ -17,7 +17,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public unsafe class ObjectManager
     {
         private readonly Dictionary<string, GltfModelGpuData> _modelCache = [];
+        // Model instance reference counts (how many GltfObject instances reference a given gpu data)
+        private readonly Dictionary<GltfModelGpuData, int> _modelRefCount = new();
+        // Camera reference stored at Init so Update can perform visibility checks
+        private Camera? _camera = null;
         private readonly List<GltfObject> _objects = [];
+
+        // Animation LOD distance thresholds (meters)
+        private const float AnimLOD0_Dist = 30f;   // full update
+        private const float AnimLOD1_Dist = 80f;   // update every 3 frames
+        private const float AnimLOD2_Dist = 200f;  // freeze pose
+        private const float AnimLOD3_Dist = 99999f; // skip
+
+        // Instrumentation
+        public int SkippedAnimationUpdates { get; private set; } = 0;
         private readonly List<CharacterAgent> _agents = [];
         public IReadOnlyList<CharacterAgent> Agents => _agents;
         private readonly Random _agentRng = new(1982);
@@ -94,6 +107,46 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public List<StaticObjectManager> staticObjectManagers = new();
 
+        /// <summary>Remove an object from the manager and update model refcounts. If the model has no more instances,
+        /// its CPU-side animations are lazy-unloaded but saved for later reload.</summary>
+        public void RemoveObject(GltfObject obj)
+        {
+            if (obj == null) return;
+            try
+            {
+                // Remove instance from list
+                if (_objects.Contains(obj)) _objects.Remove(obj);
+
+                // Update refcount and lazy-unload animations if no instances remain
+                var gpu = obj.GpuData;
+                if (gpu != null && _modelRefCount.TryGetValue(gpu, out int ct))
+                {
+                    ct = Math.Max(0, ct - 1);
+                    if (ct == 0)
+                    {
+                        _modelRefCount.Remove(gpu);
+                        try
+                        {
+                            if (gpu.Data?.Animations != null && gpu.Data.Animations.Length > 0)
+                            {
+                                gpu.SavedAnimations ??= gpu.Data.Animations;
+                                gpu.Data.Animations = Array.Empty<Engine.Objects.GltfAnimation>();
+                            }
+                        }
+                        catch { }
+                    }
+                    else
+                    {
+                        _modelRefCount[gpu] = ct;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ObjectManager.RemoveObject] Exception: {ex.Message}");
+            }
+        }
+
         public ObjectManager()
         {
             _shaderProgram = GltfShader.GetShaderProgram();
@@ -142,6 +195,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void Init(Camera camera)
         {
+            _camera = camera;
             string xbotPath = "Artifacts\\objects\\Ybot.glb";
             var rng = new Random();
 
@@ -357,6 +411,28 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             var obj = new GltfObject(gpuData, position, q, scale);
             _objects.Add(obj);
 
+            // Track instance count for this gpuData so we can unload animations when no instances remain
+            if (gpuData != null)
+            {
+                if (_modelRefCount.TryGetValue(gpuData, out int ct))
+                {
+                    _modelRefCount[gpuData] = ct + 1;
+                }
+                else
+                {
+                    // previous count was zero — restore cached animations if they were lazy-unloaded
+                    _modelRefCount[gpuData] = 1;
+                    try
+                    {
+                        if ((gpuData.Data.Animations == null || gpuData.Data.Animations.Length == 0) && gpuData.SavedAnimations != null)
+                        {
+                            gpuData.Data.Animations = gpuData.SavedAnimations;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
             if (!string.IsNullOrEmpty(animPath) && File.Exists(animPath))
             {
                 var animData = LoadAnimationFile(animPath);
@@ -378,7 +454,66 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public void Update(float dt)
         {
             if (_objects.Count == 0) return;
-            foreach (var obj in _objects) obj.Update(dt);
+
+            // If no camera available, fall back to updating all objects (safe but slower)
+            if (_camera == null)
+            {
+                foreach (var obj in _objects) obj.Update(dt);
+                return;
+            }
+
+            // Build view-projection once for visibility tests
+            var vp = _camera.GetViewMatrix() * _camera.GetProjectionMatrix();
+
+            int skipped = 0;
+            var camPos = _camera.Position;
+            foreach (var obj in _objects)
+            {
+                // Quick visibility test using object's AABB in clip space — skip animation update if fully outside
+                var amin = obj.WorldAABB.Min; var amax = obj.WorldAABB.Max;
+
+                bool culled = true;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = System.Numerics.Vector4.Transform(new System.Numerics.Vector4(
+                        (i & 1) != 0 ? amax.X : amin.X,
+                        (i & 2) != 0 ? amax.Y : amin.Y,
+                        (i & 4) != 0 ? amax.Z : amin.Z, 1f), vp);
+                    if (corner.X >= -corner.W && corner.X <= corner.W
+                        && corner.Y >= -corner.W && corner.Y <= corner.W
+                        && corner.Z >= -corner.W && corner.Z <= corner.W)
+                    {
+                        culled = false; break;
+                    }
+                }
+
+                if (culled)
+                {
+                    // Not visible — skip per-frame animation update to save CPU
+                    skipped++;
+                    // mark AnimLOD=3 to indicate skipping
+                    obj.AnimLOD = 3;
+                    continue;
+                }
+
+                // Visible or partially visible — adjust AnimLOD based on distance to camera
+                float dist = Vector3.Distance(camPos, obj.Position);
+                int desiredLOD = 0;
+                if (dist < AnimLOD0_Dist) desiredLOD = 0;
+                else if (dist < AnimLOD1_Dist) desiredLOD = 1;
+                else if (dist < AnimLOD2_Dist) desiredLOD = 2;
+                else desiredLOD = 3;
+
+                // Respect objects that force animation (player) — do not downgrade player
+                if (obj.IsPlayer) desiredLOD = Math.Min(desiredLOD, obj.AnimLOD);
+
+                obj.AnimLOD = desiredLOD;
+
+                // Update normally (GltfObject.Update internally handles AnimLOD frame-skip)
+                obj.Update(dt);
+            }
+
+            SkippedAnimationUpdates = skipped;
         }
 
 

@@ -15,6 +15,8 @@ Ogi is a senior developer specialized in **game engine development** using **Ope
 - Implementing post-processing, skybox, lighting (CSM), shadows.
 - Implementing terrain, billboard, HUD, and other visual effects.
 - Implementing GUI/editor tools (ImGui).
+- Assisting with editor integration, ImGui lifecycle and safe shutdown.
+- Adding frustum culling, animation LODs, and lazy-loading strategies to reduce CPU usage.
 
 ## Tech Stack:
 - **Language:** C#

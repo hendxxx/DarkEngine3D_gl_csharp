@@ -479,6 +479,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _skybox = skybox;
             _hud = hud;
             _objectManager = objectManager;
+            // Ensure the object manager knows the active camera for frustum culling and animation LOD
+            try { _objectManager?.Init(_camera); } catch { }
             // Inventory/shop HUD parity with the editor preview: bake the shared HUD
             // (Worldstar + 26px title + 16px label slots) OUTSIDE the frame loop — the
             // in-game _hud is LoadingScene's Ngaco and cannot bake new font slots

@@ -24,6 +24,7 @@ public unsafe class ImGuiController : IDisposable
     private int _eboCapacity = 8192;
 
     private bool _hasVtxOffset = false;
+    private bool _hasContext = false;
 
     // ── Dynamic font cache ──
     private readonly Dictionary<(string path, float size), nint> _customFontCache = new();
@@ -68,6 +69,7 @@ public unsafe class ImGuiController : IDisposable
 
         Console.WriteLine("[ImGui] Step 1: CreateContext...");
         ImGui.CreateContext();
+        _hasContext = true;
         Console.WriteLine("[ImGui] Step 1 OK");
 
         var io = ImGui.GetIO();
@@ -203,7 +205,9 @@ public unsafe class ImGuiController : IDisposable
             try
             {
                 var font = io.Fonts.AddFontFromFileTTF(path, size);
-                // Guard: a null/stale native pointer cached here poisoned every consumer                // (dialogue overlay crashed with NRE in ImFontPtr.get_FontSize). Don't cache                // failures — they'll retry next time the font is requested.
+                // Guard: a null/stale native pointer cached here poisoned every consumer
+                // (dialogue overlay crashed with NRE in ImFontPtr.get_FontSize). Don't cache
+                // failures — they'll retry next time the font is requested.
                 if ((nint)font.NativePtr == 0)
                 {
                     Console.WriteLine($"[ImGui] Font load returned NULL for '{Path.GetFileName(path)}' @ {size}px — not cached");
@@ -371,21 +375,53 @@ public unsafe class ImGuiController : IDisposable
 
     public void Dispose()
     {
-        if (_vao != 0) { fixed (uint* p = &_vao) GL.DeleteVertexArrays(1, p); _vao = 0; }
-        if (_vbo != 0) { fixed (uint* p = &_vbo) GL.DeleteBuffers(1, p); _vbo = 0; }
-        if (_ebo != 0) { fixed (uint* p = &_ebo) GL.DeleteBuffers(1, p); _ebo = 0; }
-        if (_fontTexture != 0) { fixed (uint* p = &_fontTexture) GL.DeleteTextures(1, p); _fontTexture = 0; }
-        if (_shader != 0) GL.DeleteProgram(_shader);
-        if (_vertShader != 0) GL.DeleteShader(_vertShader);
-        if (_fragShader != 0) GL.DeleteShader(_fragShader);
-        // DestroyContext saves the ini (if dirty) using io.IniFilename — free the pinned
-        // pointer only AFTER the context teardown has finished with it.
-        ImGui.DestroyContext();
-        if (_iniFilenamePtr != null)
+        // If we never successfully created an ImGui context, skip ImGui/native calls.
+        if (_hasContext)
         {
-            Marshal.FreeCoTaskMem((nint)_iniFilenamePtr);
-            _iniFilenamePtr = null;
+            // Ensure we attempt to save the ini explicitly while the path is valid, then
+            // clear ImGui's pointer so DestroyContext won't read a freed pointer. Wrap
+            // every ImGui call to avoid invoking native code if the runtime state is
+            // already corrupted.
+            try { try { if (!string.IsNullOrEmpty(_iniPath)) ImGui.SaveIniSettingsToDisk(_iniPath); } catch { } } catch { }
+            try { try { ImGui.GetIO().NativePtr->IniFilename = null; } catch { } } catch { }
+
+            try
+            {
+                ImGui.DestroyContext();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ImGuiController] ImGui.DestroyContext threw: {ex.Message}");
+            }
+
+            _hasContext = false;
         }
+
+        // Free the pinned ini filename pointer after DestroyContext (or if no context).
+        try
+        {
+            if (_iniFilenamePtr != null)
+            {
+                Marshal.FreeCoTaskMem((nint)_iniFilenamePtr);
+                _iniFilenamePtr = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ImGuiController] Failed to free ini pointer: {ex.Message}");
+        }
+
+        // Delete GL resources. These calls require a current GL context. If the
+        // context was already destroyed by the caller, these may fail — wrap each
+        // in try/catch to avoid managed crashes during shutdown.
+        try { if (_vao != 0) { fixed (uint* p = &_vao) GL.DeleteVertexArrays(1, p); _vao = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] VAO delete failed: {ex.Message}"); }
+        try { if (_vbo != 0) { fixed (uint* p = &_vbo) GL.DeleteBuffers(1, p); _vbo = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] VBO delete failed: {ex.Message}"); }
+        try { if (_ebo != 0) { fixed (uint* p = &_ebo) GL.DeleteBuffers(1, p); _ebo = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] EBO delete failed: {ex.Message}"); }
+        try { if (_fontTexture != 0) { fixed (uint* p = &_fontTexture) GL.DeleteTextures(1, p); _fontTexture = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] Font texture delete failed: {ex.Message}"); }
+        try { if (_shader != 0) { GL.DeleteProgram(_shader); _shader = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] Program delete failed: {ex.Message}"); }
+        try { if (_vertShader != 0) { GL.DeleteShader(_vertShader); _vertShader = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] Vertex shader delete failed: {ex.Message}"); }
+        try { if (_fragShader != 0) { GL.DeleteShader(_fragShader); _fragShader = 0; } } catch (Exception ex) { Console.WriteLine($"[ImGuiController] Fragment shader delete failed: {ex.Message}"); }
+
         Console.WriteLine("[ImGuiController] Shutdown.");
     }
 
