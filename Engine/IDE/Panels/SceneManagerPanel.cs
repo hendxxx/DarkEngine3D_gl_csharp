@@ -100,6 +100,17 @@ public class SceneManagerPanel
     /// <summary>Save all editor scenes to game.ing (File > Save).</summary>
     public void SaveAllScenes() => SaveAllEditorScenes();
 
+    /// <summary>Project switched (Open/New/Close) — drop the panel's SESSION state so
+    /// Save/Save-All/auto-save never write into the PREVIOUS project's files:
+    /// _currentSaveFile still pointed at the old project's .ing (often game.ing),
+    /// which is what made scenes from the freshly opened project overwrite the last
+    /// opened project's game.ing ("game.ing ketimpa") until a Load/Save-As reset it.</summary>
+    public void OnProjectSwitched()
+    {
+        SetCurrentSaveFile(null);
+        Console.WriteLine("[SceneManagerPanel] Project switched — save target reset (Save All will target this project's game.ing)");
+    }
+
     /// <summary>Save all editor scenes to the current save file.
     /// Called when entering in-game mode to ensure the working file is up to date.
     /// If no file was loaded/saved yet, falls back to game.ing.</summary>

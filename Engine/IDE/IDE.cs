@@ -294,6 +294,10 @@ public class IDE : IDisposable
     private void OnProjectChanged()
     {
         Console.WriteLine($"[IDE] OnProjectChanged: IsProjectLoaded={Engine.Project.ProjectManager.IsProjectLoaded}, ProjectRoot='{Engine.Project.ProjectManager.ProjectRoot}'");
+        // The active project changed (open/new/close) — drop the scene panel's session
+        // save target BEFORE anything else so no save can land in the previous project's
+        // .ing / game.ing (the "game.ing ketimpa project terakhir" bug).
+        _sceneManagerPanel?.OnProjectSwitched();
         // imgui.ini follows the active project — the ImGuiController constructor runs
         // BEFORE any project is open, so without this re-point the layout would save
         // to the exe folder forever and never load the project's saved layout.

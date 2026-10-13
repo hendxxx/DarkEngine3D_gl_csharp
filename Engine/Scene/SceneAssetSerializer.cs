@@ -30,12 +30,19 @@ public static class SceneAssetSerializer
     private static SceneManifest? _cachedGameIngManifest = null;
     private static DateTime _gameIngLastWriteTime = DateTime.MinValue;
     private static bool _gameIngCacheValid = false;
+    /// <summary>The ABSOLUTE game.ing path the cached manifest belongs to.
+    /// GameIngPath moves when the active project changes — without binding the cache
+    /// to its source path, a switch to a project whose game.ing has an OLDER write
+    /// time made the stale manifest of the PREVIOUS project get served for the NEW
+    /// project ("game.ing ketimpa project terakhir").</summary>
+    private static string? _cachedGameIngPath = null;
 
     /// <summary>Invalidate the game.ing cache so the next read re-parses the file.</summary>
     private static void InvalidateGameIngCache()
     {
         _cachedGameIngManifest = null;
         _gameIngCacheValid = false;
+        _cachedGameIngPath = null;
     }
 
     /// <summary>Directory where .ing scene files are stored.</summary>
@@ -92,7 +99,8 @@ public static class SceneAssetSerializer
         bool isGameIng = string.Equals(
             filePath, GameIngPath, StringComparison.OrdinalIgnoreCase);
 
-        if (isGameIng && _gameIngCacheValid)
+        if (isGameIng && _gameIngCacheValid &&
+            string.Equals(filePath, _cachedGameIngPath, StringComparison.OrdinalIgnoreCase))
         {
             try
             {
@@ -121,6 +129,7 @@ public static class SceneAssetSerializer
                 {
                     _cachedGameIngManifest = binManifest;
                     _gameIngCacheValid = true;
+                    _cachedGameIngPath = Path.GetFullPath(filePath);
                     try { _gameIngLastWriteTime = File.GetLastWriteTimeUtc(filePath); }
                     catch { }
                 }
@@ -138,6 +147,7 @@ public static class SceneAssetSerializer
                 {
                     _cachedGameIngManifest = manifest;
                     _gameIngCacheValid = true;
+                    _cachedGameIngPath = Path.GetFullPath(filePath);
                     try { _gameIngLastWriteTime = File.GetLastWriteTimeUtc(filePath); }
                     catch { /* ignore */ }
                     Console.WriteLine($"[SceneAsset] Parsed & cached game.ing ({manifest.Scenes.Count} scenes)");
