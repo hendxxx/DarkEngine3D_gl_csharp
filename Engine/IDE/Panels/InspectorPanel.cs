@@ -3092,9 +3092,11 @@ public class InspectorPanel
 
             float ox = layer.OffsetX;
             if (ImGui.DragFloat("Offset X", ref ox, 0.05f, -32f, 32f, "%.2f")) layer.OffsetX = ox;
-            ImGui.SameLine();
+           
             float oy = layer.OffsetY;
             if (ImGui.DragFloat("Offset Y##dl", ref oy, 0.05f, -32f, 32f, "%.2f")) layer.OffsetY = oy;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Positive values move the attached art downward.");
 
             float wh = layer.WorldHeight;
             if (ImGui.DragFloat("Height (0 = base)", ref wh, 0.05f, 0f, 50f, "%.2f")) layer.WorldHeight = wh;
@@ -3104,7 +3106,7 @@ public class InspectorPanel
             bool sync = layer.SyncFrame;
             if (ImGui.Checkbox("Frame sync", ref sync)) layer.SyncFrame = sync;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("ON: the art samples the base sprite's frame (art on the same grid as the character).\nOFF: the clip runs on its own FPS (independent aura/fire).");
+                ImGui.SetTooltip("ON: follows the base animation's frame position and uses the matching action clip in this clip family (for example, idle → run).\nOFF: the selected clip runs on its own FPS (independent aura/fire).");
             ImGui.SameLine();
             if (ImGui.SmallButton("Remove")) removeIdx = i;
 
@@ -3112,7 +3114,12 @@ public class InspectorPanel
             if (string.IsNullOrEmpty(layer.Sheet))
                 ImGui.TextDisabled("Animation match: pick a sheet first.");
             else if (layer.SyncFrame)
-                RenderEquipmentClipMatch(editorObj, layer.Sheet);
+            {
+                if (!string.IsNullOrEmpty(layer.Clip))
+                    ImGui.TextDisabled($"Frame sync uses matching action in: {layer.Clip}");
+                else
+                    RenderEquipmentClipMatch(editorObj, layer.Sheet);
+            }
             else
                 ImGui.TextDisabled("Frame sync off — the clip animates on its own FPS (no match needed).");
 
@@ -3191,14 +3198,28 @@ public class InspectorPanel
                 bool sel = i == clipIdx;
                 if (ImGui.Selectable(clipArr[i], sel))
                 {
+                    string oldClip = editorObj.Player2DAnimationClip;
                     editorObj.Player2DAnimationClip = clipArr[i];
                     editorObj.Player2DAnimTime = 0;
+                    // Follow-through: locomotion actions that ResolveLocomotionAction
+                    // auto-filled from the OLD base clip must follow the change, otherwise
+                    // the always-on Idle action keeps sampling the old clip and switching
+                    // this combo (idle → run) has no visible effect on the sprite.
+                    foreach (var act in editorObj.Actions)
+                    {
+                        bool sameSheet = string.IsNullOrEmpty(act.SpriteSheet)
+                            || string.Equals(act.SpriteSheet, editorObj.Player2DSpriteSheet, StringComparison.OrdinalIgnoreCase);
+                        bool followsOldBase = string.IsNullOrEmpty(act.Clip)
+                            || string.Equals(act.Clip, oldClip, StringComparison.OrdinalIgnoreCase);
+                        if (sameSheet && followsOldBase)
+                            act.Clip = editorObj.Player2DAnimationClip;
+                    }
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
             ImGui.EndCombo();
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings)");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings).\nIdle/Walk/Run actions still pointing at the old clip follow this change.");
 
         ImGui.TextDisabled("Walk/Run/Jump clips → configure in Animation Actions below");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("The base clip above plays when no action is active; state animations live in the Animation Actions system");

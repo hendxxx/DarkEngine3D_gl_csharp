@@ -5482,9 +5482,14 @@ public unsafe class EditorObject
             // grid fallback) — for auras/fire, not for clothing. Everything clamps to the
             // overlay clip's own frame range (a shorter clothing clip freezes on its last
             // frame instead of sampling outside the texture).
-            AnimationClip2D? syncClip = def.EquipSyncFrame && baseClipLocalFrame >= 0
-                ? IDEBridge.FindAnimationClipForBase(def.EquipSheet, baseClipName)
-                : null;
+            AnimationClip2D? syncClip = null;
+            if (def.EquipSyncFrame && baseClipLocalFrame >= 0)
+            {
+                if (haveClip && oclip != null)
+                    syncClip = IDEBridge.FindAnimationClipForAction(def.EquipSheet, oclip.Name, baseClipName) ?? oclip;
+                else
+                    syncClip = IDEBridge.FindAnimationClipForBase(def.EquipSheet, baseClipName);
+            }
             int frameIdx;
             if (syncClip != null)
             {
@@ -5535,7 +5540,7 @@ public unsafe class EditorObject
             for (int t = 0; t < reps; t++)
             {
                 float cx = x0 + t * tileW + tileW * 0.5f + def.EquipOffsetX * mirrorX;
-                float by0 = y0 + def.EquipOffsetY;
+                float by0 = y0 - def.EquipOffsetY;
                 float bx0 = cx - ow * 0.5f, bx1 = bx0 + ow, by1 = by0 + oh;
                 quad[0] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
                 quad[1] = new Map2DVertex(bx1, by0, z, su1, svBot, 1f, 1f, 1f, 1f);

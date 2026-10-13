@@ -387,6 +387,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 bridge.SelectedUIElement = _sceneRoot.Children[0];
             }
 
+            // Editor object counts — the GLTF counters above stay 0 in pure 2D scenes
+            // (Player2D/Sprite2D/tilemap/markers live in the EditorObjectManager, which the
+            // ObjectManager never sees). Cull2DTotal/Culled are stamped by
+            // EditorObjectManager.Draw every frame.
+            var editorObjMgr = bridge.EditorObjectManager;
+            bridge.EditorObjectTotal = editorObjMgr?.Count ?? 0;
+            bridge.EditorObjectTotal2D = EditorObject.Cull2DTotal;
+            bridge.EditorObjectDrawn2D = EditorObject.Cull2DTotal - EditorObject.Cull2DCulled;
+
             // Object counts
             if (_objectManager != null)
             {

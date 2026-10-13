@@ -37,6 +37,15 @@ public class IDEBridge
     public int RenderedTriangles { get; set; }
     public int AnimatedObjectCount { get; set; }
     public int StaticObjectCount { get; set; }
+    /// <summary>Editor objects in the ACTIVE EditorObjectManager (Player2D, Sprite2D,
+    /// Map2D tilemap, light markers, primitives — everything the 2D editor draws).
+    /// The GLTF counters above stay 0 in pure 2D scenes; these fill the Scene View stats.</summary>
+    public int EditorObjectTotal { get; set; }
+    /// <summary>Player2D/Sprite2D objects considered for the 2D sprite pass this frame
+    /// (frustum-cull step; equals visible ones before culling).</summary>
+    public int EditorObjectTotal2D { get; set; }
+    /// <summary>Player2D/Sprite2D objects actually DRAWN this frame (not culled by the frustum).</summary>
+    public int EditorObjectDrawn2D { get; set; }
     public float Fps { get; set; }
     public float FrameMs { get; set; }
     /// <summary>Objects render time in ms (last frame). Set by GameScene, shown in the in-game overlay.</summary>
@@ -266,6 +275,27 @@ public class IDEBridge
 
         _autoClipMatchCache[key] = (found, SpriteRegistryVersion);
         return found;
+    }
+
+    /// <summary>Find the selected overlay family clip for the active base action.
+    /// For example, selected "Male Hair1-idle" plus base "Player2D-run" resolves to
+    /// "Male Hair1-run" on the same sheet. Returns null when that action clip is absent.</summary>
+    public static AnimationClip2D? FindAnimationClipForAction(string sheetName, string selectedClipName, string baseName)
+    {
+        if (string.IsNullOrEmpty(sheetName) || string.IsNullOrEmpty(selectedClipName)
+            || string.IsNullOrEmpty(baseName)) return null;
+
+        int selectedDash = selectedClipName.LastIndexOf('-');
+        if (selectedDash <= 0 || selectedDash == selectedClipName.Length - 1) return null;
+
+        string action = ActionToken(baseName);
+        if (string.IsNullOrEmpty(action)) return null;
+
+        string matchingName = $"{selectedClipName[..selectedDash]}-{action}";
+        return TryGetSpriteClip(sheetName, matchingName, out _, out var matchingClip)
+            && matchingClip != null && matchingClip.FrameIndices.Count > 0
+                ? matchingClip
+                : null;
     }
 
     /// <summary>The action token of a clip name: everything after the LAST '-' (a name

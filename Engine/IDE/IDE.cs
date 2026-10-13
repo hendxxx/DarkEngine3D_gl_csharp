@@ -358,6 +358,9 @@ public class IDE : IDisposable
             // never took effect until restart. Also clamp the camera's current zoom
             // into the new range so an out-of-range OrthoSize snaps to the boundary.
             var projSettings = SettingsSave.Load();
+            // Zoom-disable flag is per project (set BEFORE ApplyZoomLimits so the
+            // disabled range collapses to min == max in the same call).
+            Visual.Camera.OrthoZoomDisabled = projSettings.OrthoZoomDisabled;
             Visual.Camera.ApplyZoomLimits(projSettings.OrthoZoomMin, projSettings.OrthoZoomMax);
             // Mouse camera control toggles are per project too (editor + in-game).
             Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
@@ -400,6 +403,7 @@ public class IDE : IDisposable
             // Zoom limits follow the active settings file — with no project open this
             // reads the exe-fallback settings.json (IsProjectLoaded already false here).
             var fallbackSettings = SettingsSave.Load();
+            Visual.Camera.OrthoZoomDisabled = fallbackSettings.OrthoZoomDisabled;
             Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
             // Follow the active settings file back to the exe fallback after close.
             Config.PostFxSettings.Apply(fallbackSettings);
@@ -928,6 +932,7 @@ public class IDE : IDisposable
             PanelFocus.LastFocused = _restoreFocusPanel;
 
             // Apply per-project ortho zoom limits (settings.json → Camera constants).
+            Visual.Camera.OrthoZoomDisabled = bootSettings.OrthoZoomDisabled;
             Visual.Camera.ApplyZoomLimits(bootSettings.OrthoZoomMin, bootSettings.OrthoZoomMax);
             Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
@@ -996,6 +1001,34 @@ public class IDE : IDisposable
         // ── F8 shortcut: toggle between IDE Mode and In-Game Mode ──
         if (ImGui.IsKeyReleased(ImGuiKey.F8))
             ToggleInGameMode();
+
+        //var io = ImGui.GetIO();
+
+        //// ID Key resmi ImGui dimulai dari 512 (NamedKey_BEGIN) hingga sekitar 666
+        //for (int i = (int)ImGuiKey.NamedKey_BEGIN; i < (int)ImGuiKey.NamedKey_END; i++)
+        //{
+        //    // Cek langsung ke memori internal ImGui menggunakan index integer
+        //    if (ImGui.IsKeyDown((ImGuiKey)i))
+        //    {
+        //        Console.WriteLine($"ID Angka: {i} | Nama Tombol: {ImGui.GetKeyName((ImGuiKey)i)}");
+        //    }
+        //}
+
+        // ── F1 shortcut: toggle the in-game stats overlay (FPS/TRIS/Objects/
+        // POS panel) — same as clicking the panel to hide, but also can bring it back.
+        // Persisted to the project settings.json so the choice survives restarts.
+        if (ImGui.IsKeyReleased(ImGuiKey.F1))
+        {
+            Bridge.ShowInGameStats = !Bridge.ShowInGameStats;
+            try
+            {
+                var s = Config.SettingsSave.Load();
+                s.ShowInGameStats = Bridge.ShowInGameStats;
+                Config.SettingsSave.Save(s);
+            }
+            catch { }
+            Console.WriteLine($"[IDE] In-game stats overlay: {(Bridge.ShowInGameStats ? "ON" : "OFF")} (F1)");
+        }
 
         // ── F5 shortcut: toggle Preview Mode (edit-mode helper hiding) ──
         // Inactive while in-game (matches the View menu, where the item is disabled).

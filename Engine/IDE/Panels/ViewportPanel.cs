@@ -5633,13 +5633,18 @@ ImGui.SameLine();
             {
                 // Ortho zoom — adjusts the ortho view volume half-height. Limits come
                 // from the camera's shared constants so the slider matches scroll-wheel
-                // zoom exactly (either path can always undo the other).
+                // zoom exactly (either path can always undo the other). Zoom DISABLED →
+                // the slider is greyed out (scroll wheel is also inert).
                 float orthoSize = _bridge.Camera?.OrthoSize ?? 20f;
+                ImGui.BeginDisabled(Engine.Visual.Camera.OrthoZoomDisabled);
                 if (ImGui.SliderFloat("Ortho Zoom", ref orthoSize,
                     Engine.Visual.Camera.OrthoZoomMin, Engine.Visual.Camera.OrthoZoomMax, "%.0f"))
                 {
                     if (_bridge.Camera != null) _bridge.Camera.OrthoSize = orthoSize;
                 }
+                if (Engine.Visual.Camera.OrthoZoomDisabled && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                    ImGui.SetTooltip("Zoom is disabled (IDE Settings → Camera Zoom → Disable Zoom).");
+                ImGui.EndDisabled();
             }
             ImGui.Separator();
 

@@ -437,6 +437,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public static float OrthoZoomMin = 2f;
     public static float OrthoZoomMax = 200f;
 
+    /// <summary>DISABLE ZOOM: when true, NO input can change the ortho view volume —
+    /// scroll-wheel zoom is ignored and the viewport "Ortho Zoom" slider is greyed out.
+    /// The limits themselves (OrthoZoomMin/Max) stay untouched, so toggling this off
+    /// restores the previous range unchanged. Per project via settings.json
+    /// (OrthoZoomDisabled); flip the Min/Max sliders in IDE Settings → Camera Zoom
+    /// to the SAME value for the equivalent locked range without the flag.</summary>
+    public static bool OrthoZoomDisabled = false;
+
     /// <summary>Master toggle for MOUSE camera control in the editor viewport (drag-pan
     /// AND fly mouse-look). When false, the camera never moves from mouse input — keyboard
     /// WASD/scroll/Views presets still work. Toggleable in IDE Settings → Camera; persisted
@@ -458,9 +466,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     public static void ApplyZoomLimits(float min, float max)
     {
         min = MathF.Max(0.5f, min);
-        max = MathF.Max(min + 1f, max);
+        // Zoom DISABLED → force min == max: every clamp path (scroll, slider, save/
+        // restore) then holds the camera at exactly one height, and re-enabling zoom
+        // restores whatever range was previously saved because the input values here
+        // always come from settings.json, never from the forced current state.
+        if (OrthoZoomDisabled) max = min;
         OrthoZoomMin = min;
-        OrthoZoomMax = max;
+        OrthoZoomMax = MathF.Max(min, max);
     }
 
     public float OrthoSize
@@ -685,8 +697,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     {
                         if (IsOrthographic)
                         {
-                            OrthoSize = Math.Clamp(OrthoSize * (1f - Mouse.ScrollY * 0.08f), OrthoZoomMin, OrthoZoomMax);
-                            Mouse.ResetScroll();
+                            // Zoom disabled → drain the scroll so the wheel is inert.
+                            if (OrthoZoomDisabled)
+                            {
+                                Mouse.ResetScroll();
+                            }
+                            else
+                            {
+                                OrthoSize = Math.Clamp(OrthoSize * (1f - Mouse.ScrollY * 0.08f), OrthoZoomMin, OrthoZoomMax);
+                                Mouse.ResetScroll();
+                            }
                         }
                         else
                         {

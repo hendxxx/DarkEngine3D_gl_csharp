@@ -71,6 +71,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // slider in the camera options popup. ──
         public float OrthoZoomMin { get; set; } = 2f;
         public float OrthoZoomMax { get; set; } = 200f;
+        /// <summary>When true the user CANNOT zoom at all: scroll-wheel zoom is ignored
+        /// and the viewport Ortho Zoom slider is disabled (Camera.OrthoZoomDisabled).
+        /// The saved Min/Max stay untouched so re-enabling restores the old range.</summary>
+        public bool OrthoZoomDisabled { get; set; } = false;
 
         // ── Mouse camera control master toggle (IDE Settings → Camera). When false,
         // drag-pan and fly mouse-look never move the editor camera — keyboard/scroll

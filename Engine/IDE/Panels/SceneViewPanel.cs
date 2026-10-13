@@ -37,13 +37,30 @@ public class SceneViewPanel
             ImGui.Text($"Frame Time:    {_bridge.FrameMs:F1} ms");
             ImGui.Text($"Drawn Objects: {_bridge.DrawnObjects} / {_bridge.TotalObjects}");
             ImGui.Text($"Tris Rendered: {_bridge.RenderedTriangles:N0} / {_bridge.TotalTriangles:N0}");
+            // GLTF counters are 0/0 in pure 2D scenes — the editor objects are what's
+            // actually on screen there. Only shown when the editor manager has content.
+            if (_bridge.EditorObjectTotal > 0)
+            {
+                ImGui.TextDisabled($"Editor Objects: {_bridge.EditorObjectDrawn2D}/{_bridge.EditorObjectTotal2D} sprites of {_bridge.EditorObjectTotal} total");
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Player2D/Sprite2D drawn vs considered (frustum cull) this frame,\nof all editor objects incl. tilemap/markers (only counted in GameScene).\n\nThe 3D rows above count GLTF agents/objects — they stay 0 in 2D scenes.");
+            }
         }
 
         // ── Scene Stats ──
         if (ImGui.CollapsingHeader("Scene Stats", ImGuiTreeNodeFlags.DefaultOpen))
         {
-            ImGui.Text($"Animated: {_bridge.AnimatedObjectCount}");
-            ImGui.Text($"Static:   {_bridge.StaticObjectCount}");
+            // 2D scenes have no GLTF agents — show the editor view instead of (no agents)/(0)/(0).
+            if (_bridge.AnimatedObjectCount == 0 && _bridge.StaticObjectCount == 0 && _bridge.EditorObjectTotal > 0)
+            {
+                ImGui.Text($"Player2D/Sprite2D: {_bridge.EditorObjectTotal2D}");
+                ImGui.TextDisabled($"Editor total: {_bridge.EditorObjectTotal} (incl. tilemap/markers)");
+            }
+            else
+            {
+                ImGui.Text($"Animated: {_bridge.AnimatedObjectCount}");
+                ImGui.Text($"Static:   {_bridge.StaticObjectCount}");
+            }
         }
 
         // ── Camera Info ──

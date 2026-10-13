@@ -137,6 +137,27 @@ public static class FrameProfiler
     /// <c>long t0 = Stopwatch.GetTimestamp(); … FrameProfiler.AddMs(ref slot, t0);</c></summary>
     public static void AddMs(ref double slot, long startTimestamp)
         => slot += (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
+
+    /// <summary>Max of the last <paramref name="n"/> pushed samples of a history buffer,
+    /// youngest→oldest. For SPARSE-SPIKE sections (work that runs every-N-frames, like the
+    /// throttled sprite registry sync): a per-frame slot reads 0.00 on the N-1 empty frames
+    /// and a one-off number on the work frame — sampling it instantly shows 0 almost
+    /// always. The peak over the throttle window is the section's true per-burst cost and
+    /// stays stable between bursts. The CURRENT (not-yet-pushed) slot value is passed via
+    /// <paramref name="current"/> so the frame still being collected is included.
+    /// <c>FrameProfiler.MaxRecent(FrameProfiler.HistX, N, FrameProfiler.X)</c></summary>
+    public static double MaxRecent(double[] hist, int n, double current)
+    {
+        double max = current;
+        int valid = n < _count ? n : _count;
+        for (int i = 0; i < valid; i++)
+        {
+            int idx = (_head - 1 - i + History * 2) % History;
+            double v = hist[idx];
+            if (v > max) max = v;
+        }
+        return max;
+    }
 }
 
 /// <summary>Disposable timing scope for <see cref="FrameProfiler.Scope"/> — a ref

@@ -813,10 +813,16 @@ public static class Player2DSystem
             // CheckpointPosition is stored in OBJECT space by SaveCheckpoint, so the
             // respawn must NOT subtract the capsule offsets again (double-applying the
             // offset put the player back BELOW the map → infinite respawn loop).
-            if (pitCell > 0f && pos.Y < -pitCell * 2f)
+            if (pitCell > 0f && pos.Y < -pitCell * 10f)
             {
-                // Feet-space target: object X + offset, ground-snapped onto the top of
-                // the collision column at that X — never inside a tile, never floating.
+                // GROUND-ROBUST respawn: snap only trusts the EXACT column — a spawn
+                // point standing over a HOLE (empty column) or mid-air returned an
+                // unsupported position, the freshly-spawned player fell straight back
+                // below the threshold, respawned again at the same spot… = bouncing
+                // up/down forever instead of a single fatal fall + respawn.
+                // Resolve order: exact column → nearest column WITH ground (±40 cells
+                // both sides, closest wins) → top of the highest BOX under the X
+                // (boxes are solid colliders). A single death frame = one respawn.
                 float feetX = pos.X + capOffX;
                 if (TriggerEventSystem.CheckpointPosition.HasValue)
                     feetX = TriggerEventSystem.CheckpointPosition.Value.X + player.Player2DCapsuleOffsetX;
@@ -830,7 +836,44 @@ public static class Player2DSystem
                     feetY = start2d.Position.Y + player.Player2DCapsuleOffsetY;
                 else
                     feetY = 0f;
-                feetY = SnapFeetToGroundAny(mapData, feetX, feetY);
+
+                // 1) Topmost ground top in the target's own column (−∞ = pit).
+                float colTop = ColumnGroundTop(mapData, feetX);
+                if (colTop > float.NegativeInfinity)
+                {
+                    // Land ON a surface: the snapped top when found (feet inside a
+                    // tile pop to ITS top), else the column's topmost surface.
+                    float snapY = SnapFeetToGroundAny(mapData, feetX, feetY);
+                    feetY = snapY > float.NegativeInfinity ? snapY : colTop;
+                }
+                else
+                {
+                    // 2) Target column is a HOLE → nearest column WITH ground wins
+                    // (±40 cells, closest side first). Prevents the spawn-fall-respawn
+                    // bounce: one fatal fall = exactly ONE respawn onto solid ground.
+                    bool found = false;
+                    for (int d = 1; d <= 40 && !found; d++)
+                    {
+                        for (int s = 0; s < 2 && !found; s++)
+                        {
+                            float sx = feetX + (s == 0 ? d : -d) * pitCell;
+                            float sy = ColumnGroundTop(mapData, sx);
+                            if (sy > float.NegativeInfinity) { feetX = sx; feetY = sy; found = true; }
+                        }
+                    }
+                    // 3) Last resort: stand on the TOP of the highest BOX under the
+                    // spawn (boxes are solid colliders the physics respects).
+                    if (!found)
+                    {
+                        float boxTop = float.NegativeInfinity;
+                        foreach (var (bmin, bmax) in boxes)
+                            if (feetX >= bmin.X - r && feetX <= bmax.X + r && bmax.Y > boxTop)
+                                boxTop = bmax.Y;
+                        if (boxTop > float.NegativeInfinity) { feetY = boxTop; found = true; }
+                    }
+                    // Nothing at all: keep the requested point (physics will still
+                    // resolve — this line only fires on an entirely empty level).
+                }
 
                 player.Position = new System.Numerics.Vector3(
                     feetX - player.Player2DCapsuleOffsetX,
@@ -1258,6 +1301,36 @@ public static class Player2DSystem
                 return;
             }
         }
+    }
+
+    /// <summary>Topmost collision-tile surface top across ALL collision maps in ONE
+    /// grid column (independent of any feet height — scans the FULL column). Returns
+    /// −∞ when the column holds NO ground anywhere (a pit / outside the map).
+    /// Used by the pit-respawn to distinguish "spawn over solid ground" from
+    /// "spawn over a hole" BEFORE letting the player fall again.</summary>
+    private static float ColumnGroundTop(
+        List<(Tilemap2D map, float cell, List<(TileLayer layer, int idx)> layers)> mapData,
+        float worldX)
+    {
+        float best = float.NegativeInfinity;
+        foreach (var (m, cell, layers) in mapData)
+        {
+            int gx = (int)MathF.Floor(worldX / cell);
+            if (gx < 0 || gx >= m.Width) continue;
+            for (int gy = 0; gy < m.Height; gy++)
+            {
+                foreach (var (collisionLayer, layerIdx) in layers)
+                {
+                    if (IsSolid(m, collisionLayer, layerIdx, gx, gy))
+                    {
+                        // RAMP-AWARE: interpolated top at the spawn column.
+                        best = MathF.Max(best, TileWorldTopAt(m, collisionLayer, layerIdx, gx, gy, cell, worldX));
+                        break; // topmost solid layer of this row
+                    }
+                }
+            }
+        }
+        return best;
     }
 
     /// <summary>Multi-map pit-respawn snap: scan EVERY collision map from the feet

@@ -45,21 +45,16 @@ public class SpriteEditorPanel
     /// a manually created clip with the same name must survive the refresh, and
     /// snapshot-based undo rebuilds instances, which would orphan name tracking.</summary>
     private readonly HashSet<AnimationClip2D> _autoLoadedPatternClips = new();
-    /// <summary>Sheet instances currently merged from *-sprite-anim.json exports —
-    /// the same refresh-in-place, instance-based contract as the clip set above
-    /// (a manual sheet sharing a name is never removed).</summary>
-    private readonly HashSet<SpriteSheet> _autoLoadedPatternSheets = new();
     /// <summary>Free-text action list for Save As Pattern — names per row separated
     /// by '|' (e.g. "effect" for a single-row sheet). Persisted in the save file.</summary>
     private string _patternActions = DefaultPatternActions;
 
     // ── Sprite sheets ──
+    /// <summary>Temporary source sheets used only for slicing/preview; never written
+    /// into the project's canonical sheets file.</summary>
     public List<SpriteSheet> SpriteSheets = new();
-
-    /// <summary>Sprite Sheets section new imports land in (Import / drag-and-drop /
-    /// pattern exports). Defaults to Base; moves to the selected sheet's category when
-    /// one is selected.</summary>
-    private SpriteSheetCategory _nextImportCategory = SpriteSheetCategory.Base;
+    /// <summary>Persisted animation-baking atlases used by the runtime registry.</summary>
+    private readonly List<SpriteSheet> _bakedAtlasSheets = new();
 
     /// <summary>Multi-selected sheet indexes (Sprite Sheets list). ALWAYS contains
     /// `_selectedSheetIdx` (the primary selection drives Sheet Settings + the preview);
@@ -174,12 +169,14 @@ public class SpriteEditorPanel
 
     public void SyncRegistry()
     {
-        int sc = SpriteSheets.Count, cc = AnimationClips.Count, tc = _previewTextures.Count;
+        int sc = _bakedAtlasSheets.Count, cc = AnimationClips.Count, tc = _previewTextures.Count;
         bool countsChanged = sc != _lastSheetCount || cc != _lastClipCount || tc != _lastTextureCount;
         if (!countsChanged && _syncFrameCounter++ % SyncEveryNFrames != 0)
             return; // throttled — signature gate made full syncs conditional anyway
         _lastSheetCount = sc; _lastClipCount = cc; _lastTextureCount = tc;
-        IDEBridge.SyncSpriteRegistry(SpriteSheets, _previewTextures, AnimationClips);
+        var legacyRuntimeSheets = SpriteSheets.Where(sheet => AnimationClips.Any(clip =>
+            string.Equals(clip.SpriteSheetName, sheet.Name, StringComparison.OrdinalIgnoreCase)));
+        IDEBridge.SyncSpriteRegistry(legacyRuntimeSheets.Concat(_bakedAtlasSheets), _previewTextures, AnimationClips);
     }
 
     public void Render()
@@ -249,7 +246,7 @@ public class SpriteEditorPanel
             if (ImGui.Button("Auto Load"))
                 AutoLoadProjectSheets();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Load sheets + clips from the project file (Artifacts/Sprites/sprites.sheets.json)\n+ merge sheets/clips from *-sprite-anim.json (pattern exports).\nAuto-load on project open was REMOVED — click this to load manually.\nRequires an open project.");
+                ImGui.SetTooltip("Load baked clips from Artifacts/Sprites/sprites.sheets.json, then bake clips from *-sprite-anim.json source exports.\nRequires an open project.");
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips) — click = select, Ctrl+Click = toggle, Shift+Click = range");
 
@@ -257,7 +254,7 @@ public class SpriteEditorPanel
             if (ImGui.Button("Save As JSON"))
                 SaveAsJsonDialog();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Save sheets + clips to a JSON file at a FREE PATH (folder of your choice).\nSame format as Save (sprites.sheets.json) — can be reopened via Load.");
+                ImGui.SetTooltip("Save baked atlas metadata + clips to a JSON file at a free path. Source sheets are not saved.");
             ImGui.SameLine();
             ImGui.BeginDisabled(SelectedSheet == null);
             if (ImGui.Button("Save As Pattern"))
@@ -277,55 +274,15 @@ public class SpriteEditorPanel
 
             ImGui.Separator();
 
-            // ── Sheet list (grouped into 4 sections: Base / FX / Base Equipment / Items) ──
+            // ── Temporary source sheet list (not persisted) ──
             if (ImGui.CollapsingHeader("Sprite Sheets", ImGuiTreeNodeFlags.DefaultOpen))
             {
-                // Category combo first — it sets which section the NEXT import lands in.
-                ImGui.SetNextItemWidth(-ImGui.GetFrameHeightWithSpacing());
-                if (ImGui.BeginCombo("##sheet_category", CategoryLabel(
-                        _selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count
-                            ? SpriteSheets[_selectedSheetIdx].Category
-                            : _nextImportCategory)))
+                ImGui.TextDisabled("Source sheets are temporary bake inputs; only baked clips and atlas metadata are saved.");
+                for (int i = 0; i < SpriteSheets.Count; i++)
                 {
-                    foreach (SpriteSheetCategory cat in Enum.GetValues<SpriteSheetCategory>())
-                    {
-                        if (ImGui.Selectable(CategoryLabel(cat),
-                                cat == (_selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count
-                                    ? SpriteSheets[_selectedSheetIdx].Category
-                                    : _nextImportCategory)))
-                        {
-                            // Sheets are selected → re-categorize ALL of them (multi-select).
-                            // Nothing selected → set the section new imports land in.
-                            if (_selectedSheetIdx >= 0 && _selectedSheetIdx < SpriteSheets.Count)
-                            {
-                                foreach (int mi in MultiSelectedSheetIndexes())
-                                    SpriteSheets[mi].Category = cat;
-                                _nextImportCategory = cat;
-                            }
-                            else
-                                _nextImportCategory = cat;
-                        }
-                    }
-                    ImGui.EndCombo();
-                }
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Sprite Sheets section: with a sheet selected this re-categorizes it\n(with nothing selected it sets the section new imports land in).\nSections are saved per sheet in sprites.sheets.json.");
-
-                foreach (SpriteSheetCategory cat in Enum.GetValues<SpriteSheetCategory>())
-                {
-                    int count = 0;
-                    for (int i = 0; i < SpriteSheets.Count; i++)
-                        if (SpriteSheets[i].Category == cat) count++;
-                    string header = $"{CategoryLabel(cat)} ({count})"; // count is DISPLAY ONLY — a section never owns its sheets
-                    bool open = ImGui.CollapsingHeader(header);
-                    if (!open) continue;
-                    for (int i = 0; i < SpriteSheets.Count; i++)
-                    {
-                        if (SpriteSheets[i].Category != cat) continue;
-                        bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
-                        if (ImGui.Selectable($"{SpriteSheets[i].Name}##{i}", isSelected))
-                            HandleSheetListClick(i);
-                    }
+                    bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
+                    if (ImGui.Selectable($"{SpriteSheets[i].Name}##{i}", isSelected))
+                        HandleSheetListClick(i);
                 }
             }
 
@@ -545,7 +502,7 @@ public class SpriteEditorPanel
         }
     }
 
-    private string SerializeForUndo() => JsonSerializer.Serialize(CaptureSaveData());
+    private string SerializeForUndo() => JsonSerializer.Serialize(CaptureUndoData());
 
     /// <summary>Drop all undo/redo history (project change / file load).</summary>
     private void ClearUndoHistory()
@@ -591,13 +548,17 @@ public class SpriteEditorPanel
             if (data?.Sheets == null) return;
 
             SpriteSheets.Clear();
+            _bakedAtlasSheets.Clear();
+            _autoLoadedPatternClips.Clear();
             foreach (var sd in data.Sheets)
             {
                 var sheet = SpriteSheet.FromData(sd);
-                SpriteSheets.Add(sheet);
+                _bakedAtlasSheets.Add(sheet);
                 if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                     LoadPreviewTexture(sheet.ImagePath);
             }
+            if (data.UndoSourceSheets != null)
+                SpriteSheets.AddRange(data.UndoSourceSheets.Select(SpriteSheet.FromData));
             AnimationClips.Clear();
             if (data.AnimationClips != null)
                 foreach (var cd in data.AnimationClips)
@@ -1155,41 +1116,47 @@ public class SpriteEditorPanel
 
     private void RenderAnimationClips()
     {
-        if (_autoLoadedPatternClips.Count > 0 || _autoLoadedPatternSheets.Count > 0)
-            ImGui.TextDisabled($"({_autoLoadedPatternSheets.Count} sheets + {_autoLoadedPatternClips.Count} clips auto-loaded from *-sprite-anim.json)");
-        if (SelectedSheet == null) return;
-
-        // ── Create clip from current animation preview range ──
-        ImGui.Text("Create from preview:");
-        ImGui.SameLine();
-        ImGui.PushItemWidth(120);
-        ImGui.InputText("##clipname", ref _newClipName, 128);
-        ImGui.PopItemWidth();
-        ImGui.SameLine();
-        if (ImGui.Button("Create Clip"))
+        if (_autoLoadedPatternClips.Count > 0)
+            ImGui.TextDisabled($"({_autoLoadedPatternClips.Count} clips baked from *-sprite-anim.json)");
+        if (SelectedSheet == null)
+            ImGui.TextDisabled("Import a source sheet to create or replace a baked clip.");
+        else
         {
-            int start = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
-            int end = Math.Clamp(_animEndFrame, start, SelectedSheet.FrameCount - 1);
-            int count = end - start + 1;
-
-            var clip = new AnimationClip2D
+            // ── Create clip from current animation preview range ──
+            ImGui.Text("Create from preview:");
+            ImGui.SameLine();
+            ImGui.PushItemWidth(120);
+            ImGui.InputText("##clipname", ref _newClipName, 128);
+            ImGui.PopItemWidth();
+            ImGui.SameLine();
+            if (ImGui.Button("Create Clip"))
             {
-                Name = _newClipName,
-                SpriteSheetName = SelectedSheet.Name,
-                FrameIndices = Enumerable.Range(start, count).ToList(),
-                FPS = _animFPS,
-                Loop = _animLoop,
-                // Snapshot the sheet's master render box + base offsets NOW, so this
-                // clip always renders exactly as aligned here — even if the sheet's
-                // normalization is changed later (old clips keep their own box).
-                MasterWidth = SelectedSheet.MasterWidth,
-                MasterHeight = SelectedSheet.MasterHeight,
-                SpriteOffsetX = SelectedSheet.SpriteOffsetX,
-                SpriteOffsetY = SelectedSheet.SpriteOffsetY
-            };
-            AnimationClips.Add(clip);
-            _selectedClipIdx = AnimationClips.Count - 1;
-            Console.WriteLine($"[SpriteEditor] Created clip '{clip.Name}': frames {start}-{end} ({count} frames, {clip.FPS} FPS)");
+                int start = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
+                int end = Math.Clamp(_animEndFrame, start, SelectedSheet.FrameCount - 1);
+                int count = end - start + 1;
+
+                var sourceClip = new AnimationClip2D
+                {
+                    Name = _newClipName,
+                    SpriteSheetName = SelectedSheet.Name,
+                    FrameIndices = Enumerable.Range(start, count).ToList(),
+                    FPS = _animFPS,
+                    Loop = _animLoop,
+                    // Snapshot the sheet's master render box + base offsets NOW, so this
+                    // clip always renders exactly as aligned here — even if the sheet's
+                    // normalization is changed later (old clips keep their own box).
+                    MasterWidth = SelectedSheet.MasterWidth,
+                    MasterHeight = SelectedSheet.MasterHeight,
+                    SpriteOffsetX = SelectedSheet.SpriteOffsetX,
+                    SpriteOffsetY = SelectedSheet.SpriteOffsetY
+                };
+                if (TryBakeClip(SelectedSheet, sourceClip, out var bakedClip))
+                {
+                    _selectedClipIdx = AddOrReplaceClip(bakedClip);
+                    _editingClip = bakedClip;
+                    Console.WriteLine($"[SpriteEditor] Baked clip '{bakedClip.Name}' to {bakedClip.SpriteSheetName}: frames {start}-{end} ({count} frames, {bakedClip.FPS} FPS)");
+                }
+            }
         }
 
         ImGui.Separator();
@@ -1277,22 +1244,6 @@ public class SpriteEditorPanel
                 _clipTime = 0f;
                 _clipCurrentFrame = 0;
 
-                // Switch to the clip's sprite sheet if different
-                if (!string.IsNullOrEmpty(SelectedClip.SpriteSheetName))
-                {
-                    int sheetIdx = SpriteSheets.FindIndex(s => s.Name == SelectedClip.SpriteSheetName);
-                    if (sheetIdx >= 0 && sheetIdx != _selectedSheetIdx)
-                    {
-                        _selectedSheetIdx = sheetIdx;
-                        _selectedFrameIdx = -1;
-                        LoadSheetSettings();
-                        // Preview range must match the new sheet (End = frame count - 1).
-                        _animStartFrame = 0;
-                        _animEndFrame = Math.Max(0, SpriteSheets[sheetIdx].FrameCount - 1);
-                        _animTime = 0f;
-                        _currentPreviewFrame = 0;
-                    }
-                }
             }
         }
 
@@ -1306,10 +1257,13 @@ public class SpriteEditorPanel
 
     private void RenderClipEditingPreview()
     {
-        if (_editingClip == null || SelectedSheet == null) return;
-        if (string.IsNullOrEmpty(SelectedSheet.ImagePath) || !File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath))) return;
-
+        if (_editingClip == null) return;
         var clip = _editingClip;
+        var previewSheet = _bakedAtlasSheets.FirstOrDefault(s => string.Equals(s.Name,
+            clip.SpriteSheetName, StringComparison.OrdinalIgnoreCase));
+        if (previewSheet == null || string.IsNullOrEmpty(previewSheet.ImagePath) ||
+            !File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(previewSheet.ImagePath))) return;
+        if (clip.FrameIndices.Count == 0) return;
         ImGui.Text($"  Clip: {clip.Name}  ");
         ImGui.SameLine();
         if (ImGui.SmallButton("X##closeclip"))
@@ -1373,16 +1327,14 @@ public class SpriteEditorPanel
         ImGui.Text($"Frame {_clipCurrentFrame + 1}/{clip.FrameIndices.Count} | sprite #{spriteFrameIdx} | {clip.FPS:F0} FPS | {clip.Duration:F2}s");
 
         // Draw the frame
-        LoadPreviewTexture(SelectedSheet.ImagePath);
-        if (!_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath), out uint texId) || texId == 0) return;
+        LoadPreviewTexture(previewSheet.ImagePath);
+        if (!_previewTextures.TryGetValue(Engine.Helpers.PathHelpers.ResolveProjectAsset(previewSheet.ImagePath), out uint texId) || texId == 0) return;
 
-        int cols = Math.Max(1, SelectedSheet.Columns);
-        int row = spriteFrameIdx / cols;
-        int col = spriteFrameIdx % cols;
-        float u0 = (SelectedSheet.OffsetX + col * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)) / (float)SelectedSheet.ImageWidth;
-        float v0 = (SelectedSheet.OffsetY + row * (SelectedSheet.FrameHeight + SelectedSheet.PaddingY)) / (float)SelectedSheet.ImageHeight;
-        float u1 = u0 + SelectedSheet.FrameWidth / (float)SelectedSheet.ImageWidth;
-        float v1 = v0 + SelectedSheet.FrameHeight / (float)SelectedSheet.ImageHeight;
+        var (uvMin, uvMax) = previewSheet.GetFrameUV(spriteFrameIdx);
+        float u0 = uvMin.X;
+        float v0 = 1f - uvMax.Y;
+        float u1 = uvMax.X;
+        float v1 = 1f - uvMin.Y;
 
         float previewSize = 128f * _clipZoom;
 
@@ -1391,25 +1343,25 @@ public class SpriteEditorPanel
         // values when the clip has none); the frame renders AS-IS (native px),
         // feet on the ground line, nudged by the base offsets plus this sprite
         // frame's own Render Offset X/Y. So what you save here is what plays.
-        float cellW = MathF.Max(1, SelectedSheet.FrameWidth);
-        float cellH = MathF.Max(1, SelectedSheet.FrameHeight);
+        float cellW = MathF.Max(1, previewSheet.FrameWidth);
+        float cellH = MathF.Max(1, previewSheet.FrameHeight);
         SpriteFrame? clipFrame = null;
-        if (SelectedSheet.CustomFrames != null && spriteFrameIdx < SelectedSheet.CustomFrames.Count)
+        if (previewSheet.CustomFrames != null && spriteFrameIdx < previewSheet.CustomFrames.Count)
         {
-            clipFrame = SelectedSheet.CustomFrames[spriteFrameIdx];
+            clipFrame = previewSheet.CustomFrames[spriteFrameIdx];
             cellW = MathF.Max(1, clipFrame.Width);
             cellH = MathF.Max(1, clipFrame.Height);
         }
-        bool normalized = clip.MasterHeight > 0f || SelectedSheet.MasterHeight > 0f;
+        bool normalized = clip.MasterHeight > 0f || previewSheet.MasterHeight > 0f;
         float clipMasterH = normalized
-            ? (clip.MasterHeight > 0f ? clip.MasterHeight : SelectedSheet.MasterHeight)
+            ? (clip.MasterHeight > 0f ? clip.MasterHeight : previewSheet.MasterHeight)
             : cellH;
         float clipMasterW = normalized
             ? (clip.MasterWidth > 0f ? clip.MasterWidth
-                : (SelectedSheet.MasterWidth > 0f ? SelectedSheet.MasterWidth : clipMasterH))
+                : (previewSheet.MasterWidth > 0f ? previewSheet.MasterWidth : clipMasterH))
             : cellW;
-        float clipBaseOffX = clip.MasterHeight > 0f ? clip.SpriteOffsetX : SelectedSheet.SpriteOffsetX;
-        float clipBaseOffY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : SelectedSheet.SpriteOffsetY;
+        float clipBaseOffX = clip.MasterHeight > 0f ? clip.SpriteOffsetX : previewSheet.SpriteOffsetX;
+        float clipBaseOffY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : previewSheet.SpriteOffsetY;
 
         float pxScale = previewSize / clipMasterH;
         float dispW = cellW * pxScale;
@@ -1520,7 +1472,7 @@ public class SpriteEditorPanel
     {
         var data = new SpriteSheetsSaveData
         {
-            Sheets = SpriteSheets.Select(s => s.ToData()).ToList(),
+            Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
             AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
             PatternActions = _patternActions
         };
@@ -1534,6 +1486,148 @@ public class SpriteEditorPanel
             data.PreviewLoop = _animLoop;
         }
         return data;
+    }
+
+    private SpriteSheetsSaveData CaptureUndoData()
+    {
+        var data = CaptureSaveData();
+        data.UndoSourceSheets = SpriteSheets.Select(s => s.ToData()).ToList();
+        return data;
+    }
+
+    private string GetProjectSpriteDirectory()
+    {
+        if (!Engine.Project.ProjectManager.IsProjectLoaded ||
+            string.IsNullOrEmpty(Engine.Project.ProjectManager.ProjectRoot))
+            return "";
+        return Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Sprites");
+    }
+
+    /// <summary>Copy the requested source cells and metadata into the baking input.
+    /// Source sheets are editor-only: the returned buffers, not the source path, are
+    /// what is written into the runtime atlas.</summary>
+    private static List<BakedSpriteFrame>? ExtractBakedFrames(SpriteSheet source, IReadOnlyList<int> indices)
+    {
+        string path = Engine.Helpers.PathHelpers.ResolveProjectAsset(source.ImagePath);
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            Console.WriteLine($"[SpriteEditor] Source image is unavailable for sheet '{source.Name}'.");
+            return null;
+        }
+
+        using var stream = File.OpenRead(path);
+        var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+        var result = new List<BakedSpriteFrame>(indices.Count);
+        foreach (int index in indices)
+        {
+            SpriteFrame frame;
+            if (source.CustomFrames != null)
+            {
+                if (index < 0 || index >= source.CustomFrames.Count)
+                    throw new InvalidDataException($"Frame index {index} is outside source sheet '{source.Name}'.");
+                frame = source.CustomFrames[index];
+            }
+            else
+            {
+                if (index < 0 || index >= source.FrameCount)
+                    throw new InvalidDataException($"Frame index {index} is outside source sheet '{source.Name}'.");
+                int col = index % Math.Max(1, source.Columns);
+                int row = index / Math.Max(1, source.Columns);
+                frame = new SpriteFrame
+                {
+                    X = source.OffsetX + col * (source.FrameWidth + source.PaddingX),
+                    Y = source.OffsetY + row * (source.FrameHeight + source.PaddingY),
+                    Width = source.FrameWidth,
+                    Height = source.FrameHeight,
+                    Name = $"{source.Name}_{index}"
+                };
+            }
+
+            if (frame.Width <= 0 || frame.Height <= 0 || frame.X < 0 || frame.Y < 0 ||
+                frame.X + frame.Width > image.Width || frame.Y + frame.Height > image.Height)
+                throw new InvalidDataException($"Frame {index} of '{source.Name}' is outside its source image.");
+
+            byte[] pixels = new byte[checked(frame.Width * frame.Height * 4)];
+            for (int y = 0; y < frame.Height; y++)
+            {
+                int sourceY = source.FlipY ? frame.Y + frame.Height - 1 - y : frame.Y + y;
+                for (int x = 0; x < frame.Width; x++)
+                {
+                    int sourceX = source.FlipX ? frame.X + frame.Width - 1 - x : frame.X + x;
+                    int src = (sourceY * image.Width + sourceX) * 4;
+                    int dst = (y * frame.Width + x) * 4;
+                    Buffer.BlockCopy(image.Data, src, pixels, dst, 4);
+                }
+            }
+            result.Add(new BakedSpriteFrame { Pixels = pixels, Width = frame.Width, Height = frame.Height, Metadata = frame });
+        }
+        return result;
+    }
+
+    /// <summary>Bake a clip's selected source frames and return its runtime-ready
+    /// atlas reference. A same-name clip is excluded from occupancy so its old slots
+    /// can be reused rather than duplicated.</summary>
+    private bool TryBakeClip(SpriteSheet source, AnimationClip2D clip, out AnimationClip2D baked)
+    {
+        baked = clip;
+        string directory = GetProjectSpriteDirectory();
+        if (directory.Length == 0)
+        {
+            Console.WriteLine("[SpriteEditor] Baking requires an open project.");
+            return false;
+        }
+        try
+        {
+            var frames = ExtractBakedFrames(source, clip.FrameIndices);
+            if (frames == null || frames.Count == 0) return false;
+            var keep = AnimationClips.Where(c => !string.Equals(c.Name, clip.Name,
+                StringComparison.OrdinalIgnoreCase)).ToList();
+            var result = SpriteAtlasBaker.BakeClip(directory, clip.Name, frames,
+                _bakedAtlasSheets, keep);
+            if (result == null) return false;
+
+            var atlas = _bakedAtlasSheets.FirstOrDefault(s => string.Equals(s.Name,
+                result.Atlas.Name, StringComparison.OrdinalIgnoreCase));
+            if (atlas == null) _bakedAtlasSheets.Add(result.Atlas);
+            else if (!ReferenceEquals(atlas, result.Atlas))
+                _bakedAtlasSheets[_bakedAtlasSheets.IndexOf(atlas)] = result.Atlas;
+
+            baked = new AnimationClip2D
+            {
+                Name = clip.Name,
+                SpriteSheetName = result.Atlas.Name,
+                FrameIndices = result.FrameIndices,
+                FPS = clip.FPS,
+                Loop = clip.Loop,
+                Reverse = clip.Reverse,
+                SpeedMultiplier = clip.SpeedMultiplier,
+                Events = clip.Events.ToDictionary(kv => kv.Key, kv => kv.Value),
+                MasterWidth = clip.MasterWidth > 0f ? clip.MasterWidth : source.MasterWidth,
+                MasterHeight = clip.MasterHeight > 0f ? clip.MasterHeight : source.MasterHeight,
+                SpriteOffsetX = clip.MasterHeight > 0f ? clip.SpriteOffsetX : source.SpriteOffsetX,
+                SpriteOffsetY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : source.SpriteOffsetY
+            };
+            ReloadPreviewTexture(result.Atlas.ImagePath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Baking clip '{clip.Name}' failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private int AddOrReplaceClip(AnimationClip2D clip)
+    {
+        int index = AnimationClips.FindIndex(c => string.Equals(c.Name, clip.Name,
+            StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            AnimationClips.Add(clip);
+            return AnimationClips.Count - 1;
+        }
+        AnimationClips[index] = clip;
+        return index;
     }
 
     /// <summary>Save all sprite sheets to the default project location.</summary>
@@ -1649,7 +1743,7 @@ public class SpriteEditorPanel
         {
             try
             {
-                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions, _nextImportCategory);
+                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions);
                 if (clips.Count == 0)
                 {
                     Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
@@ -1698,7 +1792,7 @@ public class SpriteEditorPanel
     /// + its per-row clips from the parsed action names. Frame emptiness comes from
     /// the image's alpha channel.</summary>
     private static (SpriteSheetData sheet, List<AnimationClip2DData> clips) BuildPatternForFile(
-        SpriteSheet pattern, string imagePath, string[] actionNames, SpriteSheetCategory category)
+        SpriteSheet pattern, string imagePath, string[] actionNames)
     {
         ImageResult image;
         using (var stream = File.OpenRead(imagePath))
@@ -1709,7 +1803,6 @@ public class SpriteEditorPanel
         {
             Name = name,
             ImagePath = Tilemap2D.MakeDataPathRelative(imagePath),
-            Category = category,
             ImageWidth = image.Width,
             ImageHeight = image.Height,
             // Pattern = the source sheet's settings verbatim (grid + padding/offset
@@ -1801,18 +1894,13 @@ public class SpriteEditorPanel
         var files = EnumeratePatternAnimFiles().ToList();
 
         // 2) Drop the previous auto-loaded sets so a re-run replaces, not duplicates.
-        if (_autoLoadedPatternSheets.Count > 0)
-        {
-            SpriteSheets.RemoveAll(s => _autoLoadedPatternSheets.Contains(s));
-            _autoLoadedPatternSheets.Clear();
-        }
         if (_autoLoadedPatternClips.Count > 0)
         {
             AnimationClips.RemoveAll(c => _autoLoadedPatternClips.Contains(c));
             _autoLoadedPatternClips.Clear();
         }
 
-        int readFiles = 0, sheetsAdded = 0, clipsAdded = 0;
+        int readFiles = 0, clipsBaked = 0;
         foreach (string file in files)
         {
             try
@@ -1826,35 +1914,27 @@ public class SpriteEditorPanel
                 if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
                     Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
                 bool touched = false;
+                var sourceSheets = (data.Sheets ?? [])
+                    .Where(sd => !string.IsNullOrWhiteSpace(sd?.Name))
+                    .Select(SpriteSheet.FromData)
+                    .ToList();
 
-                // ── Sheet entry (row 1 of the request: autoload di sprite sheet) ──
-                foreach (var sd in data.Sheets ?? [])
-                {
-                    if (string.IsNullOrWhiteSpace(sd?.Name)) continue;
-                    if (SpriteSheets.Any(s =>
-                            string.Equals(s.Name, sd.Name, StringComparison.OrdinalIgnoreCase)
-                            || (!string.IsNullOrEmpty(sd.ImagePath) && !string.IsNullOrEmpty(s.ImagePath)
-                                && string.Equals(s.ImagePath, sd.ImagePath, StringComparison.OrdinalIgnoreCase))))
-                        continue; // manual sheet / already present — never duplicate
-                    var sheet = SpriteSheet.FromData(sd);
-                    SpriteSheets.Add(sheet);
-                    _autoLoadedPatternSheets.Add(sheet);
-                    sheetsAdded++; touched = true;
-                    if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
-                        LoadPreviewTexture(sheet.ImagePath);
-                }
-
-                // ── Clips (row 2: auto make clip dari *-sprite-anim.json) ──
+                // Pattern-export sheets exist only as bake inputs. Each clip is
+                // cropped from its original image and immediately moved to an atlas.
                 foreach (var clipData in data.AnimationClips ?? [])
                 {
                     if (string.IsNullOrEmpty(clipData?.Name)) continue;
-                    if (AnimationClips.Any(c => string.Equals(c.Name, clipData.Name,
-                            StringComparison.OrdinalIgnoreCase)))
-                        continue; // already present — never duplicate
-                    var clip = AnimationClip2D.FromData(clipData);
-                    AnimationClips.Add(clip);
-                    _autoLoadedPatternClips.Add(clip);
-                    clipsAdded++; touched = true;
+                    var source = sourceSheets.FirstOrDefault(s => string.Equals(s.Name,
+                        clipData.SpriteSheetName, StringComparison.OrdinalIgnoreCase))
+                        ?? sourceSheets.FirstOrDefault();
+                    if (source == null) continue;
+
+                    var sourceClip = AnimationClip2D.FromData(clipData);
+                    if (!TryBakeClip(source, sourceClip, out var bakedClip)) continue;
+                    AddOrReplaceClip(bakedClip);
+                    _autoLoadedPatternClips.Add(bakedClip);
+                    clipsBaked++;
+                    touched = true;
                 }
 
                 if (touched) readFiles++;
@@ -1884,8 +1964,11 @@ public class SpriteEditorPanel
         if (_editingClip != null && !AnimationClips.Contains(_editingClip))
             _editingClip = null;
 
-        if (sheetsAdded > 0 || clipsAdded > 0 || readFiles > 0)
-            Console.WriteLine($"[SpriteEditor] Auto-loaded {sheetsAdded} sheets + {clipsAdded} clips from {readFiles} *-sprite-anim.json files");
+        if (clipsBaked > 0)
+        {
+            SaveAllSheets();
+            Console.WriteLine($"[SpriteEditor] Baked {clipsBaked} clips from {readFiles} *-sprite-anim.json files into project atlases.");
+        }
     }
 
     /// <summary>All *-sprite-anim.json files under the project's Assets folder (or the
@@ -1964,20 +2047,61 @@ public class SpriteEditorPanel
                 Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
 
             SpriteSheets.Clear();
+            _bakedAtlasSheets.Clear();
+            var legacySources = new List<SpriteSheet>();
+            bool normalMapsUpdated = false;
             foreach (var sheetData in data.Sheets)
             {
                 var sheet = SpriteSheet.FromData(sheetData);
-                SpriteSheets.Add(sheet);
-                // Load preview texture if image exists
+                if (IsBakedAtlas(sheet.Name))
+                {
+                    _bakedAtlasSheets.Add(sheet);
+                    if (sheet.NormalMapVersion < SpriteAtlasBaker.CurrentNormalMapVersion)
+                    {
+                        string colorPath = Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath);
+                        string? spriteDirectory = Path.GetDirectoryName(colorPath);
+                        if (!string.IsNullOrEmpty(spriteDirectory) && File.Exists(colorPath))
+                        {
+                            SpriteAtlasBaker.RegenerateNormalMap(spriteDirectory, sheet);
+                            normalMapsUpdated = true;
+                        }
+                    }
+                }
+                else
+                    legacySources.Add(sheet);
                 if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                     LoadPreviewTexture(sheet.ImagePath);
             }
-            // Load animation clips
+            SpriteSheets.AddRange(legacySources);
             AnimationClips.Clear();
+            bool migratedLegacyData = false;
+            bool allLegacyClipsMigrated = true;
             if (data.AnimationClips != null)
             {
                 foreach (var clipData in data.AnimationClips)
-                    AnimationClips.Add(AnimationClip2D.FromData(clipData));
+                {
+                    var clip = AnimationClip2D.FromData(clipData);
+                    if (IsBakedAtlas(clip.SpriteSheetName))
+                    {
+                        AddOrReplaceClip(clip);
+                        continue;
+                    }
+
+                    var source = legacySources.FirstOrDefault(s => string.Equals(s.Name,
+                        clip.SpriteSheetName, StringComparison.OrdinalIgnoreCase));
+                    if (source != null && TryBakeClip(source, clip, out var baked))
+                    {
+                        AddOrReplaceClip(baked);
+                        migratedLegacyData = true;
+                    }
+                    else
+                    {
+                        // Keep legacy content available for manual repair if its source
+                        // is missing or cannot fit; newly created clips are always baked.
+                        AddOrReplaceClip(clip);
+                        allLegacyClipsMigrated = false;
+                    }
+                }
             }
             ClearUndoHistory();
             _selectedSheetIdx = SpriteSheets.Count > 0 ? 0 : -1;
@@ -2007,7 +2131,10 @@ public class SpriteEditorPanel
             if (!string.IsNullOrWhiteSpace(data.PatternActions))
                 _patternActions = data.PatternActions;
 
-            Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} sheets + {AnimationClips.Count} clips from: {path}");
+            Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} temporary source sheets + {_bakedAtlasSheets.Count} baked atlases + {AnimationClips.Count} clips from: {path}");
+            if ((migratedLegacyData || normalMapsUpdated) && allLegacyClipsMigrated &&
+                string.Equals(Path.GetFullPath(path), Path.GetFullPath(GetDefaultSavePath()), StringComparison.OrdinalIgnoreCase))
+                SaveAllSheets();
         }
         catch (Exception ex)
         {
@@ -2020,9 +2147,9 @@ public class SpriteEditorPanel
     public void OnProjectChanged(string? projectRoot)
     {
         SpriteSheets.Clear();
+        _bakedAtlasSheets.Clear();
         AnimationClips.Clear();
         _autoLoadedPatternClips.Clear();
-        _autoLoadedPatternSheets.Clear();
         _patternActions = DefaultPatternActions;
         _selectedSheetIdx = -1;
         _multiSelectedSheets.Clear();
@@ -2030,6 +2157,13 @@ public class SpriteEditorPanel
         _selectedClipIdx = -1;
         _previewTextures.Clear();
         ClearUndoHistory();
+
+        if (!string.IsNullOrEmpty(projectRoot))
+        {
+            string spriteDirectory = Path.Combine(projectRoot, "Artifacts", "Sprites");
+            try { SpriteAtlasBaker.EnsureDefaultAtlas(spriteDirectory); }
+            catch (Exception ex) { Console.WriteLine($"[SpriteEditor] Failed to create default atlas: {ex.Message}"); }
+        }
 
         // On project open: load canonical sprites.sheets.json only.
         // Pattern exports (*-sprite-anim.json) are NOT auto-loaded here;
@@ -2066,7 +2200,6 @@ public class SpriteEditorPanel
         {
             Name = Path.GetFileNameWithoutExtension(path),
             ImagePath = Tilemap2D.MakeDataPathRelative(path),
-            Category = _nextImportCategory,
             Columns = _editCols,
             Rows = _editRows,
             FrameWidth = _editFrameW,
@@ -2135,7 +2268,6 @@ public class SpriteEditorPanel
             {
                 Name = System.IO.Path.GetFileNameWithoutExtension(path),
                 ImagePath = Tilemap2D.MakeDataPathRelative(path),
-                Category = _nextImportCategory,
                 Columns = _editCols,
                 Rows = _editRows,
                 FrameWidth = _editFrameW,
@@ -2204,6 +2336,14 @@ public class SpriteEditorPanel
         }
     }
 
+    private unsafe void ReloadPreviewTexture(string path)
+    {
+        string resolved = Engine.Helpers.PathHelpers.ResolveProjectAsset(path);
+        if (_previewTextures.Remove(resolved, out uint oldTexture) && oldTexture != 0)
+            GL.DeleteTextures(1, &oldTexture);
+        LoadPreviewTexture(resolved);
+    }
+
     private unsafe void LoadPreviewTexture(string path)
     {
         // Relative stored paths resolve against project root / exe (fallbacks included
@@ -2238,15 +2378,12 @@ public class SpriteEditorPanel
         }
     }
 
-    /// <summary>Display label for a Sprite Sheets section (the sheet-list grouping).
-    /// Plain ASCII — these labels are also serialized in the JSON file.</summary>
-    private static string CategoryLabel(SpriteSheetCategory cat) => cat switch
+    private static bool IsBakedAtlas(string? name)
     {
-        SpriteSheetCategory.FX => "FX",
-        SpriteSheetCategory.BaseEquipment => "Base Equipment",
-        SpriteSheetCategory.Items => "Items",
-        _ => "Base"
-    };
+        const string prefix = "mainsprite";
+        return !string.IsNullOrEmpty(name) && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && int.TryParse(name.AsSpan(prefix.Length), out int number) && number > 0;
+    }
 
     /// <summary>All currently selected sheet indexes, ascending, always valid and
     /// always containing the primary `_selectedSheetIdx`. The one accessor the delete /
@@ -2315,7 +2452,6 @@ public class SpriteEditorPanel
 
         _selectedFrameIdx = -1;
         LoadSheetSettings();
-        _nextImportCategory = SpriteSheets[i].Category; // next import lands in the clicked sheet's section
         // Reset the Animation Preview range to this sheet's frame count
         // (End = count-1) — the previous sheet's range is invalid here.
         _animStartFrame = 0;
@@ -2355,6 +2491,9 @@ public class SpriteSheetsSaveData
 {
     public List<SpriteSheetData> Sheets { get; set; } = new();
     public List<AnimationClip2DData> AnimationClips { get; set; } = new();
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<SpriteSheetData>? UndoSourceSheets { get; set; }
 
     // ── Last-used Animation Preview settings (Start/End/FPS/Loop) ──
     /// <summary>Saved so the preview range the user left is restored after a reload.

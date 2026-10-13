@@ -236,7 +236,22 @@ public class IDESettingsPanel
             if (ImGui.CollapsingHeader("Camera Zoom"))
             {
                 var settingsZ = Load();
+
+                // ── Disable zoom (master switch) ──
+                bool zoomDisabled = settingsZ.OrthoZoomDisabled;
+                if (ImGui.Checkbox("Disable Zoom", ref zoomDisabled))
+                {
+                    settingsZ.OrthoZoomDisabled = zoomDisabled;
+                    Save(settingsZ);
+                    Engine.Visual.Camera.OrthoZoomDisabled = zoomDisabled;
+                    Engine.Visual.Camera.ApplyZoomLimits(settingsZ.OrthoZoomMin, settingsZ.OrthoZoomMax);
+                    Console.WriteLine($"[IDESettings] Camera zoom {(zoomDisabled ? "DISABLED" : "enabled")}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("The user CANNOT zoom: scroll wheel is ignored and the viewport\n'Ortho Zoom' slider is greyed out. The Min/Max values below are kept\nunchanged — unchecking this restores the previous zoom range.\nPer project, saved in settings.json.");
+
                 ImGui.PushItemWidth(200);
+                ImGui.BeginDisabled(zoomDisabled);
                 float zMin = settingsZ.OrthoZoomMin;
                 if (ImGui.DragFloat("Ortho Zoom Min", ref zMin, 0.5f, 0.5f, 100f, "%.1f"))
                 {
@@ -270,6 +285,7 @@ public class IDESettingsPanel
                 }
                 ImGui.SameLine();
                 ImGui.TextDisabled("default 32 – 32");
+                ImGui.EndDisabled();
             }
 
             ImGui.Separator();

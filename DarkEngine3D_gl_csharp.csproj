@@ -35,6 +35,7 @@
   <ItemGroup>
     <!-- Root-level runtime config files are loaded from the exe directory.
          Copy them so their paths stay exe-relative instead of project-root/etc. -->
+    <None Include=".github\copilot-instructions.md" />
     <None Include="imgui.ini">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
