@@ -1033,7 +1033,11 @@ public static unsafe class DialogueSystem
         int w = sceneW, h = sceneH;
 
         // ── Font resolution — CRASH GUARD ──
-        // A passed-in ImFontPtr can hold a NULL/stale native pointer (atlas rebuilds        // invalidate cached fonts; the ViewportPanel/IDE caches can lag one frame).        // Touching FontSize/CalcTextSizeA on it = NullReferenceException → segfault.        // Validate the raw pointer FIRST, fall back to ImGui's current default font,        // and skip the overlay entirely when even that is missing (no ImGui frame).
+        // A passed-in ImFontPtr can hold a NULL/stale native pointer (atlas rebuilds
+        // invalidate cached fonts; the ViewportPanel/IDE caches can lag one frame).
+        // Touching FontSize/CalcTextSizeA on it = NullReferenceException → segfault.
+        // Validate the raw pointer FIRST, fall back to ImGui's current default font,
+        // and skip the overlay entirely when even that is missing (no ImGui frame).
         nint fontRaw = font.HasValue ? (nint)font.Value.NativePtr : 0;
         ImFontPtr f = fontRaw != 0 ? font.Value : ImGuiNET.ImGui.GetFont();
         if ((nint)f.NativePtr == 0)

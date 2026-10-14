@@ -694,7 +694,7 @@ public class MapEditorPanel
             ImGui.SetTooltip("Active tilemap name (also used as the save file name\nand the Map2D object name in the scene).");
 
         int palCols = ActiveTilemap.PaletteColumns;
-        if (ImGui.SliderInt("Palette Columns##permap", ref palCols, 1, 32))
+        if (ImGui.SliderInt("Palette Columns##permap", ref palCols, 1, 512))
             ActiveTilemap.PaletteColumns = palCols;
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Tile palette columns for THIS tilemap\n(each map has its own tileset size).");
