@@ -6,6 +6,7 @@ using StbImageSharp;
 using System.Numerics;
 using System.IO;
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -136,6 +137,21 @@ public class SpriteEditorPanel
     private bool _showPreview = true;
     private float _previewMaxWidth = 600f;
 
+    // Full atlas repack state. Worker callbacks only enqueue immutable progress data;
+    // atlas files, editor clips, ImGui and GL textures are committed on the render thread.
+    private readonly ConcurrentQueue<(int Completed, int Total, string Status)> _repackProgress = new();
+    private Task<SpriteAtlasRepackStagedResult>? _repackTask;
+    private CancellationTokenSource? _repackCancellation;
+    private bool _repackRequested;
+    private float _repackPercent;
+    private string _repackStatus = "";
+    private string _repackError = "";
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
     // ── Tool modes ──
     private enum ToolMode { Select, Slice, Anchor, Hitbox }
     private ToolMode _toolMode = ToolMode.Select;
@@ -181,6 +197,7 @@ public class SpriteEditorPanel
 
     public void Render()
     {
+        PumpAtlasRepack();
         // Keep the static sprite registry fresh even when the panel is hidden, so
         // Player2D objects keep resolving their sheet/clip + live texture in-game.
         SyncRegistry();
@@ -250,6 +267,17 @@ public class SpriteEditorPanel
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} source sheets, {_bakedAtlasSheets.Count} baked atlases, {AnimationClips.Count} clips)");
 
+            if (_repackTask != null || _repackRequested)
+            {
+                ImGui.ProgressBar(_repackPercent / 100f, new Vector2(-1f, 0f),
+                    $"{_repackPercent:0}%  {_repackStatus}");
+                ImGui.TextDisabled("Sprite atlas repack runs in the background; the editor remains responsive.");
+            }
+            else if (!string.IsNullOrEmpty(_repackError))
+            {
+                ImGui.TextColored(new Vector4(1f, 0.35f, 0.3f, 1f), $"Atlas repack failed: {_repackError}");
+            }
+
             // ── Export row (new line): free-path JSON save + pattern batch auto-clip ──
             if (ImGui.Button("Save As JSON"))
                 SaveAsJsonDialog();
@@ -287,6 +315,254 @@ public class SpriteEditorPanel
                         HandleSheetListClick(i);
                 }
             }
+
+    private void RequestFullAtlasRepack(string reason)
+    {
+        if (_repackTask != null)
+        {
+            _repackRequested = true;
+            _repackStatus = $"Queued ({reason})";
+            return;
+        }
+        _repackRequested = true;
+        _repackError = "";
+        _repackStatus = $"Preparing full repack ({reason})";
+    }
+
+    /// <summary>UI-thread pump: starts workers, consumes queued progress, and commits
+    /// completed staging output. No ImGui or OpenGL calls occur in worker callbacks.</summary>
+    private void PumpAtlasRepack()
+    {
+        while (_repackProgress.TryDequeue(out var progress))
+        {
+            int total = Math.Max(1, progress.Total);
+            _repackPercent = Math.Clamp(progress.Completed * 100f / total, 0f, 100f);
+            _repackStatus = progress.Status;
+        }
+
+        if (_repackTask != null && _repackTask.IsCompleted)
+        {
+            var completedTask = _repackTask;
+            _repackTask = null;
+            _repackCancellation?.Dispose();
+            _repackCancellation = null;
+            try
+            {
+                var staged = completedTask.GetAwaiter().GetResult();
+                CommitFullAtlasRepack(staged);
+                _repackPercent = 100f;
+                _repackStatus = "Repack complete";
+                _repackError = "";
+            }
+            catch (Exception ex)
+            {
+                _repackError = ex.GetBaseException().Message;
+                _repackStatus = "Repack failed; existing atlas data was retained";
+                Console.WriteLine($"[SpriteEditor] Full atlas repack failed safely: {ex}");
+            }
+            finally
+            {
+                // Preserve a queued rerun requested while the worker was active.
+            }
+        }
+
+        if (_repackTask != null || !_repackRequested) return;
+        try
+        {
+            var (sources, clips) = CaptureFullRepackInputs();
+            if (clips.Count == 0)
+            {
+                _repackRequested = false;
+                _repackPercent = 100f;
+                _repackStatus = "No baked clips to pack";
+                return;
+            }
+
+            _repackCancellation = new CancellationTokenSource();
+            var progress = new InlineProgress<(int Completed, int Total, string Status)>(
+                value => _repackProgress.Enqueue(value));
+            _repackStatus = "Packing sprite clips...";
+            _repackPercent = 0f;
+            _repackRequested = false;
+            _repackTask = SpriteAtlasBaker.RepackAllAsync(GetProjectSpriteDirectory(),
+                sources, clips, progress, _repackCancellation.Token);
+        }
+        catch (Exception ex)
+        {
+            _repackRequested = false;
+            _repackError = ex.GetBaseException().Message;
+            _repackStatus = "Could not start repack";
+            Console.WriteLine($"[SpriteEditor] Could not start atlas repack: {ex}");
+        }
+    }
+
+    private (List<SpriteAtlasRepackSource> Sources, List<SpriteAtlasRepackClipInput> Clips)
+        CaptureFullRepackInputs()
+    {
+        string directory = GetProjectSpriteDirectory();
+        if (directory.Length == 0) throw new InvalidOperationException("Atlas repack requires an open project.");
+
+        var referencedClips = AnimationClips
+            .Where(c => IsBakedAtlas(c.SpriteSheetName) && c.FrameIndices.Count > 0)
+            .ToList();
+        var sourceSheets = _bakedAtlasSheets
+            .Where(s => referencedClips.Any(c => string.Equals(c.SpriteSheetName, s.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        var sources = sourceSheets.Select(sheet => new SpriteAtlasRepackSource(
+            sheet.Name,
+            Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath),
+            Path.Combine(directory, sheet.Name + "Normal.png"),
+            (sheet.CustomFrames ?? []).Select(CloneSpriteFrame).ToList())).ToList();
+
+        var clips = new List<SpriteAtlasRepackClipInput>(referencedClips.Count);
+        foreach (var clip in referencedClips)
+        {
+            var sheet = sourceSheets.FirstOrDefault(s => string.Equals(s.Name,
+                clip.SpriteSheetName, StringComparison.OrdinalIgnoreCase));
+            if (sheet?.CustomFrames == null)
+                throw new InvalidDataException($"Clip '{clip.Name}' references missing atlas '{clip.SpriteSheetName}'.");
+            var frames = new List<SpriteAtlasRepackFrameInput>(clip.FrameIndices.Count);
+            foreach (int frameIndex in clip.FrameIndices)
+            {
+                if (frameIndex < 0 || frameIndex >= sheet.CustomFrames.Count)
+                    throw new InvalidDataException($"Clip '{clip.Name}' references invalid frame {sheet.Name}[{frameIndex}].");
+                var frame = sheet.CustomFrames[frameIndex];
+                frames.Add(new SpriteAtlasRepackFrameInput(sheet.Name, frameIndex,
+                    frame.Width, frame.Height, CloneSpriteFrame(frame)));
+            }
+            clips.Add(new SpriteAtlasRepackClipInput(clip.Name, frames));
+        }
+        return (sources, clips);
+    }
+
+    private static SpriteFrame CloneSpriteFrame(SpriteFrame frame) => new()
+    {
+        X = frame.X, Y = frame.Y, Width = frame.Width, Height = frame.Height,
+        Name = frame.Name, AnchorX = frame.AnchorX, AnchorY = frame.AnchorY,
+        RenderOffsetX = frame.RenderOffsetX, RenderOffsetY = frame.RenderOffsetY,
+        HitboxX = frame.HitboxX, HitboxY = frame.HitboxY,
+        HitboxW = frame.HitboxW, HitboxH = frame.HitboxH,
+        Tags = frame.Tags != null ? new Dictionary<string, string>(frame.Tags) : new()
+    };
+
+    /// <summary>Commit stage outputs transactionally on the UI thread. Existing target
+    /// atlas files and the canonical metadata are backed up and restored if any file
+    /// replacement fails. Live clip/sheet state changes only after metadata is written.</summary>
+    private void CommitFullAtlasRepack(SpriteAtlasRepackStagedResult staged)
+    {
+        string savePath = GetDefaultSavePath();
+        string directory = GetProjectSpriteDirectory();
+        string backupDirectory = Path.Combine(directory, $".atlas-repack-backup-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(backupDirectory);
+        var fileBackups = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        string metadataTemp = savePath + ".repack.tmp";
+        var oldAtlasSheets = _bakedAtlasSheets.ToList();
+        var oldClips = AnimationClips.Select(CloneClip).ToList();
+        bool metadataReplaced = false;
+        try
+        {
+            var newAtlasSheets = staged.Atlases.ToList();
+            var newClips = AnimationClips.Select(CloneClip).ToList();
+            foreach (var placement in staged.Clips)
+            {
+                var clip = newClips.FirstOrDefault(c => string.Equals(c.Name, placement.ClipName,
+                    StringComparison.OrdinalIgnoreCase));
+                if (clip == null) throw new InvalidDataException($"Staged repack is missing live clip '{placement.ClipName}'.");
+                clip.SpriteSheetName = $"mainsprite{placement.AtlasNumber}";
+                clip.FrameIndices = placement.FramePlacements.Select(p => p.AtlasFrameIndex).ToList();
+            }
+
+            var candidateData = CaptureSaveData();
+            candidateData.Sheets = newAtlasSheets.Select(s => s.ToData()).ToList();
+            candidateData.AnimationClips = newClips.Select(c => c.ToData()).ToList();
+            File.WriteAllText(metadataTemp, JsonSerializer.Serialize(candidateData,
+                new JsonSerializerOptions { WriteIndented = true }));
+
+            foreach (var atlas in newAtlasSheets)
+            {
+                foreach (string suffix in new[] { ".png", "Normal.png" })
+                {
+                    string target = Path.Combine(directory, atlas.Name + suffix);
+                    string? backup = null;
+                    if (File.Exists(target))
+                    {
+                        backup = Path.Combine(backupDirectory, Path.GetFileName(target));
+                        File.Copy(target, backup, overwrite: true);
+                    }
+                    fileBackups[target] = backup;
+                    string stagedPath = Path.Combine(staged.StagingDirectory, atlas.Name + suffix);
+                    File.Move(stagedPath, target, overwrite: true);
+                }
+            }
+
+            string? metadataBackup = null;
+            if (File.Exists(savePath))
+            {
+                metadataBackup = Path.Combine(backupDirectory, Path.GetFileName(savePath));
+                File.Copy(savePath, metadataBackup, overwrite: true);
+            }
+            fileBackups[savePath] = metadataBackup;
+            File.Move(metadataTemp, savePath, overwrite: true);
+            metadataReplaced = true;
+
+            _bakedAtlasSheets.Clear();
+            _bakedAtlasSheets.AddRange(newAtlasSheets);
+            AnimationClips.Clear();
+            AnimationClips.AddRange(newClips);
+            ReloadRepackedAtlasTextures(newAtlasSheets);
+            SyncRegistry();
+            Engine.Helpers.BinaryObjectCache.TryWrite(savePath, candidateData);
+            _selectedClipIdx = AnimationClips.Count > 0
+                ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
+            Console.WriteLine($"[SpriteEditor] Full repack committed: {AnimationClips.Count} clips into {newAtlasSheets.Count} atlases.");
+        }
+        catch
+        {
+            foreach (var (path, backup) in fileBackups.Reverse())
+            {
+                try
+                {
+                    if (backup == null) { if (File.Exists(path)) File.Delete(path); }
+                    else File.Copy(backup, path, overwrite: true);
+                }
+                catch (Exception rollbackEx)
+                {
+                    Console.WriteLine($"[SpriteEditor] WARNING: atlas repack rollback failed for {path}: {rollbackEx.Message}");
+                }
+            }
+            _bakedAtlasSheets.Clear();
+            _bakedAtlasSheets.AddRange(oldAtlasSheets);
+            AnimationClips.Clear();
+            AnimationClips.AddRange(oldClips);
+            try { ReloadRepackedAtlasTextures(oldAtlasSheets); } catch { }
+            SyncRegistry();
+            if (metadataReplaced)
+                Engine.Helpers.BinaryObjectCache.TryWrite(savePath, CaptureSaveData());
+            throw;
+        }
+        finally
+        {
+            try { if (File.Exists(metadataTemp)) File.Delete(metadataTemp); } catch { }
+            try { if (Directory.Exists(staged.StagingDirectory)) Directory.Delete(staged.StagingDirectory, recursive: true); } catch { }
+            try { if (Directory.Exists(backupDirectory)) Directory.Delete(backupDirectory, recursive: true); } catch { }
+        }
+    }
+
+    private static AnimationClip2D CloneClip(AnimationClip2D clip) => new()
+    {
+        Name = clip.Name, SpriteSheetName = clip.SpriteSheetName,
+        FrameIndices = clip.FrameIndices.ToList(), FPS = clip.FPS,
+        Loop = clip.Loop, Reverse = clip.Reverse, SpeedMultiplier = clip.SpeedMultiplier,
+        Events = clip.Events.ToDictionary(kv => kv.Key, kv => kv.Value),
+        MasterWidth = clip.MasterWidth, MasterHeight = clip.MasterHeight,
+        SpriteOffsetX = clip.SpriteOffsetX, SpriteOffsetY = clip.SpriteOffsetY
+    };
+
+    private void ReloadRepackedAtlasTextures(IEnumerable<SpriteSheet> atlases)
+    {
+        foreach (var atlas in atlases)
+            ReloadPreviewTexture(atlas.ImagePath);
+    }
 
             if (SelectedSheet != null)
             {
@@ -1156,6 +1432,7 @@ public class SpriteEditorPanel
                     _selectedClipIdx = AddOrReplaceClip(bakedClip);
                     _editingClip = bakedClip;
                     Console.WriteLine($"[SpriteEditor] Baked clip '{bakedClip.Name}' to {bakedClip.SpriteSheetName}: frames {start}-{end} ({count} frames, {bakedClip.FPS} FPS)");
+                    RequestFullAtlasRepack("clip created");
                 }
             }
         }
@@ -1195,6 +1472,12 @@ public class SpriteEditorPanel
         {
             AnimationClips.RemoveAt(deleteIdx);
             _selectedClipIdx = Math.Min(_selectedClipIdx, AnimationClips.Count - 1);
+            if (_editingClip != null && !AnimationClips.Contains(_editingClip))
+            {
+                _editingClip = null;
+                _clipPlaying = false;
+            }
+            RequestFullAtlasRepack("clip deleted");
         }
 
         // ── Selected clip properties ──
