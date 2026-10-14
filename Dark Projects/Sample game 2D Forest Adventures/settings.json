@@ -19,7 +19,7 @@
   "SnapGridSize": 20,
   "ToolbarFontSize": 14,
   "MapEditorShowGrid": true,
-  "MapEditorShowCollision": false,
+  "MapEditorShowCollision": true,
   "MapEditorGridColorR": 0.4,
   "MapEditorGridColorG": 0.5,
   "MapEditorGridColorB": 0.68,

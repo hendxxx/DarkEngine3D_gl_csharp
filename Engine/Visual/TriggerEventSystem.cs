@@ -1444,7 +1444,8 @@ public static class TriggerEventSystem
     }
 
     /// <summary>Every ARMED interact-key zone (player inside, waiting for the key
-    /// press) — the "[E]" badge renderers iterate this so the hint shows above the    /// zone during gameplay. Interact-key mode is the chest/NPC-style trigger.</summary>
+    /// press) — the "[E]" badge renderers iterate this so the hint shows above the
+    /// zone during gameplay. Interact-key mode is the chest/NPC-style trigger.</summary>
     public static IEnumerable<(TilemapTriggerArea Area, Tilemap2D Map)> InteractKeyZones(
         DarkEngine3D_gl_csharp.Engine.Objects.EditorObjectManager? manager)
     {
