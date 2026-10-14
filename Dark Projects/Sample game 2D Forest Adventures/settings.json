@@ -37,7 +37,7 @@
   "MapEditorPaletteGridColorA": 0.25,
   "MapEditorPaletteCols": 18,
   "MapEditorPaletteCell": 32,
-  "LastFocusedPanel": "Scene Manager",
+  "LastFocusedPanel": "Scene View",
   "OrthoZoomMin": 2,
   "OrthoZoomMax": 200,
   "OrthoZoomDisabled": true,
