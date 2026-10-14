@@ -248,7 +248,7 @@ public class SpriteEditorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Load baked clips from Artifacts/Sprites/sprites.sheets.json, then bake clips from *-sprite-anim.json source exports.\nRequires an open project.");
             ImGui.SameLine();
-            ImGui.TextDisabled($"({SpriteSheets.Count} sheets, {AnimationClips.Count} clips) — click = select, Ctrl+Click = toggle, Shift+Click = range");
+            ImGui.TextDisabled($"({SpriteSheets.Count} source sheets, {_bakedAtlasSheets.Count} baked atlases, {AnimationClips.Count} clips)");
 
             // ── Export row (new line): free-path JSON save + pattern batch auto-clip ──
             if (ImGui.Button("Save As JSON"))
@@ -278,6 +278,8 @@ public class SpriteEditorPanel
             if (ImGui.CollapsingHeader("Sprite Sheets", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 ImGui.TextDisabled("Source sheets are temporary bake inputs; only baked clips and atlas metadata are saved.");
+                if (SpriteSheets.Count == 0)
+                    ImGui.TextDisabled("No temporary source sheets loaded. Existing baked clips are listed below; use Import Sheet to create more.");
                 for (int i = 0; i < SpriteSheets.Count; i++)
                 {
                     bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
@@ -416,14 +418,13 @@ public class SpriteEditorPanel
                     RenderAnimationPreview();
                 }
 
-                ImGui.Separator();
-
-                // ── Animation Clips ──
-                if (ImGui.CollapsingHeader("Animation Clips", ImGuiTreeNodeFlags.DefaultOpen))
-                {
-                    RenderAnimationClips();
-                }
             }
+
+            ImGui.Separator();
+            // Baked clips remain browseable even when temporary source sheets are not
+            // loaded (normal after project open, since baking only persists atlases).
+            if (ImGui.CollapsingHeader("Animation Clips", ImGuiTreeNodeFlags.DefaultOpen))
+                RenderAnimationClips();
 
             // ── Drop zone indicator ──
             if (SelectedSheet == null)
@@ -1119,7 +1120,7 @@ public class SpriteEditorPanel
         if (_autoLoadedPatternClips.Count > 0)
             ImGui.TextDisabled($"({_autoLoadedPatternClips.Count} clips baked from *-sprite-anim.json)");
         if (SelectedSheet == null)
-            ImGui.TextDisabled("Import a source sheet to create or replace a baked clip.");
+            ImGui.TextDisabled("Baked clips below remain available. Import a source sheet to create or replace clips.");
         else
         {
             // ── Create clip from current animation preview range ──

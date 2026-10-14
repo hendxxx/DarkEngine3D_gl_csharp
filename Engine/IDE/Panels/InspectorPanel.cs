@@ -3166,17 +3166,15 @@ public class InspectorPanel
                 bool sel = i == sheetIdx;
                 if (ImGui.Selectable(sheetArr[i], sel))
                 {
+                    string oldSheet = editorObj.Player2DSpriteSheet;
+                    string oldClip = editorObj.Player2DAnimationClip;
                     editorObj.Player2DSpriteSheet = sheetArr[i];
                     // Auto-select the first clip of the new sheet (dropdown rule).
                     var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
                     editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
                     editorObj.Player2DAnimTime = 0;
-                    // Keep default locomotion actions bound to the same sheet.
-                    foreach (var act in editorObj.Actions)
-                    {
-                        if (string.IsNullOrEmpty(act.SpriteSheet))
-                            act.Clip = editorObj.Player2DAnimationClip;
-                    }
+                    BindMatchingPlayer2DActionClips(editorObj, oldSheet, oldClip,
+                        editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
@@ -3201,19 +3199,9 @@ public class InspectorPanel
                     string oldClip = editorObj.Player2DAnimationClip;
                     editorObj.Player2DAnimationClip = clipArr[i];
                     editorObj.Player2DAnimTime = 0;
-                    // Follow-through: locomotion actions that ResolveLocomotionAction
-                    // auto-filled from the OLD base clip must follow the change, otherwise
-                    // the always-on Idle action keeps sampling the old clip and switching
-                    // this combo (idle → run) has no visible effect on the sprite.
-                    foreach (var act in editorObj.Actions)
-                    {
-                        bool sameSheet = string.IsNullOrEmpty(act.SpriteSheet)
-                            || string.Equals(act.SpriteSheet, editorObj.Player2DSpriteSheet, StringComparison.OrdinalIgnoreCase);
-                        bool followsOldBase = string.IsNullOrEmpty(act.Clip)
-                            || string.Equals(act.Clip, oldClip, StringComparison.OrdinalIgnoreCase);
-                        if (sameSheet && followsOldBase)
-                            act.Clip = editorObj.Player2DAnimationClip;
-                    }
+                    BindMatchingPlayer2DActionClips(editorObj,
+                        editorObj.Player2DSpriteSheet, oldClip,
+                        editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
@@ -3221,8 +3209,8 @@ public class InspectorPanel
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings).\nIdle/Walk/Run actions still pointing at the old clip follow this change.");
 
-        ImGui.TextDisabled("Walk/Run/Jump clips → configure in Animation Actions below");
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("The base clip above plays when no action is active; state animations live in the Animation Actions system");
+        ImGui.TextDisabled("Walk/Run/Jump clips → Animation Actions below (expand to select Sprite Editor clips)");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip("The clip above is the default/base clip. Expand Animation Actions to assign the matching Walk/Run/Jump clips created in Sprite Editor.");
 
         // Show clip summary when resolvable.
         if (editorObj.TryGetPlayer2DClip(out var _, out var clipInfo) && clipInfo != null)
@@ -3456,13 +3444,17 @@ public class InspectorPanel
     /// keyboard binding and priority. The same list drives Player2DSystem in-game.</summary>
     private void RenderPlayer2DActionsInspector(EditorObject editorObj)
     {
-        if (!ImGui.CollapsingHeader("Animation Actions"))
+        if (!ImGui.CollapsingHeader("Animation Actions", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
         editorObj.EnsureDefaultActions();
+        BindMatchingPlayer2DActionClips(editorObj,
+            editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip,
+            editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
         var sheets = IDEBridge.GetSpriteSheetNames();
 
         ImGui.TextDisabled("Bind keys + clips; higher priority interrupts lower (Dead=100 cancels all)");
+        ImGui.TextDisabled("Each action's Clip dropdown lists clips created in Sprite Editor; matching -idle/-walk/-run clips auto-bind from the base clip.");
 
         int removeIdx = -1;
         for (int i = 0; i < editorObj.Actions.Count; i++)
@@ -3753,6 +3745,40 @@ public class InspectorPanel
                 Clip = editorObj.Player2DAnimationClip,
                 Priority = 5,
             });
+        }
+    }
+
+    /// <summary>Bind default locomotion actions to sibling Sprite Editor clips
+    /// (for example, base "Male Skin1-idle" maps Run to "Male Skin1-run"). Only
+    /// rebind when the action still points at its previous automatic clip/default;
+    /// manually selected action clips are preserved.</summary>
+    private static void BindMatchingPlayer2DActionClips(EditorObject editorObj,
+        string oldSheet, string oldBaseClip, string newSheet, string newBaseClip)
+    {
+        if (editorObj.Actions.Count == 0) return;
+        string[] locomotionNames = ["Idle", "Walk", "Run", "Jump", "Jump Start", "Jump End", "Fall"];
+
+        foreach (var act in editorObj.Actions)
+        {
+            if (!locomotionNames.Contains(act.Name, StringComparer.OrdinalIgnoreCase)) continue;
+
+            string actionSheet = string.IsNullOrEmpty(act.SpriteSheet) ? oldSheet : act.SpriteSheet;
+            bool followsOldSheet = string.IsNullOrEmpty(actionSheet)
+                || string.Equals(actionSheet, oldSheet, StringComparison.OrdinalIgnoreCase);
+            if (!followsOldSheet) continue;
+
+            var previousMatch = IDEBridge.FindAnimationClipForAction(oldSheet, oldBaseClip, act.Name);
+            string expectedOldClip = previousMatch?.Name ?? oldBaseClip;
+            bool followsOldClip = string.IsNullOrEmpty(act.Clip)
+                || string.Equals(act.Clip, oldBaseClip, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(act.Clip, expectedOldClip, StringComparison.OrdinalIgnoreCase);
+            if (!followsOldClip) continue;
+
+            var newMatch = IDEBridge.FindAnimationClipForAction(newSheet, newBaseClip, act.Name);
+            act.SpriteSheet = string.Equals(actionSheet, oldSheet, StringComparison.OrdinalIgnoreCase)
+                ? newSheet
+                : act.SpriteSheet;
+            act.Clip = newMatch?.Name ?? newBaseClip;
         }
     }
 
