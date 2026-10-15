@@ -2062,7 +2062,7 @@ public class SpriteEditorPanel
     /// power-of-two tiles (16x16, 32x32, 64x64, 128x128...) win over odd sizes
     /// (96/48/24) whenever detection must guess. Frames within 2 px of one of these
     /// are snapped to the standard size.</summary>
-    private static readonly int[] StandardFrameSizes = [256, 128, 64, 32, 16, 96, 48, 24];
+    private static readonly int[] StandardFrameSizes = [512, 256, 128, 64, 32, 16, 96, 48, 24, 8];
 
     /// <summary>Grid straight from pixels: (Cols, Rows, FrameW, FrameH, OffX, OffY,
     /// PadX, PadY). Null = blank/undetectable. Alpha >= 8 counts as ink; ink runs
@@ -2125,6 +2125,18 @@ public class SpriteEditorPanel
             ? FitAxis(rowSegs)
             : SnapSingleRun(rowSegs[0], img.Height);
 
+        // MERGED-AXIS INFERENCE: sprites that TOUCH along one axis give that axis a
+        // single full-extent run (its width/height = the whole image). When the OTHER
+        // axis resolved to a STANDARD pitch (e.g. 32) that divides the merged extent
+        // exactly, the touching sprites almost surely sit on the same grid — split
+        // the merged extent into exact cells (e.g. touching 160px columns + 32px row
+        // pitch -> 5 cells @32). Exact division + standard pitch only, so tiling
+        // water bands or full-bleed art are never cut into phantom cells.
+        int syncX = cx.Count == 1 ? 0 : cx.Frame + cx.Pad;
+        int syncY = rx.Count == 1 ? 0 : rx.Frame + rx.Pad;
+        if (cx.Count == 1) cx = SplitMergedAxis(cx, img.Width, syncY);
+        if (rx.Count == 1) rx = SplitMergedAxis(rx, img.Height, syncX);
+
         return (cx.Count, rx.Count, cx.Frame, rx.Frame, cx.Start, rx.Start, cx.Pad, rx.Pad);
     }
 
@@ -2155,7 +2167,50 @@ public class SpriteEditorPanel
         // to 2px into its own transparent border but never shrink into the ink of
         // the next run (pad must stay >= 0).
         SnapToStandard(ref frame, ref pad, stride, maxGrow: 2);
+
+        // STANDARD-PITCH PROMOTION (16x16, 32x32, 64x64...): when the measured pitch
+        // (median run-start spacing) is EXACTLY a standard size, promote the whole
+        // CELL to that standard — frame = pitch, pad = 0. The pitch is unchanged, so
+        // run alignment and ink containment stay exact; the cell just fills its
+        // measured stride. A 60px ink run in a 64px pitch becomes a true 64x64 cell
+        // instead of 60x60 + 4px pad. (Snapping pitch to a NON-exact standard would
+        // drift 1-2px per index and eventually cut remote runs' ink — never done.)
+        if (Array.IndexOf(StandardFrameSizes, stride) >= 0)
+        {
+            frame = stride;
+            pad = 0;
+        }
         return (segs[0].Start, frame, pad, n);
+    }
+
+    /// <summary>Split a FULLY MERGED axis (one run spanning the whole extent) into
+    /// exact cells when the other axis's pitch matches a STANDARD size (exactly, or
+    /// within 2 px — snapped; the snapped pitch influences only the CELL COUNT, never
+    /// cell placement, and the merged axis's ink is continuous so nothing can be cut.
+    /// 16/32/64... are thus prioritized for touching columns/rows). Returns the axis
+    /// unchanged for anything else (not merged, uneven division, or a <2 division).
+    /// </summary>
+    private static (int Start, int Frame, int Pad, int Count) SplitMergedAxis(
+        (int Start, int Frame, int Pad, int Count) axis, int extent, int otherPitch)
+    {
+        if (axis.Frame != extent) return axis;                 // not a full-span merged run
+        if (otherPitch <= 1) return axis;
+        int pitch = otherPitch;
+        if (!StandardFrameSizes.Contains(pitch))
+        {
+            int nearest = -1, bestGap = 3;                     // within 2 px of a standard
+            foreach (int s in StandardFrameSizes)
+            {
+                int gap = Math.Abs(pitch - s);
+                if (gap < bestGap) { nearest = s; bestGap = gap; }
+            }
+            if (nearest <= 0) return axis;
+            pitch = nearest;
+        }
+        if (extent % pitch != 0) return axis;                  // uneven — no exact grid
+        int count = extent / pitch;
+        if (count < 2) return axis;
+        return (0, pitch, 0, count);
     }
 
     /// <summary>Snap ONE run to a standard frame size: the cell may GROW up to 100px
@@ -2184,7 +2239,7 @@ public class SpriteEditorPanel
         int best = -1, bestGap = int.MaxValue;
         foreach (int s in StandardFrameSizes)
         {
-            int gap = Math.Abs(frame - s);
+            int gap = s - frame; if (frame > s) continue;
             if (gap > 2 || gap >= bestGap) continue;
             int newPad = stride - s;
             if (newPad < 0) continue;                     // cell would overlap the next run

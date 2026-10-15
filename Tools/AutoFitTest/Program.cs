@@ -30,7 +30,7 @@ static class AutoFitTest
                 hasTransparency = px[i] < 8;
             if (!hasTransparency)
                 return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
-            foreach (int size in new[] { 256, 128, 96, 64, 48, 32, 24, 16 })
+            foreach (int size in new[] { 512, 256, 128, 96, 64, 48, 32, 24, 16 })
                 if (img.Width % size == 0 && img.Height % size == 0 && size < img.Width && size < img.Height)
                     return (img.Width / size, img.Height / size, size, size, 0, 0, 0, 0);
             return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
@@ -56,14 +56,14 @@ static class AutoFitTest
         return (segs[0].Start, frame, pad, n);
     }
 
-    static readonly int[] StandardFrameSizes = [256, 128, 64, 32, 16, 96, 48, 24];
+    static readonly int[] StandardFrameSizes = [512, 256, 128, 64, 32, 16, 96, 48, 24, 8];
 
     static void SnapToStandard(ref int frame, ref int pad, int stride, int maxGrow)
     {
         int best = -1, bestGap = int.MaxValue;
         foreach (int s in StandardFrameSizes)
         {
-            int gap = Math.Abs(frame - s);
+            int gap = s - frame; if (frame > s) continue;
             if (gap > 2 || gap >= bestGap) continue;
             int newPad = stride - s;
             if (newPad < 0) continue;
