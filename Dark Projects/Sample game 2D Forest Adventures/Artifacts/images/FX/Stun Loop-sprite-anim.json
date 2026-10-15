@@ -1,0 +1,67 @@
+{
+  "Sheets": [
+    {
+      "Name": "Stun Loop",
+      "ImagePath": "Artifacts\\images\\FX\\Stun Loop.png",
+      "ImageWidth": 256,
+      "ImageHeight": 64,
+      "Columns": 1,
+      "Rows": 1,
+      "FrameWidth": 64,
+      "FrameHeight": 64,
+      "PaddingX": 0,
+      "PaddingY": 0,
+      "OffsetX": 0,
+      "OffsetY": 0,
+      "MasterWidth": 0,
+      "MasterHeight": 0,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 0,
+      "FlipY": false,
+      "FlipX": false,
+      "NormalMapVersion": 0,
+      "GroupName": "",
+      "CustomFrames": [
+        {
+          "X": 0,
+          "Y": 0,
+          "Width": 64,
+          "Height": 64,
+          "Name": "Frame 0",
+          "RenderOffsetX": 0,
+          "RenderOffsetY": 0,
+          "AnchorX": 0.5,
+          "AnchorY": 1,
+          "HitboxX": 0,
+          "HitboxY": 0,
+          "HitboxW": 0,
+          "HitboxH": 0,
+          "Tags": {}
+        }
+      ]
+    }
+  ],
+  "AnimationClips": [
+    {
+      "Name": "Stun Loop-idle",
+      "SpriteSheetName": "Stun Loop",
+      "FrameIndices": [
+        0
+      ],
+      "FPS": 1,
+      "Loop": true,
+      "Reverse": false,
+      "SpeedMultiplier": 1,
+      "Events": {},
+      "MasterWidth": 0,
+      "MasterHeight": 0,
+      "SpriteOffsetX": 0,
+      "SpriteOffsetY": 0
+    }
+  ],
+  "PreviewStartFrame": -1,
+  "PreviewEndFrame": -1,
+  "PreviewFps": 12,
+  "PreviewLoop": true,
+  "PatternActions": ""
+}

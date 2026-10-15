@@ -38,6 +38,30 @@ public class ImGuiFileDialog
     /// <summary>The full path the user selected (null if cancelled).</summary>
     public string? SelectedPath { get; private set; }
 
+    // ── MULTI-SELECT (Open mode) ──
+    /// <summary>When opened via OpenForLoadMulti the file list supports Ctrl+Click
+    /// (toggle) and Shift+Click (range) multi-selection; confirming returns ALL of them.</summary>
+    private bool _multiSelect;
+    private readonly List<string> _selectedFiles = [];
+    /// <summary>Primary index of the last multi-select click — the Shift+Click range
+    /// anchor (previous selection, before this click's clear/re-add).</summary>
+    private int _lastMultiIdx = -1;
+    /// <summary>All confirmed selections in multi-select mode (null = none/overwrite).
+    /// In single-select mode this mirrors SelectedPath as a 1-element list for callers
+    /// that want one code path.</summary>
+    public IReadOnlyList<string>? SelectedPaths { get; private set; }
+
+    /// <summary>Open an Open-mode dialog with MULTI file selection. Filter syntax is
+    /// the same as OpenForLoad ("*.png;*.jpg"). Click = select one, Ctrl+Click =
+    /// toggle, Shift+Click = extend the range; Open confirms every selected file.</summary>
+    public void OpenForLoadMulti(string filter, string title = "Open files")
+    {
+        OpenForLoad(filter, title);
+        _multiSelect = true;
+        _selectedFiles.Clear();
+        _lastMultiIdx = -1;
+    }
+
     /// <summary>True when the user confirmed a selection this frame. Check SelectedPath after.</summary>
     public bool IsConfirmed { get; private set; }
 
@@ -62,6 +86,9 @@ public class ImGuiFileDialog
         _fileNameBuffer = "";
         _selectedIdx = -1;
         SelectedPath = null;
+        SelectedPaths = null;
+        _multiSelect = false;
+        _selectedFiles.Clear();
         IsConfirmed = false;
         if (Engine.Project.ProjectManager.IsProjectLoaded)
             _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
@@ -112,6 +139,9 @@ public class ImGuiFileDialog
         _mode = DialogMode.None;
         IsConfirmed = false;
         SelectedPath = null;
+        SelectedPaths = null;
+        _multiSelect = false;
+        _selectedFiles.Clear();
     }
 
     private void Refresh()
@@ -265,16 +295,47 @@ public class ImGuiFileDialog
                 ImGui.Separator();
                 for (int i = 0; i < _files.Length; i++)
                 {
-                    bool isSel = i == _selectedIdx;
+                    bool isSel = i == _selectedIdx ||
+                        (_multiSelect && _selectedFiles.Contains(_files[i]));
                     if (ImGui.Selectable(_files[i], ref isSel))
                     {
                         _selectedIdx = i;
                         _fileNameBuffer = _files[i];
+                        if (_multiSelect)
+                        {
+                            // Multi-select: plain click = only this file; Ctrl+Click =
+                            // toggle it in/out; Shift+Click = extend the range from the
+                            // last confirmed primary. Selection = file NAMES; paths are
+                            // rebuilt from the current dir on confirm.
+                            var io = ImGui.GetIO();
+                            if (io.KeyCtrl)
+                            {
+                                if (!_selectedFiles.Remove(_files[i]))
+                                    _selectedFiles.Add(_files[i]);
+                            }
+                            else if (io.KeyShift && _lastMultiIdx >= 0 && _lastMultiIdx < _files.Length)
+                            {
+                                // Range from the previous primary (post-click it equals i,
+                                // so capture via the last add before clearing).
+                                _selectedFiles.Clear();
+                                int lo = Math.Min(_lastMultiIdx, i), hi = Math.Max(_lastMultiIdx, i);
+                                for (int k = lo; k <= hi; k++)
+                                    _selectedFiles.Add(_files[k]);
+                            }
+                            else
+                            {
+                                _selectedFiles.Clear();
+                                _selectedFiles.Add(_files[i]);
+                            }
+                            _lastMultiIdx = i;
+                        }
                     }
                     if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                     {
                         _selectedIdx = i;
                         _fileNameBuffer = _files[i];
+                        if (_multiSelect && !_selectedFiles.Contains(_files[i]))
+                            _selectedFiles.Add(_files[i]);
                         ConfirmSelection();
                     }
                 }
@@ -338,6 +399,27 @@ public class ImGuiFileDialog
 
     private void ConfirmSelection()
     {
+        // Multi-select Open: confirmed = EVERY selected file in the current dir.
+        if (_multiSelect && _mode == DialogMode.Open && _selectedFiles.Count > 0)
+        {
+            var paths = _selectedFiles
+                .Select(f => Path.Combine(_currentDir, f))
+                .Where(File.Exists)
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (paths.Count > 0)
+            {
+                SelectedPaths = paths;
+                SelectedPath = paths[0];
+                IsConfirmed = true;
+                Console.WriteLine($"[FileDialog] Multi-selected: {paths.Count} file(s)");
+                return;
+            }
+            return; // nothing valid to confirm
+        }
+        // Single-select: mirror the path into the 1-element list for uniform callers.
+        SelectedPaths = null;
+
         string fileName = _fileNameBuffer.Trim();
         if (string.IsNullOrEmpty(fileName))
         {

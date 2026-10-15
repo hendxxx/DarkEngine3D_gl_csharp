@@ -64,6 +64,12 @@ public class SpriteSheet
     /// <summary>Version of the generated companion normal map, used to upgrade old atlases once.</summary>
     public int NormalMapVersion { get; set; }
 
+    /// <summary>Sprite Sheets TREE GROUP this sheet belongs to (Sprite Editor).
+    /// Empty = the sheet shows at the tree ROOT (no group). The group's display name
+    /// is the first sheet's GroupName leaf; editing it there renames every member.
+    /// Persisted in the save data (GroupName).</summary>
+    public string GroupName { get; set; } = "";
+
     /// <summary>Custom frame regions (non-uniform mode). Null = use uniform grid.</summary>
     public List<SpriteFrame>? CustomFrames;
 
@@ -186,6 +192,7 @@ public class SpriteSheet
         FlipY = FlipY,
         FlipX = FlipX,
         NormalMapVersion = NormalMapVersion,
+        GroupName = GroupName,
         CustomFrames = CustomFrames?.Select(f => new SpriteFrameData
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -221,6 +228,7 @@ public class SpriteSheet
         FlipY = data.FlipY,
         FlipX = data.FlipX,
         NormalMapVersion = data.NormalMapVersion,
+        GroupName = data.GroupName,
         CustomFrames = data.CustomFrames?.Select(f => new SpriteFrame
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -286,6 +294,9 @@ public class SpriteSheetData
     /// <summary>Horizontal mirror (Flip X / HFlip) — default false.</summary>
     public bool FlipX { get; set; } = false;
     public int NormalMapVersion { get; set; }
+    /// <summary>Sprite Sheets TREE GROUP name (empty = tree root). Saved with the
+    /// sheet; the Sprite Editor's tree groups sheets by it.</summary>
+    public string GroupName { get; set; } = "";
     public List<SpriteFrameData>? CustomFrames { get; set; }
 }
 

@@ -28,10 +28,6 @@ public class SpriteEditorPanel
     public const string DefaultPatternActions = "idle|walk|run|jump start|jump end|attack|dead";
     /// <summary>Standard clip names assigned to rows IN ORDER; rows past the action
     /// list are NOT saved (the free text defines how many actions are written).</summary>
-    private static readonly string[] PatternClipNames =
-        ["idle", "walk", "run", "jump start", "jump end", "attack", "dead"];
-    /// <summary>Actions that play ONCE (matched by action name, case-insensitive);
-    /// every other action loops (e.g. custom "effect" loops).</summary>
     private static readonly string[] PatternOnceActions =
         ["jump start", "jump end", "attack", "dead"];
     /// <summary>Image extensions scanned when batch-generating pattern clips.</summary>
@@ -47,8 +43,35 @@ public class SpriteEditorPanel
     /// snapshot-based undo rebuilds instances, which would orphan name tracking.</summary>
     private readonly HashSet<AnimationClip2D> _autoLoadedPatternClips = new();
     /// <summary>Free-text action list for Save As Pattern — names per row separated
-    /// by '|' (e.g. "effect" for a single-row sheet). Persisted in the save file.</summary>
-    private string _patternActions = DefaultPatternActions;
+    /// by '|' (e.g. "effect" for a single-row sheet). Persisted in the save file.
+    /// Starts EMPTY: no pattern runs (and no clips are written) until the user either
+    /// types names or clicks the 'Default Pattern' fill button.</summary>
+    private string _patternActions = "";
+    /// <summary>One-click fill for the Pattern actions field (the old default list
+    /// idle..dead). Lets an empty field stay empty without touching the text.</summary>
+
+    // ── Sprite Sheets tree (grouping) ──
+    /// <summary>Group key currently being RENAMED inline in the Sprite Sheets tree
+    /// (empty = no rename active). The input is drawn instead of the group node so
+    /// the ID stays stable while the regrouping happens on commit.</summary>
+    private string _groupEditOld = "";
+    /// <summary>Edit buffer for the in-tree group rename.</summary>
+    private string _groupEditBuffer = "";
+    /// <summary>Buffer for the Sheet Settings "Group Name" field of the selected
+    /// sheet (empty = tree root). Assigning the same name to several sheets groups
+    /// them under one tree node.</summary>
+    private string _newGroupName = "";
+
+    // ── Auto Load All Files (async pipeline) ──
+    // Scanning *-sprite-anim.json (recursive enumeration + JSON parse) runs on a
+    // BACKGROUND task; clip baking (which touches GL) is spread over ONE-FEW files
+    // per editor frame by PumpPatternExports. The UI never blocks on either step.
+    private Task<List<(string Path, SpriteSheetsSaveData? Data)>>? _autoLoadScanTask;
+    private Queue<(string Path, SpriteSheetsSaveData Data)>? _autoLoadPending;
+    private int _autoLoadTotal;
+    private int _autoLoadDone;
+    private int _autoLoadClipsBaked;    private string _autoLoadStatus = "";
+
 
     // ── Sprite sheets ──
     /// <summary>Temporary source sheets used only for slicing/preview; never written
@@ -198,6 +221,7 @@ public class SpriteEditorPanel
     public void Render()
     {
         PumpAtlasRepack();
+        PumpPatternExports();
         // Keep the static sprite registry fresh even when the panel is hidden, so
         // Player2D objects keep resolving their sheet/clip + live texture in-game.
         SyncRegistry();
@@ -260,12 +284,23 @@ public class SpriteEditorPanel
             if (ImGui.Button("Load"))
                 LoadAllSheetsDialog();
             ImGui.SameLine();
-            if (ImGui.Button("Auto Load"))
+            if (ImGui.Button("Auto Load All Files"))
                 AutoLoadProjectSheets();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Load baked clips from Artifacts/Sprites/sprites.sheets.json, then bake clips from *-sprite-anim.json source exports.\nRequires an open project.");
+                ImGui.SetTooltip("Auto Load All Files: load baked clips from Artifacts/Sprites/sprites.sheets.json, then find + bake ALL *-sprite-anim.json exports under the project.\nASYNC — scanning + JSON parsing in a background task, baking a few files per frame; the editor stays responsive.\nProgress + status appear below while it works.\nRequires an open project.");
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} source sheets, {_bakedAtlasSheets.Count} baked atlases, {AnimationClips.Count} clips)");
+
+            // ── Auto Load All Files progress/status (async pipeline) ──
+            if (_autoLoadScanTask != null || _autoLoadPending != null)
+            {
+                float autoLoadFrac = _autoLoadTotal > 0 && _autoLoadPending != null
+                    ? (float)_autoLoadDone / _autoLoadTotal : 0f;
+                ImGui.ProgressBar(autoLoadFrac, new Vector2(-1f, 0f), _autoLoadStatus);
+                ImGui.TextDisabled("Auto Load runs in the background; the editor remains responsive.");
+            }
+            else if (!string.IsNullOrEmpty(_autoLoadStatus))
+                ImGui.TextDisabled(_autoLoadStatus);
 
             if (_repackTask != null || _repackRequested)
             {
@@ -289,32 +324,32 @@ public class SpriteEditorPanel
                 SaveAsPattern();
             ImGui.EndDisabled();
             if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                ImGui.SetTooltip("Auto-clip per ROW using this pattern sheet (grid + padding/offset + flip + master box).\nAction per row comes from the 'Pattern actions' column (split by '|');\nrows beyond the number of names are NOT saved.\nempty frames (alpha 0) are skipped, FPS = frame count, name <sheet>-<clip>\nRuns for ALL image files in the same folder;\noutput per file: <file name>-sprite-anim.json");
+                ImGui.SetTooltip("Save As PATTERN: auto-clip per ROW using the SELECTED sheet's settings (grid + padding/offset + flip + master box).\nSaves ONLY this sheet's source image.\nAction per row from 'Pattern actions' (split by '|'); rows beyond the list are not saved.\nEmpty frames (alpha 0) skipped, FPS = frame count, clip <sheet>-<action>.\nOutput: <image file name>-sprite-anim.json next to the image.");
+            ImGui.SameLine();
+            if (ImGui.Button("Save As Pattern All"))
+                SaveAsPatternAll();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Save As PATTERN ALL: batch — runs the pattern for EVERY image file in the selected sheet's folder.\nOutput per file: <file name>-sprite-anim.json (same folder)");
 
             // ── Free-text action list (defines HOW MANY actions + their names) ──
             ImGui.Text("Pattern actions");
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Action names PER ROW, split by '|', ordered from the top row.\nDefault: idle|walk|run|jump start|jump end|attack|dead\nSingle-row sheet: just type 'effect' -> clip <sheet>-effect\nNumber of names = number of actions SAVED (rows beyond the names are not created).\nEmpty = back to the default. jump start/jump end/attack/dead play ONCE;\nother actions (including custom ones like 'effect') LOOP.\nUsed by the Save As Pattern button; stored in the save file (follows Save/Load).");
+                ImGui.SetTooltip("Action names PER ROW, split by '|', ordered from the top row.\nEMPTY = no clip is written (Save As Pattern does nothing).\nSingle-row sheet: just type 'effect' -> clip <sheet>-effect\nNumber of names = number of actions SAVED (rows beyond the names are not created).\njump start/jump end/attack/dead play ONCE; other actions (including custom\nones like 'effect') LOOP.\nUsed by Save As Pattern / Save As Pattern All; stored in the save file.");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(-1f);
-            ImGui.InputTextWithHint("##pattern_actions", "idle|walk|run|jump start|jump end|attack|dead",
+            ImGui.InputTextWithHint("##pattern_actions", "(empty = no pattern saved)",
                 ref _patternActions, 256);
+            //ImGui.SameLine();
+            if (ImGui.Button("Charater Anim Pattern"))
+                _patternActions = DefaultPatternActions;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Fill the Pattern actions field with the standard list:\n{DefaultPatternActions}\n(one action per row, top to bottom). Replaces whatever is typed.");
 
             ImGui.Separator();
 
-            // ── Temporary source sheet list (not persisted) ──
+            // ── Temporary source sheet list, TREE-GROUPED (not persisted) ──
             if (ImGui.CollapsingHeader("Sprite Sheets", ImGuiTreeNodeFlags.DefaultOpen))
-            {
-                ImGui.TextDisabled("Source sheets are temporary bake inputs; only baked clips and atlas metadata are saved.");
-                if (SpriteSheets.Count == 0)
-                    ImGui.TextDisabled("No temporary source sheets loaded. Existing baked clips are listed below; use Import Sheet to create more.");
-                for (int i = 0; i < SpriteSheets.Count; i++)
-                {
-                    bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
-                    if (ImGui.Selectable($"{SpriteSheets[i].Name}##{i}", isSelected))
-                        HandleSheetListClick(i);
-                }
-            }
+                RenderSheetTree();
 
             if (SelectedSheet != null)
             {
@@ -349,6 +384,43 @@ public class SpriteEditorPanel
                         SelectedSheet.BakeUniformFrames();
                     }
                     ImGui.Text($"Frames: {SelectedSheet.FrameCount}");
+
+                    // ── AUTO DETECT: re-fit the grid to THIS image's pixels ──
+                    if (ImGui.Button("Auto Detect (from image)"))
+                    {
+                        string absPath = "";
+                        try { absPath = Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath)); }
+                        catch { }
+                        if (!string.IsNullOrEmpty(absPath) &&
+                            AutoFitSheetFromImageFile(SelectedSheet, absPath, force: true,
+                                label: $"Auto Detect '{SelectedSheet.Name}'"))
+                        {
+                            SelectedSheet.BakeUniformFrames();
+                            LoadSheetSettings(); // keep every field in sync with the fit
+                        }
+                        else if (string.IsNullOrEmpty(absPath) || !File.Exists(absPath))
+                            Console.WriteLine($"[SpriteEditor] Auto Detect: source image not found for '{SelectedSheet.Name}'");
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Re-derive the WHOLE grid from this sheet's image pixels (alpha-aware):\nsprite rows/columns via ink, frame size from the widest sprite, spacing/padding\nfrom the transparent gutters, offset from the first sprite.\nOverwrites Columns/Rows/Frame/Padding/Offset for THIS sheet.\nUse after changing the source image or when the current fit is wrong.");
+
+                    // ── Tree group assignment (Sprite Sheets tree) ──
+                    bool groupChanged = false;
+                    groupChanged |= ImGui.InputText("Group Name##treegroup", ref _newGroupName, 128);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sprite Sheets TREE GROUP for this sheet.\nEmpty = the sheet sits at the tree ROOT.\nAssigning the SAME name to several sheets groups them under one node.\nThe group name is editable inline in the tree (double-click the node) —\nediting it renames every sheet in the group.\nSaved per sheet in the save file (GroupName).");
+                    if (groupChanged)
+                    {
+                        string trimmed = _newGroupName.Trim();
+                        // Apply to EVERY selected sheet (multi-select) — bulk grouping.
+                        int applied = 0;
+                        foreach (int idx in MultiSelectedSheetIndexes())
+                        {
+                            SpriteSheets[idx].GroupName = trimmed;
+                            applied++;
+                        }
+                        Console.WriteLine($"[SpriteEditor] Group '{(trimmed.Length == 0 ? "(root)" : trimmed)}' assigned to {applied} sheet(s)");
+                    }
 
                     ImGui.Separator();
                     ImGui.TextDisabled("Render Normalization (per sheet)");
@@ -1739,7 +1811,7 @@ public class SpriteEditorPanel
 
     private void ImportNewSheet()
     {
-        _importDialog.OpenForLoad("*.png;*.jpg", "Import Sprite Sheet");
+        _importDialog.OpenForLoadMulti("*.png;*.jpg", "Import Sprite Sheets");
     }
 
     // ── Save/Load ──
@@ -1922,6 +1994,243 @@ public class SpriteEditorPanel
         return index;
     }
 
+    // ── CONTENT-AWARE AUTO DETECT (per image) ──
+    // Replaces the old "divisible by 128/64/32/16" guess: the grid is derived from
+    // the image's own pixels — alpha-ink columns/rows and the transparent gutters
+    // between sprites give exact Columns/Rows/Frame size/Offset/Padding.
+
+    /// <summary>Read ONE image file and fit the sheet's grid to its content.
+    /// force=false keeps explicit user sizing (only recompute Columns/Rows), while
+    /// force=true (Sheet Settings → 'Auto Detect') always re-derives EVERYTHING from
+    /// the pixels. Returns true when the image was read successfully.</summary>
+    private bool AutoFitSheetFromImageFile(SpriteSheet sheet, string absPath, bool force, string label)
+    {
+        if (sheet == null || string.IsNullOrEmpty(absPath) || !File.Exists(absPath)) return false;
+        try
+        {
+            using var stream = File.OpenRead(absPath);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            sheet.ImageWidth = image.Width;
+            sheet.ImageHeight = image.Height;
+
+            if (!force && !(_editFrameW == 64 && _editFrameH == 64))
+            {
+                // Explicit user sizing: only recompute cols/rows, keep frame size.
+                sheet.AutoDetectGrid();
+                _editCols = sheet.Columns;
+                _editRows = sheet.Rows;
+                return true;
+            }
+
+            var fitOpt = AutoFitFromImage(image);
+            if (fitOpt == null)
+            {
+                Console.WriteLine($"[SpriteEditor] {label}: auto-fit failed (blank image) — manual settings kept.");
+                return false;
+            }
+            var fit = fitOpt.Value;
+
+            sheet.FrameWidth = Math.Max(1, fit.FrameW);
+            sheet.FrameHeight = Math.Max(1, fit.FrameH);
+            sheet.PaddingX = Math.Max(0, fit.PadX);
+            sheet.PaddingY = Math.Max(0, fit.PadY);
+            sheet.OffsetX = Math.Max(0, fit.OffX);
+            sheet.OffsetY = Math.Max(0, fit.OffY);
+            sheet.Columns = Math.Max(1, fit.Cols);
+            sheet.Rows = Math.Max(1, fit.Rows);
+            Console.WriteLine($"[SpriteEditor] {label}: auto-fit {fit.Cols}x{fit.Rows} @ {fit.FrameW}x{fit.FrameH}px, offset {fit.OffX},{fit.OffY}, pad {fit.PadX},{fit.PadY}");
+
+            // Keep the editable settings in sync so the UI shows what was detected.
+            _editCols = sheet.Columns;
+            _editRows = sheet.Rows;
+            _editFrameW = sheet.FrameWidth;
+            _editFrameH = sheet.FrameHeight;
+            _editPadX = sheet.PaddingX;
+            _editPadY = sheet.PaddingY;
+            _editOffsetX = sheet.OffsetX;
+            _editOffsetY = sheet.OffsetY;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] {label}: could not read image: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Standard pixel-art frame sizes, MOST-PREFERRED first: the classic
+    /// power-of-two tiles (16x16, 32x32, 64x64, 128x128...) win over odd sizes
+    /// (96/48/24) whenever detection must guess. Frames within 2 px of one of these
+    /// are snapped to the standard size.</summary>
+    private static readonly int[] StandardFrameSizes = [256, 128, 64, 32, 16, 96, 48, 24];
+
+    /// <summary>Grid straight from pixels: (Cols, Rows, FrameW, FrameH, OffX, OffY,
+    /// PadX, PadY). Null = blank/undetectable. Alpha >= 8 counts as ink; ink runs
+    /// per axis give the sprite rows/columns, gaps between runs give the padding,
+    /// the WIDEST run gives the frame cell, the FIRST run's start gives the offset.
+    /// Frames within 2 px of a STANDARD size (16/32/64/...) are snapped to it.
+    /// A single merged blob (no gutters, e.g. full-bleed/JPEG alpha) falls back to
+    /// common divisible frame sizes (standard sizes prioritized), finally the full
+    /// image as one 1x1 frame.</summary>
+    private static (int Cols, int Rows, int FrameW, int FrameH, int OffX, int OffY, int PadX, int PadY)? AutoFitFromImage(ImageResult img)
+    {
+        if (img.Data == null || img.Width <= 0 || img.Height <= 0) return null;
+        var colInk = new bool[img.Width];
+        var rowInk = new bool[img.Height];
+        var px = img.Data;
+        int stride = img.Width * 4; // RGBA
+        for (int y = 0; y < img.Height; y++)
+        {
+            int rowBase = y * stride;
+            for (int x = 0; x < img.Width; x++)
+            {
+                if (px[rowBase + x * 4 + 3] >= 8)
+                {
+                    colInk[x] = true;
+                    rowInk[y] = true;
+                }
+            }
+        }
+        var colSegs = InkRuns(colInk);
+        var rowSegs = InkRuns(rowInk);
+        if (colSegs.Count == 0 || rowSegs.Count == 0) return null; // blank image
+
+        if (colSegs.Count == 1 && rowSegs.Count == 1)
+        {
+            // Both axes merged (touching sprites / no gutters):
+            // FULLY OPAQUE blob = a full-bleed image (background, effect canvas) —
+            // one native frame, no fake grids from divisibility.
+            bool hasTransparency = false;
+            for (int i = 3; i < px.Length && !hasTransparency; i += 4)
+                hasTransparency = px[i] < 8;
+            if (!hasTransparency)
+                return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
+            // Has transparency = likely a touching uniform grid: STANDARD divisible
+            // guesses first (16/32/64/128 win over 96/48/24 — never 1x1 for a
+            // divisible multiple-frame sheet), else native.
+            foreach (int size in StandardFrameSizes)
+                if (img.Width % size == 0 && img.Height % size == 0 && size < img.Width && size < img.Height)
+                    return (img.Width / size, img.Height / size, size, size, 0, 0, 0, 0);
+            return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
+        }
+
+        // Per axis: >=2 runs → measured fit; exactly 1 run → the sprites occupy only
+        // part of that axis, so frame = the RUN's size (not the full image) and
+        // offset = where the run starts. Both paths snap near-standard frames
+        // (e.g. a 30/62/126 px run -> 32/64/128) while preserving the stride.
+        (int Start, int Frame, int Pad, int Count) cx = colSegs.Count >= 2
+            ? FitAxis(colSegs)
+            : SnapSingleRun(colSegs[0], img.Width);
+        (int Start, int Frame, int Pad, int Count) rx = rowSegs.Count >= 2
+            ? FitAxis(rowSegs)
+            : SnapSingleRun(rowSegs[0], img.Height);
+
+        return (cx.Count, rx.Count, cx.Frame, rx.Frame, cx.Start, rx.Start, cx.Pad, rx.Pad);
+    }
+
+    /// <summary>Uniform cell metrics from one axis's ink runs: Count = number of
+    /// runs; Frame = the widest run; Pad = the typical run-to-run spacing (median
+    /// start-to-start distance minus the widest run), never negative; Start = first
+    /// run's offset. Touching sprites (spacing smaller than the width) collapse the
+    /// padding to 0 with the stride as the frame size. The frame is then SNAPPED to
+    /// the nearest STANDARD size (16/32/64/...) within 2 px — padding absorbs the
+    /// difference so cells stay aligned with the measured run stride.</summary>
+    private static (int Start, int Frame, int Pad, int Count) FitAxis(List<(int Start, int End)> segs)
+    {
+        int n = segs.Count;
+        int widest = 0;
+        foreach (var s in segs) widest = Math.Max(widest, s.End - s.Start + 1);
+        var strides = new List<int>(n - 1);
+        for (int i = 1; i < n; i++) strides.Add(segs[i].Start - segs[i - 1].Start);
+        strides.Sort();
+        int stride = strides[strides.Count / 2];
+
+        int frame = widest;
+        int pad = stride - widest;
+        if (pad < 0) { frame = stride; pad = 0; }
+
+        // STANDARD-SIZE SNAP: a measured cell of 30/62/126px (anti-aliased edges of
+        // a true 32/64/128 grid) becomes the standard size; the stride is kept by
+        // growing the padding, so run alignment is never lost. The cell may GROW up
+        // to 2px into its own transparent border but never shrink into the ink of
+        // the next run (pad must stay >= 0).
+        SnapToStandard(ref frame, ref pad, stride, maxGrow: 2);
+        return (segs[0].Start, frame, pad, n);
+    }
+
+    /// <summary>Snap ONE run to a standard frame size: the cell may GROW up to 100px
+    /// for trivially-small sprites but never beyond the axis extent, and only to a
+    /// size within 2 px of the ink (a 30px sprite -> 32px cell). Padding stays 0 —
+    /// a single row/column has no partner to space from.</summary>
+    private static (int Start, int Frame, int Pad, int Count) SnapSingleRun((int Start, int End) seg, int axisExtent)
+    {
+        int frame = seg.End - seg.Start + 1;
+        foreach (int s in StandardFrameSizes)
+        {
+            if (s >= frame && s - frame <= 2 && s <= axisExtent)
+            {
+                frame = s;
+                break;
+            }
+        }
+        return (seg.Start, frame, 0, 1);
+    }
+
+    /// <summary>Shared standard-size snap for a measured cell: pick the standard
+    /// size closest to `frame` within 2 px that keeps pad = stride - frame >= 0.
+    /// `maxGrow` bounds how far the cell may exceed the measured ink run.</summary>
+    private static void SnapToStandard(ref int frame, ref int pad, int stride, int maxGrow)
+    {
+        int best = -1, bestGap = int.MaxValue;
+        foreach (int s in StandardFrameSizes)
+        {
+            int gap = Math.Abs(frame - s);
+            if (gap > 2 || gap >= bestGap) continue;
+            int newPad = stride - s;
+            if (newPad < 0) continue;                     // cell would overlap the next run
+            if (s - frame > maxGrow) continue;            // cell may not overgrow the ink
+            best = s;
+            bestGap = gap;
+        }
+        if (best > 0)
+        {
+            frame = best;
+            pad = stride - best;
+        }
+    }
+
+    /// <summary>Runs of true values in the flag array. A transparent gap of at most
+    /// 2 px is bridged into the surrounding run (internal sprite gaps are tiny;
+    /// real gutters are the bigger gaps).</summary>
+    private static List<(int Start, int End)> InkRuns(bool[] flags)
+    {
+        var runs = new List<(int Start, int End)>();
+        int runStart = -1, lastInk = -1;
+        for (int x = 0; x < flags.Length; x++)
+        {
+            if (flags[x])
+            {
+                if (runStart < 0) runStart = x;
+                lastInk = x;
+                continue;
+            }
+            if (runStart < 0) continue; // not inside a run
+            int gap = 0;
+            while (x + gap < flags.Length && !flags[x + gap]) gap++;
+            if (x + gap >= flags.Length)
+            {
+                runs.Add((runStart, lastInk)); // trailing blanks — close the run
+                runStart = -1;
+                break;
+            }
+            if (gap <= 2) { x += gap - 1; continue; } // bridge a tiny gap
+            runs.Add((runStart, lastInk));           // real gutter ends the run
+            runStart = -1;
+        }
+        if (runStart >= 0) runs.Add((runStart, lastInk));
+        return runs;
+    }
+
     /// <summary>Save all sprite sheets to the default project location.</summary>
     public void SaveAllSheets()
     {
@@ -1977,27 +2286,129 @@ public class SpriteEditorPanel
         _saveAsJsonDialog.Close();
     }
 
+    // ── Targeted pattern-export merge (Save As Pattern) ──
+
+    /// <summary>Merge ONLY the pattern export files that were JUST written (one for
+    /// Save As Pattern, N for Save As Pattern All). No folder scan, no global rebake —
+    /// the full *-sprite-anim.json sweep is triggered exclusively by the "Auto Load
+    /// All Files" button. Uses the same MergePatternExportFile machinery, then runs
+    /// the same selection/preview/undo-validation tail as FinishAutoLoad.</summary>
+    private void MergeWrittenPatternExports(List<string> writtenFiles)
+    {
+        if (writtenFiles.Count == 0) return;
+        int clipsBaked = 0;
+        foreach (string file in writtenFiles)
+        {
+            try
+            {
+                var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(file)
+                           ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(File.ReadAllText(file));
+                if (data == null || (data.Sheets == null && data.AnimationClips == null)) continue;
+                if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
+                    Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
+                clipsBaked += MergePatternExportFile(file, data);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SpriteEditor] Pattern refresh failed for {file}: {ex.Message}");
+            }
+        }
+        if (clipsBaked == 0) return;
+
+        // Keep sheet/clip selection + preview range valid after additions.
+        if (_selectedSheetIdx >= SpriteSheets.Count)
+            _selectedSheetIdx = SpriteSheets.Count - 1;
+        _multiSelectedSheets.RemoveWhere(i => i < 0 || i >= SpriteSheets.Count);
+        if (SelectedSheet != null)
+        {
+            LoadSheetSettings();
+            if (SelectedSheet.FrameCount > 0)
+            {
+                _animStartFrame = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
+                _animEndFrame = Math.Clamp(_animEndFrame, _animStartFrame, SelectedSheet.FrameCount - 1);
+            }
+        }
+        _selectedClipIdx = AnimationClips.Count > 0
+            ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
+        if (_editingClip != null && !AnimationClips.Contains(_editingClip))
+            _editingClip = null;
+        if (_autoLoadClipsBaked > 0)
+            SaveAllSheets();
+        Console.WriteLine($"[SpriteEditor] Targeted pattern refresh: {clipsBaked} clips from {writtenFiles.Count} file(s) (folder rebake = 'Auto Load All Files').");
+    }
+
     // ── Save As Pattern (auto-clip per baris, batch per folder) ──
 
-    /// <summary>Batch-generate animation clips for EVERY image file in the selected
-    /// sheet's folder, using this sheet's pattern (grid + padding/offset + flip +
-    /// master box). One clip per ROW; action names &amp; count come from the free-text
-    /// "Pattern actions" field (default idle..dead) — rows past the action list are
-    /// not saved. Empty frames (fully transparent / out of bounds) are skipped, FPS =
-    /// frame count (one second per clip), clip name = &lt;sheet name&gt;-&lt;action&gt;.
-    /// Result per file: &lt;file name&gt;-sprite-anim.json (same folder).</summary>
+    /// <summary>SAVE AS PATTERN (selected): auto-clip per ROW using the SELECTED
+    /// sheet's pattern (grid + padding/offset + flip + master box), saving ONLY this
+    /// sheet's own source image — NOT every image in the folder (that is the separate
+    /// "Save As Pattern All" button). One clip per ROW; action names &amp; count come
+    /// from the free-text "Pattern actions" field (default idle..dead). Empty frames
+    /// are skipped, FPS = frame count. Result: &lt;image file&gt;-sprite-anim.json next
+    /// to the image.</summary>
     private void SaveAsPattern()
     {
         if (SelectedSheet == null) return;
-        var pattern = SelectedSheet;
         var actions = ParsePatternActions(_patternActions);
+        if (actions == null)
+        {
+            Console.WriteLine("[SpriteEditor] Save As Pattern skipped: Pattern actions is EMPTY — fill the field (or click 'Default Pattern') first.");
+            return;
+        }
+        var pattern = SelectedSheet;
+
+        string imagePath;
+        try
+        {
+            if (string.IsNullOrEmpty(pattern.ImagePath))
+            {
+                Console.WriteLine($"[SpriteEditor] Save As Pattern: sheet '{pattern.Name}' has no source image.");
+                return;
+            }
+            imagePath = Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(pattern.ImagePath));
+        }
+        catch
+        {
+            Console.WriteLine($"[SpriteEditor] Save As Pattern: cannot resolve image path for sheet '{pattern.Name}'.");
+            return;
+        }
+        if (!File.Exists(imagePath))
+        {
+            Console.WriteLine($"[SpriteEditor] Save As Pattern: source image not found: {imagePath}");
+            return;
+        }
+
+        int saved = 0, totalClips = 0;
+        var written = new List<string>();
+        SavePatternFile(pattern, imagePath, actions, ref saved, ref totalClips, written);
+        Console.WriteLine($"[SpriteEditor] Save As Pattern: {saved} file, {totalClips} clips -> {Path.GetDirectoryName(imagePath)}");
+
+        // Only the file(s) written THIS run — keep the generated clips visible right
+        // away WITHOUT scanning/rebaking the whole folder. Folder-wide merge is the
+        // "Auto Load All Files" button's exclusive job.
+        MergeWrittenPatternExports(written);
+    }
+
+    /// <summary>SAVE AS PATTERN ALL (batch over the folder): the ORIGINAL batch
+    /// behavior — runs the selected sheet's pattern for EVERY image file in its
+    /// folder. Result per file: &lt;file name&gt;-sprite-anim.json (same folder).</summary>
+    private void SaveAsPatternAll()
+    {
+        if (SelectedSheet == null) return;
+        var actions = ParsePatternActions(_patternActions);
+        if (actions == null)
+        {
+            Console.WriteLine("[SpriteEditor] Save As Pattern All skipped: Pattern actions is EMPTY — fill the field (or click 'Default Pattern') first.");
+            return;
+        }
+        var pattern = SelectedSheet;
 
         string folder = "";
         try
         {
             if (string.IsNullOrEmpty(pattern.ImagePath))
             {
-                Console.WriteLine($"[SpriteEditor] Save As Pattern: sheet '{pattern.Name}' has no source image.");
+                Console.WriteLine($"[SpriteEditor] Save As Pattern All: sheet '{pattern.Name}' has no source image.");
                 return;
             }
             folder = Path.GetDirectoryName(Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(pattern.ImagePath)))!;
@@ -2006,7 +2417,7 @@ public class SpriteEditorPanel
 
         if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
         {
-            Console.WriteLine($"[SpriteEditor] Save As Pattern: folder not found for sheet '{pattern.Name}'.");
+            Console.WriteLine($"[SpriteEditor] Save As Pattern All: folder not found for sheet '{pattern.Name}'.");
             return;
         }
 
@@ -2020,64 +2431,77 @@ public class SpriteEditorPanel
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SpriteEditor] Save As Pattern: cannot scan folder: {ex.Message}");
+            Console.WriteLine($"[SpriteEditor] Save As Pattern All: cannot scan folder: {ex.Message}");
             return;
         }
 
         if (files.Length == 0)
         {
-            Console.WriteLine($"[SpriteEditor] Save As Pattern: no image files in {folder}");
+            Console.WriteLine($"[SpriteEditor] Save As Pattern All: no image files in {folder}");
             return;
         }
 
         int saved = 0, totalClips = 0;
+        var written = new List<string>();
         foreach (string file in files)
+            SavePatternFile(pattern, file, actions, ref saved, ref totalClips, written);
+        Console.WriteLine($"[SpriteEditor] Save As Pattern All: {saved}/{files.Length} files, {totalClips} clips -> {folder}");
+
+        // Only the export files written THIS batch — no extra folder-wide scan.
+        // Folder-wide merge/validation is the "Auto Load All Files" button's job.
+        MergeWrittenPatternExports(written);
+    }
+
+    /// <summary>Pattern ONE file with the given sheet settings and action list:
+    /// builds the sheet + per-row clips, writes &lt;file&gt;-sprite-anim.json next to
+    /// the image, and updates the saved/totalClips counters. Shared by Save As
+    /// Pattern (single) and Save As Pattern All (batch). Every path written is added
+    /// to writtenPaths so the caller can merge exactly those files.</summary>
+    private void SavePatternFile(SpriteSheet pattern, string file, string[] actions,
+        ref int saved, ref int totalClips, List<string>? writtenPaths = null)
+    {
+        try
         {
-            try
+            var (sheetData, clips) = BuildPatternForFile(pattern, file, actions);
+            if (clips.Count == 0)
             {
-                var (sheetData, clips) = BuildPatternForFile(pattern, file, actions);
-                if (clips.Count == 0)
-                {
-                    Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
-                    continue;
-                }
+                Console.WriteLine($"[SpriteEditor] Pattern skip {Path.GetFileName(file)}: all rows empty");
+                return;
+            }
 
-                string outPath = Path.Combine(folder,
-                    Path.GetFileNameWithoutExtension(file) + "-sprite-anim.json");
-                var data = new SpriteSheetsSaveData
-                {
-                    Sheets = [sheetData],
-                    AnimationClips = clips,
-                    PatternActions = _patternActions
-                };
-                var opts = new JsonSerializerOptions { WriteIndented = true };
-                File.WriteAllText(outPath, JsonSerializer.Serialize(data, opts));
-                Engine.Helpers.BinaryObjectCache.TryWrite(outPath, data);
-                saved++;
-                totalClips += clips.Count;
-                Console.WriteLine($"[SpriteEditor] Pattern {Path.GetFileName(file)}: {clips.Count} clips -> {Path.GetFileName(outPath)}");
-            }
-            catch (Exception ex)
+            string outPath = Path.Combine(Path.GetDirectoryName(file) ?? ".",
+                Path.GetFileNameWithoutExtension(file) + "-sprite-anim.json");
+            var data = new SpriteSheetsSaveData
             {
-                Console.WriteLine($"[SpriteEditor] Pattern failed for {Path.GetFileName(file)}: {ex.Message}");
-            }
+                Sheets = [sheetData],
+                AnimationClips = clips,
+                PatternActions = _patternActions
+            };
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(outPath, JsonSerializer.Serialize(data, opts));
+            Engine.Helpers.BinaryObjectCache.TryWrite(outPath, data);
+            saved++;
+            totalClips += clips.Count;
+            writtenPaths?.Add(outPath);
+            Console.WriteLine($"[SpriteEditor] Pattern {Path.GetFileName(file)}: {clips.Count} clips -> {Path.GetFileName(outPath)}");
         }
-        Console.WriteLine($"[SpriteEditor] Save As Pattern: {saved}/{files.Length} files, {totalClips} clips -> {folder}");
-
-        // Refresh the clip list right away — generated clips appear immediately.
-        LoadPatternExports();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Pattern failed for {Path.GetFileName(file)}: {ex.Message}");
+        }
     }
 
     /// <summary>Parse the free-text action list: split on '|', trim, drop empties.
-    /// Empty input falls back to the default list (idle..dead).</summary>
-    private static string[] ParsePatternActions(string text)
+    /// EMPTY = NO PATTERN (null): Save As Pattern never invents clip names — callers
+    /// must skip the export entirely instead of writing a bogus *-idle clip.</summary>
+    private static string[]? ParsePatternActions(string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return PatternClipNames;
+        if (string.IsNullOrWhiteSpace(text)) return null;
         var names = text.Split('|', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim())
             .Where(s => s.Length > 0)
             .ToArray();
-        return names.Length > 0 ? names : PatternClipNames;
+        return names.Length > 0 ? names : null;
     }
 
     /// <summary>Build one file's sheet (same pattern as the source sheet, incl. flips)
@@ -2171,134 +2595,85 @@ public class SpriteEditorPanel
         return true;
     }
 
-    // ── Auto-load *-sprite-anim.json (SHEET + Animation Clips) ──
+    //  ── Auto-load *-sprite-anim.json (SHEET + Animation Clips) ──
+    //
+    // Entirely async pipeline (AutoLoadProjectSheets + StartAutoLoadScan +
+    // PumpPatternExports + MergePatternExportFile + FinishAutoLoad) driven ONLY by
+    // the "Auto Load All Files" toolbar button. That button is the single trigger
+    // for a FOLDER-WIDE rebake of every *-sprite-anim.json under the project;
+    // nothing else scans them. Save As Pattern/All merge only the files they just
+    // wrote (targeted), and the manual Load dialog merges nothing at all.
 
-    /// <summary>Merge every *-sprite-anim.json export (its SHEET entry AND its
-    /// clips) into the panel so both appear WITHOUT a manual Load. Runs on project
-    /// open, after a manual Load, and after Save As Pattern. Files are enumerated
-    /// FIRST (a folder reachable only through an auto-loaded sheet's ImagePath stays
-    /// reachable across refreshes), then the previous auto-loaded sets are dropped
-    /// and re-merged — refresh-in-place. Names already present (manual sheets/clips,
-    /// the sheets file) are kept as-is and never duplicated.</summary>
-    private void LoadPatternExports()
+    /// <summary>Merge ONE parsed *-sprite-anim.json export (its SHEET entry AND its
+    /// clips) into the panel. Each clip is cropped from its original image and
+    /// immediately moved to an atlas (baked). Names already present (manual
+    /// sheets/clips, the sheets file) are kept as-is and never duplicated.
+    /// Returns the number of clips baked from this file.</summary>
+    private int MergePatternExportFile(string file, SpriteSheetsSaveData data)
     {
-        // 1) Enumerate BEFORE removing: roots include auto-loaded sheet folders.
-        var files = EnumeratePatternAnimFiles().ToList();
+        int clipsBaked = 0;
+        bool touched = false;
+        var sourceSheets = (data.Sheets ?? [])
+            .Where(sd => !string.IsNullOrWhiteSpace(sd?.Name))
+            .Select(SpriteSheet.FromData)
+            .ToList();
 
-        // 2) Drop the previous auto-loaded sets so a re-run replaces, not duplicates.
-        if (_autoLoadedPatternClips.Count > 0)
+        // Pattern-export sheets exist only as bake inputs. Each clip is
+        // cropped from its original image and immediately moved to an atlas.
+        foreach (var clipData in data.AnimationClips ?? [])
         {
-            AnimationClips.RemoveAll(c => _autoLoadedPatternClips.Contains(c));
-            _autoLoadedPatternClips.Clear();
+            if (string.IsNullOrEmpty(clipData?.Name)) continue;
+            var source = sourceSheets.FirstOrDefault(s => string.Equals(s.Name,
+                clipData.SpriteSheetName, StringComparison.OrdinalIgnoreCase))
+                ?? sourceSheets.FirstOrDefault();
+            if (source == null) continue;
+
+            var sourceClip = AnimationClip2D.FromData(clipData);
+            if (!TryBakeClip(source, sourceClip, out var bakedClip)) continue;
+            AddOrReplaceClip(bakedClip);
+            _autoLoadedPatternClips.Add(bakedClip);
+            clipsBaked++;
+            touched = true;
         }
 
-        int readFiles = 0, clipsBaked = 0;
-        foreach (string file in files)
+        if (touched)
         {
-            try
-            {
-                var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(file)
-                           ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(File.ReadAllText(file));
-                if (data == null || (data.Sheets == null && data.AnimationClips == null)) continue;
-                // Self-heal: a sidecar missed by TryLoad (stale v1 / layout mismatch)
-                // is rewritten from the freshly parsed object — the NEXT load is a
-                // binary hit instead of a JSON parse on every single load.
-                if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
-                    Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
-                bool touched = false;
-                var sourceSheets = (data.Sheets ?? [])
-                    .Where(sd => !string.IsNullOrWhiteSpace(sd?.Name))
-                    .Select(SpriteSheet.FromData)
-                    .ToList();
-
-                // Pattern-export sheets exist only as bake inputs. Each clip is
-                // cropped from its original image and immediately moved to an atlas.
-                foreach (var clipData in data.AnimationClips ?? [])
-                {
-                    if (string.IsNullOrEmpty(clipData?.Name)) continue;
-                    var source = sourceSheets.FirstOrDefault(s => string.Equals(s.Name,
-                        clipData.SpriteSheetName, StringComparison.OrdinalIgnoreCase))
-                        ?? sourceSheets.FirstOrDefault();
-                    if (source == null) continue;
-
-                    var sourceClip = AnimationClip2D.FromData(clipData);
-                    if (!TryBakeClip(source, sourceClip, out var bakedClip)) continue;
-                    AddOrReplaceClip(bakedClip);
-                    _autoLoadedPatternClips.Add(bakedClip);
-                    clipsBaked++;
-                    touched = true;
-                }
-
-                if (touched) readFiles++;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SpriteEditor] Pattern auto-load failed for {file}: {ex.Message}");
-            }
+            _autoLoadClipsBaked += clipsBaked;
+            Console.WriteLine($"[SpriteEditor] Pattern merge {Path.GetFileName(file)}: {clipsBaked} clips");
         }
-
-        // 3) Keep sheet selection + preview range valid after removals/additions.
-        if (_selectedSheetIdx >= SpriteSheets.Count)
-            _selectedSheetIdx = SpriteSheets.Count - 1;
-        _multiSelectedSheets.RemoveWhere(i => i < 0 || i >= SpriteSheets.Count); // pattern refresh pruned sheets — drop dead indexes
-        if (SelectedSheet != null)
-        {
-            LoadSheetSettings();
-            if (SelectedSheet.FrameCount > 0)
-            {
-                _animStartFrame = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
-                _animEndFrame = Math.Clamp(_animEndFrame, _animStartFrame, SelectedSheet.FrameCount - 1);
-            }
-        }
-        // Keep clip selection / edited clip valid after removals.
-        _selectedClipIdx = AnimationClips.Count > 0
-            ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
-        if (_editingClip != null && !AnimationClips.Contains(_editingClip))
-            _editingClip = null;
-
-        if (clipsBaked > 0)
-        {
-            SaveAllSheets();
-            Console.WriteLine($"[SpriteEditor] Baked {clipsBaked} clips from {readFiles} *-sprite-anim.json files into project atlases.");
-        }
+        return clipsBaked;
     }
 
-    /// <summary>All *-sprite-anim.json files under the project's Assets folder (or the
-    /// default Sprites folder without a project) plus each sheet's image folder —
-    /// Save As Pattern writes its exports next to their source image.</summary>
+    /// <summary>All *-sprite-anim.json files INSIDE THE LOADED PROJECT folder only:
+    /// the whole project root is scanned recursively, so anything saved under
+    /// Artifacts (the default) or any other project subfolder is picked up.
+    /// Nothing outside the project root (exe folder, absolute legacy image paths, etc.)
+    /// is ever read. Used ONLY by the "Auto Load All Files" pipeline (StartAutoLoadScan).</summary>
     private IEnumerable<string> EnumeratePatternAnimFiles()
     {
-        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // PROJECT-FOLDER ONLY: without a loaded project there is nothing to scan —
+        // Auto Load requires a project anyway, so never fall back to the exe folder
+        // or any other location outside the project.
+        if (!Engine.Project.ProjectManager.IsProjectLoaded ||
+            string.IsNullOrEmpty(Engine.Project.ProjectManager.ProjectRoot))
+            return Enumerable.Empty<string>();
+
+        string projectRoot;
+        try { projectRoot = Path.GetFullPath(Engine.Project.ProjectManager.ProjectRoot!); }
+        catch { return Enumerable.Empty<string>(); }
+
+        // Whole project tree, recursively — pattern exports always live inside the
+        // project (Save As Pattern writes next to the sheet's source image).
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            string root = Engine.Project.ProjectManager.IsProjectLoaded
-                ? Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts")
-                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Sprites");
-            if (Directory.Exists(root)) roots.Add(root);
+            foreach (string f in Directory.EnumerateFiles(projectRoot, "*-sprite-anim.json",
+                         SearchOption.AllDirectories))
+                files.Add(f);
         }
-        catch { /* no usable root */ }
-
-        foreach (var sheet in SpriteSheets)
+        catch (Exception ex)
         {
-            try
-            {
-                if (string.IsNullOrEmpty(sheet.ImagePath)) continue;
-                string? dir = Path.GetDirectoryName(Path.GetFullPath(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)));
-                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) roots.Add(dir);
-            }
-            catch { /* skip broken path */ }
-        }
-
-        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string rootDir in roots)
-        {
-            try
-            {
-                foreach (string f in Directory.EnumerateFiles(rootDir, "*-sprite-anim.json",
-                             SearchOption.AllDirectories))
-                    files.Add(f);
-            }
-            catch { /* unreadable folder — skip */ }
+            Console.WriteLine($"[SpriteEditor] Auto Load: cannot scan project folder '{projectRoot}': {ex.Message}");
         }
         return files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
     }
@@ -2309,7 +2684,10 @@ public class SpriteEditorPanel
         {
             LoadSheetsFromFile(_loadSheetsDialog.SelectedPath);
             _loadSheetsDialog.Close();
-            LoadPatternExports(); // manual Load wipes clips — re-merge pattern exports
+            // Pattern exports are NOT merged here: the folder-wide *-sprite-anim.json
+            // rebake belongs to the "Auto Load All Files" button alone. After a manual
+            // Load, click that button to rebuild the auto-loaded clips.
+            Console.WriteLine("[SpriteEditor] Manual Load done — pattern exports NOT auto-merged; use 'Auto Load All Files' to rebake them.");
         }
     }
 
@@ -2434,6 +2812,98 @@ public class SpriteEditorPanel
         }
     }
 
+    // ── Sprite Sheets TREE (grouping) ──
+
+    /// <summary>Draw the temporary source sheet list as a two-level TREE: sheets are
+    /// grouped by their GroupName (empty = tree ROOT), one TreNode per group with the
+    /// member sheets nested under it. Click behavior per sheet = the SAME multi-select
+    /// HandleSheetListClick as before (plain/Ctrl/Shift). A group node DOUBLE-CLICK
+    /// starts an inline RENAME: a text input replaces the node label, Enter/blur
+    /// commits and renames EVERY sheet in the group; Escape cancels. Group membership
+    /// lives on the sheets (GroupName), so nothing extra is persisted.</summary>
+    private void RenderSheetTree()
+    {
+        ImGui.TextDisabled("Source sheets are temporary bake inputs; only baked clips and atlas metadata are saved.");
+        if (SpriteSheets.Count == 0)
+            ImGui.TextDisabled("No temporary source sheets loaded. Existing baked clips are listed below; use Import Sheet to create more.\nGroup them via Sheet Settings → 'Group Name' (or double-click a group node to rename it).");
+
+        // Ordered: groups (alphabetically), then root sheets — stable via first index.
+        var groups = SpriteSheets
+            .Select((sheet, index) => (sheet, index))
+            .Where(x => !string.IsNullOrWhiteSpace(x.sheet.GroupName))
+            .GroupBy(x => x.sheet.GroupName.Trim(), StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var roots = SpriteSheets
+            .Select((sheet, index) => (sheet, index))
+            .Where(x => string.IsNullOrWhiteSpace(x.sheet.GroupName));
+
+        foreach (var group in groups)
+        {
+            string key = group.Key;
+            bool nodeOpen = ImGui.TreeNodeEx($"grp##{key}", ImGuiTreeNodeFlags.SpanAvailWidth,
+                $"{key}  ({group.Count()})");
+            if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                // Inline rename: the input below replaces the node while active.
+                _groupEditOld = key;
+                _groupEditBuffer = key;
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Group node — double-click to rename (renames every sheet in the group).\nClick a member to select it; Ctrl/Shift+Click for multi-select.");
+
+            if (_groupEditOld == key)
+            {
+                // Inline rename input (drawn inside the open node so it appears nested).
+                ImGui.SetNextItemWidth(-40f);
+                bool enter = ImGui.InputText("##grouprename", ref _groupEditBuffer, 128,
+                    ImGuiInputTextFlags.EnterReturnsTrue);
+                bool commit = enter || ImGui.IsItemDeactivatedAfterEdit();
+                if (commit)
+                {
+                    string newName = _groupEditBuffer.Trim();
+                    if (newName.Length > 0 && !newName.Equals(key, StringComparison.Ordinal))
+                    {
+                        foreach (var (_, idx) in group)
+                            SpriteSheets[idx].GroupName = newName;
+                        if (SelectedSheet != null && !string.IsNullOrWhiteSpace(SelectedSheet.GroupName))
+                            _newGroupName = SelectedSheet.GroupName;
+                        Console.WriteLine($"[SpriteEditor] Group renamed '{key}' -> '{newName}' ({group.Count()} sheet(s))");
+                    }
+                    _groupEditOld = "";
+                    _groupEditBuffer = "";
+                }
+                else if (ImGui.IsItemDeactivated())
+                {
+                    // Escape/blur without edit: cancel.
+                    _groupEditOld = "";
+                    _groupEditBuffer = "";
+                }
+            }
+
+            if (nodeOpen)
+            {
+                foreach (var (_, idx) in group)
+                    DrawSheetTreeLeaf(idx);
+                ImGui.TreePop();
+            }
+        }
+
+        foreach (var (_, idx) in roots)
+            DrawSheetTreeLeaf(idx);
+    }
+
+    /// <summary>One sheet row in the tree (leaf): same selection semantics as the old
+    /// flat list (HandleSheetListClick) plus hover tooltip with the sheet's image.</summary>
+    private void DrawSheetTreeLeaf(int i)
+    {
+        bool isSelected = i == _selectedSheetIdx || _multiSelectedSheets.Contains(i);
+        if (ImGui.Selectable($"{SpriteSheets[i].Name}##tree{i}", isSelected))
+            HandleSheetListClick(i);
+        if (ImGui.IsItemHovered() && !string.IsNullOrEmpty(SpriteSheets[i].ImagePath))
+            ImGui.SetTooltip(SpriteSheets[i].ImagePath);
+    }
+
     /// <summary>Reset the sprite editor when the project changes (close/open).
     /// Auto-load sprite sheets + pattern exports from the project folder.</summary>
     public void OnProjectChanged(string? projectRoot)
@@ -2442,13 +2912,27 @@ public class SpriteEditorPanel
         _bakedAtlasSheets.Clear();
         AnimationClips.Clear();
         _autoLoadedPatternClips.Clear();
-        _patternActions = DefaultPatternActions;
+        // Project switch: pattern starts EMPTY (no clips written until the user
+        // fills the field or clicks 'Default Pattern').
+        _patternActions = "";
         _selectedSheetIdx = -1;
         _multiSelectedSheets.Clear();
         _selectedFrameIdx = -1;
         _selectedClipIdx = -1;
         _previewTextures.Clear();
         ClearUndoHistory();
+
+        // Reset the async Auto Load pipeline + tree edit state (a project switch must
+        // not resurrect results scanned for the previous project).
+        _autoLoadScanTask = null;
+        _autoLoadPending = null;
+        _autoLoadTotal = 0;
+        _autoLoadDone = 0;
+        _autoLoadClipsBaked = 0;
+        _autoLoadStatus = "";
+        _groupEditOld = "";
+        _groupEditBuffer = "";
+        _newGroupName = "";
 
         if (!string.IsNullOrEmpty(projectRoot))
         {
@@ -2465,9 +2949,15 @@ public class SpriteEditorPanel
             LoadSheetsFromFile(sheetsPath);
     }
 
-    /// <summary>Manual replacement of the removed project-open auto-load:
-    /// canonical sprites.sheets.json + *-sprite-anim.json pattern-export merge,
-    /// on demand. Same behavior the old OnProjectChanged auto-load had.</summary>
+    /// <summary>AUTO LOAD ALL FILES: canonical sprites.sheets.json load (synchronous,
+    /// it is a single file) + an ASYNC background scan for ALL *-sprite-anim.json
+    /// pattern exports under the project. The background scan (recursive enumeration
+    /// + JSON parse + binary-cache check) never blocks the UI thread; parsing results
+    /// are merged a few files per editor frame by PumpPatternExports, which does the
+    /// clip baking (the only GL-touching part) in small per-frame slices. The panel
+    /// shows a live progress bar + status text while it works — the app no longer
+    /// hangs on huge pattern sets.
+    /// Same behavior the old synchronous Auto Load had, just without the freeze.</summary>
     public void AutoLoadProjectSheets()
     {
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
@@ -2475,12 +2965,155 @@ public class SpriteEditorPanel
             Console.WriteLine("[SpriteEditor] Auto Load skipped: no project open");
             return;
         }
+        if (_autoLoadScanTask != null || _autoLoadPending != null)
+        {
+            Console.WriteLine("[SpriteEditor] Auto Load already running — request ignored");
+            return;
+        }
         string path = GetDefaultSavePath();
         if (File.Exists(path))
             LoadSheetsFromFile(path); // TryLoad sidecar di dalam (JSON fallback tetap utuh)
         else
             Console.WriteLine($"[SpriteEditor] Auto Load: no sheets file at {path}");
-        LoadPatternExports(); // auto-load *-sprite-anim.json (sheet + clips)
+
+        StartAutoLoadScan();
+    }
+
+    /// <summary>Start the background scan task: enumerate ALL *-sprite-anim.json
+    /// files under the LOADED PROJECT folder (recursive; nothing outside it) and parse
+    /// each one OFF the UI thread. Results enqueue into _autoLoadPending for the
+    /// per-frame pump.</summary>
+    private void StartAutoLoadScan()
+    {
+        var files = EnumeratePatternAnimFiles().ToList();
+        _autoLoadTotal = files.Count;
+        _autoLoadDone = 0;
+        _autoLoadClipsBaked = 0;
+        _autoLoadStatus = files.Count == 0
+            ? "Auto Load: no *-sprite-anim.json files found"
+            : $"Auto Load: scanning {files.Count} file(s)...";
+        if (files.Count == 0)
+        {
+            Console.WriteLine("[SpriteEditor] Auto Load: no *-sprite-anim.json files found");
+            return;
+        }
+
+        Console.WriteLine($"[SpriteEditor] Auto Load All Files: scanning {files.Count} *-sprite-anim.json file(s) in the background...");
+        _autoLoadScanTask = Task.Run(() =>
+        {
+            var parsed = new List<(string Path, SpriteSheetsSaveData? Data)>(files.Count);
+            foreach (string file in files)
+            {
+                SpriteSheetsSaveData? data = null;
+                try
+                {
+                    data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(file)
+                           ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(File.ReadAllText(file));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SpriteEditor] Auto Load scan failed for {file}: {ex.Message}");
+                }
+                parsed.Add((file, data));
+            }
+            return parsed;
+        });
+    }
+
+    /// <summary>Per-frame pump for the async Auto Load All Files pipeline: collects
+    /// the finished background scan (enqueueing parsed files), then merges AT MOST
+    /// AutoLoadFilesPerFrame files per editor frame — each merge may bake clips
+    /// (GL/IO heavy), so slicing keeps the frame time bounded and the editor keeps
+    /// rendering/wanting input while it works. Progress bar text mirrors the work.
+    /// Method names intentionally echo the previous synchronous path.</summary>
+    private const int AutoLoadFilesPerFrame = 2;
+    private void PumpPatternExports()
+    {
+        // 1) Scan finished? Collect it — the queue is what the UI progress checks.
+        if (_autoLoadScanTask != null && _autoLoadScanTask.IsCompleted)
+        {
+            var finished = _autoLoadScanTask;
+            _autoLoadScanTask = null;
+            try
+            {
+                var parsed = finished.GetAwaiter().GetResult();
+                var queue = new Queue<(string, SpriteSheetsSaveData)>(parsed.Count);
+                foreach (var (file, data) in parsed)
+                    if (data != null && (data.Sheets?.Count > 0 || data.AnimationClips?.Count > 0))
+                        queue.Enqueue((file, data)); // failed/empty parses are dropped here
+                _autoLoadPending = queue;
+                _autoLoadTotal = Math.Max(_autoLoadDone + queue.Count, _autoLoadTotal);
+                _autoLoadStatus = $"Auto Load: autofitting clips from {_autoLoadDone + queue.Count}/{_autoLoadTotal} file(s)...";
+                if (queue.Count == 0) FinishAutoLoad();
+            }
+            catch (Exception ex)
+            {
+                _autoLoadPending = null;
+                _autoLoadStatus = "";
+                Console.WriteLine($"[SpriteEditor] Auto Load scan failed: {ex.Message}");
+            }
+        }
+
+        // 2) Merge a bounded slice of queued files per frame.
+        if (_autoLoadPending == null) return;
+        int budget = AutoLoadFilesPerFrame;
+        while (budget-- > 0 && _autoLoadPending.Count > 0)
+        {
+            var (file, data) = _autoLoadPending.Dequeue();
+            _autoLoadDone++;
+            try
+            {
+                // Self-heal: a sidecar missed by TryLoad (stale v1 / layout mismatch)
+                // is rewritten from the freshly parsed object — the NEXT load is a
+                // binary hit instead of a JSON parse on every single load.
+                if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
+                    Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
+                int before = _autoLoadClipsBaked;
+                MergePatternExportFile(file, data);
+                if (_autoLoadClipsBaked > before)
+                    _autoLoadStatus = $"Auto Load: autofitting clips from {_autoLoadDone}/{_autoLoadTotal} file(s) ({_autoLoadClipsBaked} clips)...";
+                else
+                    _autoLoadStatus = $"Auto Load: autofitting clips from {_autoLoadDone}/{_autoLoadTotal} file(s)...";
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SpriteEditor] Pattern auto-load failed for {file}: {ex.Message}");
+            }
+        }
+
+        if (_autoLoadPending.Count == 0)
+            FinishAutoLoad();
+    }
+
+    /// <summary>Finalize the async auto-load: validate selections and persist when
+    /// anything was baked (same selection/preview tail as MergeWrittenPatternExports).</summary>
+    private void FinishAutoLoad()
+    {
+        _autoLoadPending = null;
+        _autoLoadStatus = $"Auto Load complete: {_autoLoadClipsBaked} clipped baked from {_autoLoadTotal} file(s)";
+        Console.WriteLine($"[SpriteEditor] Auto Load complete: {SpriteSheets.Count} sheets, {_bakedAtlasSheets.Count} atlases, {AnimationClips.Count} clips alive ({_autoLoadClipsBaked} newly baked this run, {_autoLoadTotal} file(s) seen)");
+
+        // 3) Keep sheet selection + preview range valid after removals/additions.
+        if (_selectedSheetIdx >= SpriteSheets.Count)
+            _selectedSheetIdx = SpriteSheets.Count - 1;
+        _multiSelectedSheets.RemoveWhere(i => i < 0 || i >= SpriteSheets.Count); // pattern refresh pruned sheets — drop dead indexes
+        if (SelectedSheet != null)
+        {
+            LoadSheetSettings();
+            if (SelectedSheet.FrameCount > 0)
+            {
+                _animStartFrame = Math.Clamp(_animStartFrame, 0, SelectedSheet.FrameCount - 1);
+                _animEndFrame = Math.Clamp(_animEndFrame, _animStartFrame, SelectedSheet.FrameCount - 1);
+            }
+        }
+        // Keep clip selection / edited clip valid after removals.
+        _selectedClipIdx = AnimationClips.Count > 0
+            ? Math.Clamp(_selectedClipIdx, 0, AnimationClips.Count - 1) : -1;
+        if (_editingClip != null && !AnimationClips.Contains(_editingClip))
+            _editingClip = null;
+
+        if (_autoLoadClipsBaked > 0)
+            SaveAllSheets();
     }
 
     /// <summary>Import a sprite sheet from a direct file path (used by drag-and-drop).</summary>
@@ -2502,44 +3135,9 @@ public class SpriteEditorPanel
             OffsetY = _editOffsetY
         };
 
-        // Auto-detect image dimensions and grid
-        try
-        {
-            using var stream = File.OpenRead(path);
-            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-            sheet.ImageWidth = image.Width;
-            sheet.ImageHeight = image.Height;
-
-            // Auto-detect frame size
-            if (_editFrameW == 64 && _editFrameH == 64)
-            {
-                for (int frameSize = 128; frameSize >= 16; frameSize /= 2)
-                {
-                    if (image.Width % frameSize == 0 && image.Height % frameSize == 0)
-                    {
-                        sheet.FrameWidth = frameSize;
-                        sheet.FrameHeight = frameSize;
-                        sheet.AutoDetectGrid();
-                        _editCols = sheet.Columns;
-                        _editRows = sheet.Rows;
-                        _editFrameW = sheet.FrameWidth;
-                        _editFrameH = sheet.FrameHeight;
-                        Console.WriteLine($"[SpriteEditor] Auto-detected: {sheet.Columns}x{sheet.Rows} frames @ {frameSize}px");
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                sheet.AutoDetectGrid();
-                _editCols = sheet.Columns;
-                _editRows = sheet.Rows;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[SpriteEditor] Could not read image: {ex.Message}");
-        }
+        // Content-aware fit: read the pixels and derive the grid (explicit user
+        // sizing is preserved — only cols/rows are recomputed for it).
+        AutoFitSheetFromImageFile(sheet, path, force: false, label: $"Drag import '{sheet.Name}'");
 
         sheet.BakeUniformFrames();
         SpriteSheets.Add(sheet);
@@ -2550,9 +3148,30 @@ public class SpriteEditorPanel
         Console.WriteLine($"[SpriteEditor] Imported via drag: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
     }
 
-    /// <summary>Process file dialog result after rendering.</summary>
+    /// <summary>Process file dialog result after rendering. MULTI-IMPORT: every
+    /// confirmed file becomes its own sheet (loop); SINGLE import keeps its old
+    /// exact behavior (same defaults, auto-detect, preview range, logging).</summary>
     private unsafe void ProcessImportResult()
     {
+        if (_importDialog.IsConfirmed && _importDialog.SelectedPaths is { Count: > 1 } paths)
+        {
+            _importDialog.Close();
+            int first = -1;
+            foreach (string path in paths)
+            {
+                if (!File.Exists(path)) continue;
+                if (ImportOneSheet(path) && first < 0) first = SpriteSheets.Count - 1;
+            }
+            if (first >= 0)
+            {
+                _selectedSheetIdx = first;
+                _multiSelectedSheets.Clear();
+                _newSheetName = SpriteSheets[first].Name;
+                LoadSheetSettings();
+            }
+            Console.WriteLine($"[SpriteEditor] Multi-import done: {SpriteSheets.Count} sheets total");
+            return;
+        }
         if (_importDialog.IsConfirmed && _importDialog.SelectedPath != null)
         {
             string path = _importDialog.SelectedPath;
@@ -2570,45 +3189,10 @@ public class SpriteEditorPanel
                 OffsetY = _editOffsetY
             };
 
-            // Auto-detect image dimensions and grid
-            try
-            {
-                using var stream = File.OpenRead(path);
-                var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
-                sheet.ImageWidth = image.Width;
-                sheet.ImageHeight = image.Height;
-
-                // Auto-detect: if frame size is default, try to detect
-                if (_editFrameW == 64 && _editFrameH == 64)
-                {
-                    // Try common sizes
-                    for (int frameSize = 128; frameSize >= 16; frameSize /= 2)
-                    {
-                        if (image.Width % frameSize == 0 && image.Height % frameSize == 0)
-                        {
-                            sheet.FrameWidth = frameSize;
-                            sheet.FrameHeight = frameSize;
-                            sheet.AutoDetectGrid();
-                            _editCols = sheet.Columns;
-                            _editRows = sheet.Rows;
-                            _editFrameW = sheet.FrameWidth;
-                            _editFrameH = sheet.FrameHeight;
-                            Console.WriteLine($"[SpriteEditor] Auto-detected: {sheet.Columns}x{sheet.Rows} frames @ {frameSize}px");
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    sheet.AutoDetectGrid();
-                    _editCols = sheet.Columns;
-                    _editRows = sheet.Rows;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SpriteEditor] Could not read image: {ex.Message}");
-            }
+            // Content-aware fit from the image's own pixels (default 64x64 frame
+            // triggers the full frame-size + padding/offset detection; explicit user
+            // sizing keeps its frame size and only recomputes cols/rows).
+            AutoFitSheetFromImageFile(sheet, path, force: false, label: $"Import '{sheet.Name}'");
 
             sheet.BakeUniformFrames();
             SpriteSheets.Add(sheet);
@@ -2626,6 +3210,38 @@ public class SpriteEditorPanel
 
             Console.WriteLine($"[SpriteEditor] Imported: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
         }
+    }
+
+    /// <summary>Import ONE sprite sheet from a direct path (multi-import worker).
+    /// Same defaults + auto-detect as the single import path but WITHOUT global side
+    /// effects (no selection/preview changes) — the multi-import loop owns those.
+    /// Returns true when the sheet was added.</summary>
+    private bool ImportOneSheet(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+
+        var sheet = new SpriteSheet
+        {
+            Name = Path.GetFileNameWithoutExtension(path),
+            ImagePath = Tilemap2D.MakeDataPathRelative(path),
+            Columns = _editCols,
+            Rows = _editRows,
+            FrameWidth = _editFrameW,
+            FrameHeight = _editFrameH,
+            PaddingX = _editPadX,
+            PaddingY = _editPadY,
+            OffsetX = _editOffsetX,
+            OffsetY = _editOffsetY
+        };
+        // Content-aware fit (same rules as the single import; no UI side effects
+        // beyond the _edit* sync, which the multi loop overwrites via LoadSheetSettings).
+        AutoFitSheetFromImageFile(sheet, path, force: false, label: $"Import '{sheet.Name}'");
+
+        sheet.BakeUniformFrames();
+        SpriteSheets.Add(sheet);
+        LoadPreviewTexture(path);
+        Console.WriteLine($"[SpriteEditor] Imported: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
+        return true;
     }
 
     private unsafe void ReloadPreviewTexture(string path)
@@ -2781,6 +3397,8 @@ public class SpriteEditorPanel
         _editPadY = SelectedSheet.PaddingY;
         _editOffsetX = SelectedSheet.OffsetX;
         _editOffsetY = SelectedSheet.OffsetY;
+        // Tree group buffer follows the primary selection (empty = tree root).
+        _newGroupName = SelectedSheet.GroupName ?? "";
     }
 }
 
@@ -2803,5 +3421,5 @@ public class SpriteSheetsSaveData
 
     /// <summary>Free-text action list for Save As Pattern (pipe-separated, one name
     /// per row). Files saved before this field existed keep the default.</summary>
-    public string PatternActions { get; set; } = SpriteEditorPanel.DefaultPatternActions;
+    public string PatternActions { get; set; } = "";
 }
