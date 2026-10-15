@@ -3698,7 +3698,7 @@
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
           "posX": 20,
-          "posY": 7,
+          "posY": 6.4,
           "posZ": 40,
           "rotX": 0,
           "rotY": 0,
@@ -3718,7 +3718,7 @@
           "npcBadgeLift": 0,
           "npcPromptPos": 1,
           "player2DSpriteSheet": "mainsprite1",
-          "player2DAnimationClip": "Male Skin1-idle",
+          "player2DAnimationClip": "Female 1 - Idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 16,
@@ -3787,7 +3787,7 @@
             {
               "name": "Idle",
               "spriteSheet": "mainsprite1",
-              "clip": "Male Skin1-idle",
+              "clip": "Female 1 - Idle",
               "loop": true,
               "stopOnFrameEnd": false,
               "priority": 5,
@@ -6329,7 +6329,7 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        60.636566,
+        61.997982,
         32,
         307.0999
       ],
