@@ -316,6 +316,183 @@ public class SpriteEditorPanel
                 }
             }
 
+            if (SelectedSheet != null)
+            {
+                ImGui.Separator();
+
+                // ── Sheet Settings ──
+                if (ImGui.CollapsingHeader("Sheet Settings", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    ImGui.InputText("Sheet Name##sheet", ref _newSheetName, 256);
+
+                    bool gridChanged = false;
+                    gridChanged |= ImGui.InputInt("Columns", ref _editCols);
+                    gridChanged |= ImGui.InputInt("Rows", ref _editRows);
+                    gridChanged |= ImGui.InputInt("Frame Width", ref _editFrameW);
+                    gridChanged |= ImGui.InputInt("Frame Height", ref _editFrameH);
+                    gridChanged |= ImGui.InputInt("Padding X", ref _editPadX);
+                    gridChanged |= ImGui.InputInt("Padding Y", ref _editPadY);
+                    gridChanged |= ImGui.InputInt("Offset X", ref _editOffsetX);
+                    gridChanged |= ImGui.InputInt("Offset Y", ref _editOffsetY);
+
+                    if (gridChanged)
+                    {
+                        SelectedSheet.Name = _newSheetName;
+                        SelectedSheet.Columns = Math.Max(1, _editCols);
+                        SelectedSheet.Rows = Math.Max(1, _editRows);
+                        SelectedSheet.FrameWidth = Math.Max(1, _editFrameW);
+                        SelectedSheet.FrameHeight = Math.Max(1, _editFrameH);
+                        SelectedSheet.PaddingX = Math.Max(0, _editPadX);
+                        SelectedSheet.PaddingY = Math.Max(0, _editPadY);
+                        SelectedSheet.OffsetX = Math.Max(0, _editOffsetX);
+                        SelectedSheet.OffsetY = Math.Max(0, _editOffsetY);
+                        SelectedSheet.BakeUniformFrames();
+                    }
+                    ImGui.Text($"Frames: {SelectedSheet.FrameCount}");
+
+                    ImGui.Separator();
+                    ImGui.TextDisabled("Render Normalization (per sheet)");
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("The FINAL sprite size (master box W × H) shared by all sheets. Frames render as-is inside the box, nudged by offsets. Viewport shows the master box.");
+
+                    float masterW = SelectedSheet.MasterWidth;
+                    if (ImGui.DragFloat("Master Width (px)", ref masterW, 1f, 0f, 1024f, "%.0f"))
+                        SelectedSheet.MasterWidth = MathF.Max(0f, masterW);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Master box width — the final sprite render width shared by all sheets. 0 = square (same as Master Height).");
+
+                    float masterH = SelectedSheet.MasterHeight;
+                    if (ImGui.DragFloat("Master Height (px)", ref masterH, 1f, 0f, 1024f, "%.0f"))
+                        SelectedSheet.MasterHeight = MathF.Max(0f, masterH);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Master box height — the final sprite render height. The player's Sprite Height maps to exactly this many px. 0 = no normalization (native frame size).");
+
+                    float sOffX = SelectedSheet.SpriteOffsetX;
+                    if (ImGui.DragFloat("Render Offset X (px)", ref sOffX, 0.5f, -512f, 512f, "%.1f"))
+                        SelectedSheet.SpriteOffsetX = Math.Clamp(sOffX, -512f, 512f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sheet-wide horizontal nudge applied to every frame. Positive = right.");
+
+                    float sOffY = SelectedSheet.SpriteOffsetY;
+                    if (ImGui.DragFloat("Render Offset Y (px)", ref sOffY, 0.5f, -512f, 512f, "%.1f"))
+                        SelectedSheet.SpriteOffsetY = Math.Clamp(sOffY, -512f, 512f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sheet-wide vertical nudge from the ground line applied to every frame. Positive = up.");
+
+                    bool flipY = SelectedSheet.FlipY;
+                    if (ImGui.Checkbox("Flip Y (vertical mirror)", ref flipY))
+                        SelectedSheet.FlipY = flipY;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Vertical mirror (Flip Y) for all frames of this sheet.\nDefault OFF. Art drawn upside-down in the source file\nwill display correctly when rendered (Player2D, Sprite2D, DoF mask,\nand this editor preview). Stored in the sheet data.");
+
+                    bool flipX = SelectedSheet.FlipX;
+                    if (ImGui.Checkbox("Flip X (horizontal mirror)", ref flipX))
+                        SelectedSheet.FlipX = flipX;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Horizontal mirror (Flip X / HFlip) for all frames of this sheet.\nDefault OFF. Art facing the wrong way in the source file displays\nmirrored when rendered. Combined with the object's facing:\ntwo horizontal mirrors cancel out (FlipX + facing left = normal).\nStored in the sheet data.");
+                }
+
+                ImGui.Separator();
+
+                // ── Sprite Sheet Preview ──
+                if (ImGui.CollapsingHeader("Preview", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    RenderSheetPreview();
+                }
+
+                // ── Frame Grid Preview ──
+                if (ImGui.CollapsingHeader("Frame Grid", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    RenderFrameGrid();
+                }
+
+                ImGui.Separator();
+
+                // ── Selected Frame ──
+                if (SelectedFrame != null)
+                {
+                    if (ImGui.CollapsingHeader("Frame Properties", ImGuiTreeNodeFlags.DefaultOpen))
+                    {
+                        // ── Frame thumbnail preview ──
+                        RenderFrameThumbnail();
+
+                        ImGui.InputText("Frame Name##frame", ref SelectedFrame.Name, 256);
+                        ImGui.SliderFloat("Anchor X", ref SelectedFrame.AnchorX, 0f, 1f);
+                        ImGui.SliderFloat("Anchor Y", ref SelectedFrame.AnchorY, 0f, 1f);
+                        ImGui.Separator();
+                        ImGui.TextDisabled("Render Offset (per frame, inside master box):");
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Nudges THIS frame only when rendering (master normalization on). Positive X = right, positive Y = up from the ground line.");
+                        float fOffX = SelectedFrame.RenderOffsetX;
+                        if (ImGui.DragFloat("Offset X (px)##frameoff", ref fOffX, 0.5f, -256f, 256f, "%.1f"))
+                            SelectedFrame.RenderOffsetX = Math.Clamp(fOffX, -256f, 256f);
+                        float fOffY = SelectedFrame.RenderOffsetY;
+                        if (ImGui.DragFloat("Offset Y (px)##frameoff", ref fOffY, 0.5f, -256f, 256f, "%.1f"))
+                            SelectedFrame.RenderOffsetY = Math.Clamp(fOffY, -256f, 256f);
+                        ImGui.Separator();
+                        ImGui.Text("Hitbox (pixels):");
+                        ImGui.InputInt("X", ref SelectedFrame.HitboxX);
+                        ImGui.InputInt("Y", ref SelectedFrame.HitboxY);
+                        ImGui.InputInt("W", ref SelectedFrame.HitboxW);
+                        ImGui.InputInt("H", ref SelectedFrame.HitboxH);
+                    }
+                }
+
+                ImGui.Separator();
+
+                // ── Animation Preview ──
+                if (ImGui.CollapsingHeader("Animation Preview", ImGuiTreeNodeFlags.DefaultOpen))
+                {
+                    RenderAnimationPreview();
+                }
+
+            }
+
+            ImGui.Separator();
+            // Baked clips remain browseable even when temporary source sheets are not
+            // loaded (normal after project open, since baking only persists atlases).
+            if (ImGui.CollapsingHeader("Animation Clips", ImGuiTreeNodeFlags.DefaultOpen))
+                RenderAnimationClips();
+
+            // ── Drop zone indicator ──
+            if (SelectedSheet == null)
+            {
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 0.8f), "Drop sprite sheet image here");
+            }
+
+            // ── Bottom drop target (fallback) ──
+            var availSize = ImGui.GetContentRegionAvail();
+            if (availSize.Y > 0)
+            {
+                ImGui.InvisibleButton("##drop_target", new Vector2(Math.Max(availSize.X, 100f), Math.Max(availSize.Y, 20f)));
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (AssetBrowserPanel._dragImagePath != null)
+                    {
+                        string imgPath = AssetBrowserPanel._dragImagePath;
+                        AssetBrowserPanel._dragImagePath = null;
+                        ImportSpriteFromPath(imgPath);
+                        Console.WriteLine($"[SpriteEditor] Drag-drop imported: {imgPath}");
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+            }
+        }
+        ImGui.End();
+
+        // Render file dialogs outside the panel window
+        _importDialog.Render();
+        ProcessImportResult();
+        _loadSheetsDialog.Render();
+        ProcessLoadSheetsResult();
+        _saveAsJsonDialog.Render();
+        ProcessSaveAsJsonResult();
+
+        EndUndoCapture();
+    }
+
     private void RequestFullAtlasRepack(string reason)
     {
         if (_repackTask != null)
@@ -510,6 +687,9 @@ public class SpriteEditorPanel
             AnimationClips.Clear();
             AnimationClips.AddRange(newClips);
             ReloadRepackedAtlasTextures(newAtlasSheets);
+            // Full repack rewrote every atlas file — drop the path-keyed runtime cache
+            // so Sprite2D decorations re-upload the new pixels instead of the old bake.
+            SpriteAtlasManager.InvalidateAll();
             SyncRegistry();
             Engine.Helpers.BinaryObjectCache.TryWrite(savePath, candidateData);
             _selectedClipIdx = AnimationClips.Count > 0
@@ -564,182 +744,6 @@ public class SpriteEditorPanel
             ReloadPreviewTexture(atlas.ImagePath);
     }
 
-            if (SelectedSheet != null)
-            {
-                ImGui.Separator();
-
-                // ── Sheet Settings ──
-                if (ImGui.CollapsingHeader("Sheet Settings", ImGuiTreeNodeFlags.DefaultOpen))
-                {
-                    ImGui.InputText("Sheet Name##sheet", ref _newSheetName, 256);
-
-                    bool gridChanged = false;
-                    gridChanged |= ImGui.InputInt("Columns", ref _editCols);
-                    gridChanged |= ImGui.InputInt("Rows", ref _editRows);
-                    gridChanged |= ImGui.InputInt("Frame Width", ref _editFrameW);
-                    gridChanged |= ImGui.InputInt("Frame Height", ref _editFrameH);
-                    gridChanged |= ImGui.InputInt("Padding X", ref _editPadX);
-                    gridChanged |= ImGui.InputInt("Padding Y", ref _editPadY);
-                    gridChanged |= ImGui.InputInt("Offset X", ref _editOffsetX);
-                    gridChanged |= ImGui.InputInt("Offset Y", ref _editOffsetY);
-
-                    if (gridChanged)
-                    {
-                        SelectedSheet.Name = _newSheetName;
-                        SelectedSheet.Columns = Math.Max(1, _editCols);
-                        SelectedSheet.Rows = Math.Max(1, _editRows);
-                        SelectedSheet.FrameWidth = Math.Max(1, _editFrameW);
-                        SelectedSheet.FrameHeight = Math.Max(1, _editFrameH);
-                        SelectedSheet.PaddingX = Math.Max(0, _editPadX);
-                        SelectedSheet.PaddingY = Math.Max(0, _editPadY);
-                        SelectedSheet.OffsetX = Math.Max(0, _editOffsetX);
-                        SelectedSheet.OffsetY = Math.Max(0, _editOffsetY);
-                        SelectedSheet.BakeUniformFrames();
-                    }
-                    ImGui.Text($"Frames: {SelectedSheet.FrameCount}");
-
-                    ImGui.Separator();
-                    ImGui.TextDisabled("Render Normalization (per sheet)");
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("The FINAL sprite size (master box W × H) shared by all sheets. Frames render as-is inside the box, nudged by offsets. Viewport shows the master box.");
-
-                    float masterW = SelectedSheet.MasterWidth;
-                    if (ImGui.DragFloat("Master Width (px)", ref masterW, 1f, 0f, 1024f, "%.0f"))
-                        SelectedSheet.MasterWidth = MathF.Max(0f, masterW);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Master box width — the final sprite render width shared by all sheets. 0 = square (same as Master Height).");
-
-                    float masterH = SelectedSheet.MasterHeight;
-                    if (ImGui.DragFloat("Master Height (px)", ref masterH, 1f, 0f, 1024f, "%.0f"))
-                        SelectedSheet.MasterHeight = MathF.Max(0f, masterH);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Master box height — the final sprite render height. The player's Sprite Height maps to exactly this many px. 0 = no normalization (native frame size).");
-
-                    float sOffX = SelectedSheet.SpriteOffsetX;
-                    if (ImGui.DragFloat("Render Offset X (px)", ref sOffX, 0.5f, -512f, 512f, "%.1f"))
-                        SelectedSheet.SpriteOffsetX = Math.Clamp(sOffX, -512f, 512f);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Sheet-wide horizontal nudge applied to every frame. Positive = right.");
-
-                    float sOffY = SelectedSheet.SpriteOffsetY;
-                    if (ImGui.DragFloat("Render Offset Y (px)", ref sOffY, 0.5f, -512f, 512f, "%.1f"))
-                        SelectedSheet.SpriteOffsetY = Math.Clamp(sOffY, -512f, 512f);
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Sheet-wide vertical nudge from the ground line applied to every frame. Positive = up.");
-
-                    bool flipY = SelectedSheet.FlipY;
-                    if (ImGui.Checkbox("Flip Y (vertical mirror)", ref flipY))
-                        SelectedSheet.FlipY = flipY;
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Vertical mirror (Flip Y) for all frames of this sheet.\nDefault OFF. Art drawn upside-down in the source file\nwill display correctly when rendered (Player2D, Sprite2D, DoF mask,\nand this editor preview). Stored in the sheet data.");
-
-                    bool flipX = SelectedSheet.FlipX;
-                    if (ImGui.Checkbox("Flip X (horizontal mirror)", ref flipX))
-                        SelectedSheet.FlipX = flipX;
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Horizontal mirror (Flip X / HFlip) for all frames of this sheet.\nDefault OFF. Art facing the wrong way in the source file displays\nmirrored when rendered. Combined with the object's facing:\ntwo horizontal mirrors cancel out (FlipX + facing left = normal).\nStored in the sheet data.");
-                }
-
-                ImGui.Separator();
-
-                // ── Sprite Sheet Preview ──
-                if (ImGui.CollapsingHeader("Preview", ImGuiTreeNodeFlags.DefaultOpen))
-                {
-                    RenderSheetPreview();
-                }
-
-                // ── Frame Grid Preview ──
-                if (ImGui.CollapsingHeader("Frame Grid", ImGuiTreeNodeFlags.DefaultOpen))
-                {
-                    RenderFrameGrid();
-                }
-
-                ImGui.Separator();
-
-                // ── Selected Frame ──
-                if (SelectedFrame != null)
-                {
-                    if (ImGui.CollapsingHeader("Frame Properties", ImGuiTreeNodeFlags.DefaultOpen))
-                    {
-                        // ── Frame thumbnail preview ──
-                        RenderFrameThumbnail();
-
-                        ImGui.InputText("Frame Name##frame", ref SelectedFrame.Name, 256);
-                        ImGui.SliderFloat("Anchor X", ref SelectedFrame.AnchorX, 0f, 1f);
-                        ImGui.SliderFloat("Anchor Y", ref SelectedFrame.AnchorY, 0f, 1f);
-                        ImGui.Separator();
-                        ImGui.TextDisabled("Render Offset (per frame, inside master box):");
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Nudges THIS frame only when rendering (master normalization on). Positive X = right, positive Y = up from the ground line.");
-                        float fOffX = SelectedFrame.RenderOffsetX;
-                        if (ImGui.DragFloat("Offset X (px)##frameoff", ref fOffX, 0.5f, -256f, 256f, "%.1f"))
-                            SelectedFrame.RenderOffsetX = Math.Clamp(fOffX, -256f, 256f);
-                        float fOffY = SelectedFrame.RenderOffsetY;
-                        if (ImGui.DragFloat("Offset Y (px)##frameoff", ref fOffY, 0.5f, -256f, 256f, "%.1f"))
-                            SelectedFrame.RenderOffsetY = Math.Clamp(fOffY, -256f, 256f);
-                        ImGui.Separator();
-                        ImGui.Text("Hitbox (pixels):");
-                        ImGui.InputInt("X", ref SelectedFrame.HitboxX);
-                        ImGui.InputInt("Y", ref SelectedFrame.HitboxY);
-                        ImGui.InputInt("W", ref SelectedFrame.HitboxW);
-                        ImGui.InputInt("H", ref SelectedFrame.HitboxH);
-                    }
-                }
-
-                ImGui.Separator();
-
-                // ── Animation Preview ──
-                if (ImGui.CollapsingHeader("Animation Preview", ImGuiTreeNodeFlags.DefaultOpen))
-                {
-                    RenderAnimationPreview();
-                }
-
-            }
-
-            ImGui.Separator();
-            // Baked clips remain browseable even when temporary source sheets are not
-            // loaded (normal after project open, since baking only persists atlases).
-            if (ImGui.CollapsingHeader("Animation Clips", ImGuiTreeNodeFlags.DefaultOpen))
-                RenderAnimationClips();
-
-            // ── Drop zone indicator ──
-            if (SelectedSheet == null)
-            {
-                ImGui.Separator();
-                ImGui.TextColored(new Vector4(0.5f, 0.7f, 1f, 0.8f), "Drop sprite sheet image here");
-            }
-
-            // ── Bottom drop target (fallback) ──
-            var availSize = ImGui.GetContentRegionAvail();
-            if (availSize.Y > 0)
-            {
-                ImGui.InvisibleButton("##drop_target", new Vector2(Math.Max(availSize.X, 100f), Math.Max(availSize.Y, 20f)));
-                if (ImGui.BeginDragDropTarget())
-                {
-                    var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
-                    if (AssetBrowserPanel._dragImagePath != null)
-                    {
-                        string imgPath = AssetBrowserPanel._dragImagePath;
-                        AssetBrowserPanel._dragImagePath = null;
-                        ImportSpriteFromPath(imgPath);
-                        Console.WriteLine($"[SpriteEditor] Drag-drop imported: {imgPath}");
-                    }
-                    ImGui.EndDragDropTarget();
-                }
-            }
-        }
-        ImGui.End();
-
-        // Render file dialogs outside the panel window
-        _importDialog.Render();
-        ProcessImportResult();
-        _loadSheetsDialog.Render();
-        ProcessLoadSheetsResult();
-        _saveAsJsonDialog.Render();
-        ProcessSaveAsJsonResult();
-
-        EndUndoCapture();
-    }
 
     // ═══════════════════════════════════════════════
     //  UNDO / REDO (snapshot-based)
@@ -1892,6 +1896,10 @@ public class SpriteEditorPanel
                 SpriteOffsetY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : source.SpriteOffsetY
             };
             ReloadPreviewTexture(result.Atlas.ImagePath);
+            // The rebake rewrote atlas PNGs IN PLACE — consumers that cache by path
+            // outside this panel (SpriteAtlasManager's LRU for Sprite2D decorations)
+            // must re-upload the new pixels, or they keep sampling the old bake.
+            SpriteAtlasManager.InvalidateAll();
             return true;
         }
         catch (Exception ex)
@@ -2626,6 +2634,12 @@ public class SpriteEditorPanel
         if (_previewTextures.Remove(resolved, out uint oldTexture) && oldTexture != 0)
             GL.DeleteTextures(1, &oldTexture);
         LoadPreviewTexture(resolved);
+        // REBAKE REFRESH: an in-place reload reuses the same PNG path — without this
+        // bump the registry signature (sheet + path + texId) can stay identical when
+        // the driver recycles the old texture ID number, and every viewport consumer
+        // (Player2D idle/walk, decorations, portals) keeps sampling the OLD pixels.
+        IDEBridge.NotifySpriteTextureReloaded();
+        SyncRegistry();
     }
 
     private unsafe void LoadPreviewTexture(string path)

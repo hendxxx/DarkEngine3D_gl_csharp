@@ -4297,6 +4297,10 @@ public unsafe class EditorObject
     /// <summary>Cached alpha-scan results: (sheetName, frameIdx, imgW, imgH) → opaque-
     /// top fraction (0 = pixels reach the frame's top edge). One file read per sheet.</summary>
     private static readonly Dictionary<(string sheet, int frame, int w, int h), float> _opaqueTopCache = new();
+    /// <summary>Texture generation the opaque-top cache was filled under — the whole
+    /// dictionary is dropped when the sprite texture generation bumps (rebake).
+    /// </summary>
+    private static int _opaqueTopCacheGen = -1;
 
     /// <summary>Measure how far BELOW the frame's top edge the first non-transparent
     /// pixel row sits, as a fraction of the frame height (0..1). Alpha-scans the sheet
@@ -4312,7 +4316,13 @@ public unsafe class EditorObject
             if (imgW <= 0 || imgH <= 0) return 0f;
 
             var key = (sheet.Name ?? "", frameIdx, imgW, imgH);
-            if (_opaqueTopCache.TryGetValue(key, out float cached)) return cached;
+            // Version-stamped: a rebake rewrites the SAME sheet PNG, so the key alone
+            // can't tell old pixels from new ones — gate on the bridge's texture
+            // generation (bumped on every in-place reload) so the cached-opaque-top
+            // fraction re-scans instead of pinning the previous bake's padding.
+            int gen = IDEBridge.SpriteRegistryVersion * 31 + IDEBridge.SpriteTextureGeneration;
+            if (_opaqueTopCacheGen == gen && _opaqueTopCache.TryGetValue(key, out float cached)) return cached;
+            if (_opaqueTopCacheGen != gen) { _opaqueTopCache.Clear(); _opaqueTopCacheGen = gen; }
 
             string path = PathHelpers.ResolveProjectAsset(sheet.ImagePath ?? "");
             if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -4632,10 +4642,24 @@ public unsafe class EditorObject
             _spriteTexBoundFrame = frame;
             _spriteTexBound = 0;
         }
+        // REBAKE SAFETY: when a texture is reloaded in place the GL id number can
+        // RECYCLE (delete + gen + upload → same numeric id, new pixels). The equality
+        // skip above would then bind NOTHING and keep sampling the stale texture.
+        // Track the texture generation and hard-reset the cache when it changes so
+        // every post-rebake draw re-binds (and samples) the fresh upload.
+        int gen = IDEBridge.SpriteTextureGeneration;
+        if (_spriteTexBoundGen != gen)
+        {
+            _spriteTexBoundGen = gen;
+            _spriteTexBound = 0;
+        }
         if (_spriteTexBound == texId) return; // already current — skip driver state change
         GL.BindTexture(Const.GL_TEXTURE_2D, texId);
         _spriteTexBound = texId;
     }
+
+    /// Last texture generation the bind cache was validated against (rebake-safety).
+    private static int _spriteTexBoundGen = -1;
 
     public unsafe void DrawPlayer2D(Camera camera)
     {

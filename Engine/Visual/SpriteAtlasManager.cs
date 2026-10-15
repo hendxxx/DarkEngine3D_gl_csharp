@@ -181,6 +181,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
         }
 
+        /// <summary>Drop GPU textures AND CPU pixel caches for every entry: used after
+        /// an in-place sprite rebake rewrites PNGs under the same paths. The next
+        /// Acquire/GetOrQueue enqueues a fresh async load of the NEW file content and
+        /// ProcessReloadQueue re-uploads on the render thread. Call this from the
+        /// UI/render thread right after a bake commits — GL deletion must stay on
+        /// that thread.</summary>
+        public static unsafe void InvalidateAll()
+        {
+            lock (_entries)
+            {
+                foreach (var e in _entries.Values)
+                {
+                    if (e.TextureId != 0)
+                    {
+                        try { uint id = e.TextureId; GL.DeleteTextures(1, &id); } catch { }
+                        e.TextureId = 0;
+                    }
+                    e.PixelData = null;
+                    e.CpuLoaded = false;
+                    // Re-enqueue for a fresh async upload of the NEW file content.
+                    _reloadQueue.Enqueue(e.Path);
+                    System.Threading.Interlocked.Increment(ref ReloadsQueued);
+                }
+            }
+        }
+
         // Helper: resolve and acquire texture id (returns 0 if not loaded yet)
         public static uint AcquireTextureIfLoaded(string resolvedPath)
         {

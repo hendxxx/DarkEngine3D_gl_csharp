@@ -171,6 +171,19 @@ public class IDEBridge
     /// equipment auto-clip match) invalidate themselves by comparing this.</summary>
     public static int SpriteRegistryVersion { get; private set; }
 
+    /// <summary>Bumped whenever a preview/atlas texture is RELOADED IN PLACE (a rebake
+    /// rewrites the SAME PNG path). Part of the sync signature: without it a rebake
+    /// whose new GL texture ID recycles the OLD id number produces a signature
+    /// (name+path+id) identical to the previous bake — the registry keeps the stale
+    /// entry and every viewport consumer keeps drawing the old pixels. Bump this and
+    /// the signature MUST change, forcing a rebuild with the new texture.</summary>
+    public static int SpriteTextureGeneration { get; private set; }
+
+    /// <summary>Call after reloading a sprite texture under an existing path/atlas name
+    /// (SpriteEditorPanel.ReloadPreviewTexture). Invalidates the signature gate and
+    /// every registry consumer so the next sync rebuilds with the new texture.</summary>
+    public static void NotifySpriteTextureReloaded() => SpriteTextureGeneration++;
+
     /// <summary>Auto-clip-match cache: (overlay sheet, base animation name) → the clip
     /// on that sheet which follows the base animation (null = none). The equipment
     /// renderer asks per layer per FRAME, so the scan must not re-run every frame.</summary>
@@ -206,6 +219,10 @@ public class IDEBridge
         foreach (var kv in textures)
             sig = sig * 31 + kv.Key.GetHashCode(StringComparison.OrdinalIgnoreCase)
                 + (int)kv.Value;
+        // Texture-generation stamp beats the texId-recycling trap: a rebake can recycle its
+        // previous texture ID number, which would make the signature above unchanged
+        // while the pixels changed. The generation bumps on EVERY in-place reload.
+        sig = sig * 31 + SpriteTextureGeneration;
 
         if (sig == _lastRegistrySig)
             return; // nothing changed — keep dictionaries + caches warm
