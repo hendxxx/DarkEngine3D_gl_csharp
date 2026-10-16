@@ -1995,9 +1995,10 @@ public class SpriteEditorPanel
     }
 
     // ── CONTENT-AWARE AUTO DETECT (per image) ──
-    // Replaces the old "divisible by 128/64/32/16" guess: the grid is derived from
-    // the image's own pixels — alpha-ink columns/rows and the transparent gutters
-    // between sprites give exact Columns/Rows/Frame size/Offset/Padding.
+    // Replaces the old "divisible by 128/64/32/16" guess: the grid is derived from the
+    // image's own pixels (alpha-ink runs, gutters, the repeating pitch, the standard
+    // 8/16/32/64... cells) by SpriteGridDetector — Engine/Visual/SpriteGridDetector.cs,
+    // which the headless harness Tools/SpriteGridTest exercises directly.
 
     /// <summary>Read ONE image file and fit the sheet's grid to its content.
     /// force=false keeps explicit user sizing (only recompute Columns/Rows), while
@@ -2022,7 +2023,7 @@ public class SpriteEditorPanel
                 return true;
             }
 
-            var fitOpt = AutoFitFromImage(image);
+            var fitOpt = SpriteGridDetector.Detect(image.Data, image.Width, image.Height);
             if (fitOpt == null)
             {
                 Console.WriteLine($"[SpriteEditor] {label}: auto-fit failed (blank image) — manual settings kept.");
@@ -2056,234 +2057,6 @@ public class SpriteEditorPanel
             Console.WriteLine($"[SpriteEditor] {label}: could not read image: {ex.Message}");
             return false;
         }
-    }
-
-    /// <summary>Standard pixel-art frame sizes, MOST-PREFERRED first: the classic
-    /// power-of-two tiles (16x16, 32x32, 64x64, 128x128...) win over odd sizes
-    /// (96/48/24) whenever detection must guess. Frames within 2 px of one of these
-    /// are snapped to the standard size.</summary>
-    private static readonly int[] StandardFrameSizes = [512, 256, 128, 64, 32, 16, 96, 48, 24, 8];
-
-    /// <summary>Grid straight from pixels: (Cols, Rows, FrameW, FrameH, OffX, OffY,
-    /// PadX, PadY). Null = blank/undetectable. Alpha >= 8 counts as ink; ink runs
-    /// per axis give the sprite rows/columns, gaps between runs give the padding,
-    /// the WIDEST run gives the frame cell, the FIRST run's start gives the offset.
-    /// Frames within 2 px of a STANDARD size (16/32/64/...) are snapped to it.
-    /// A single merged blob (no gutters, e.g. full-bleed/JPEG alpha) falls back to
-    /// common divisible frame sizes (standard sizes prioritized), finally the full
-    /// image as one 1x1 frame.</summary>
-    private static (int Cols, int Rows, int FrameW, int FrameH, int OffX, int OffY, int PadX, int PadY)? AutoFitFromImage(ImageResult img)
-    {
-        if (img.Data == null || img.Width <= 0 || img.Height <= 0) return null;
-        var colInk = new bool[img.Width];
-        var rowInk = new bool[img.Height];
-        var px = img.Data;
-        int stride = img.Width * 4; // RGBA
-        for (int y = 0; y < img.Height; y++)
-        {
-            int rowBase = y * stride;
-            for (int x = 0; x < img.Width; x++)
-            {
-                if (px[rowBase + x * 4 + 3] >= 8)
-                {
-                    colInk[x] = true;
-                    rowInk[y] = true;
-                }
-            }
-        }
-        var colSegs = InkRuns(colInk);
-        var rowSegs = InkRuns(rowInk);
-        if (colSegs.Count == 0 || rowSegs.Count == 0) return null; // blank image
-
-        if (colSegs.Count == 1 && rowSegs.Count == 1)
-        {
-            // Both axes merged (touching sprites / no gutters):
-            // FULLY OPAQUE blob = a full-bleed image (background, effect canvas) —
-            // one native frame, no fake grids from divisibility.
-            bool hasTransparency = false;
-            for (int i = 3; i < px.Length && !hasTransparency; i += 4)
-                hasTransparency = px[i] < 8;
-            if (!hasTransparency)
-                return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
-            // Has transparency = likely a touching uniform grid: STANDARD divisible
-            // guesses first (16/32/64/128 win over 96/48/24 — never 1x1 for a
-            // divisible multiple-frame sheet), else native.
-            foreach (int size in StandardFrameSizes)
-                if (img.Width % size == 0 && img.Height % size == 0 && size < img.Width && size < img.Height)
-                    return (img.Width / size, img.Height / size, size, size, 0, 0, 0, 0);
-            return (1, 1, img.Width, img.Height, 0, 0, 0, 0);
-        }
-
-        // Per axis: >=2 runs → measured fit; exactly 1 run → the sprites occupy only
-        // part of that axis, so frame = the RUN's size (not the full image) and
-        // offset = where the run starts. Both paths snap near-standard frames
-        // (e.g. a 30/62/126 px run -> 32/64/128) while preserving the stride.
-        (int Start, int Frame, int Pad, int Count) cx = colSegs.Count >= 2
-            ? FitAxis(colSegs)
-            : SnapSingleRun(colSegs[0], img.Width);
-        (int Start, int Frame, int Pad, int Count) rx = rowSegs.Count >= 2
-            ? FitAxis(rowSegs)
-            : SnapSingleRun(rowSegs[0], img.Height);
-
-        // MERGED-AXIS INFERENCE: sprites that TOUCH along one axis give that axis a
-        // single full-extent run (its width/height = the whole image). When the OTHER
-        // axis resolved to a STANDARD pitch (e.g. 32) that divides the merged extent
-        // exactly, the touching sprites almost surely sit on the same grid — split
-        // the merged extent into exact cells (e.g. touching 160px columns + 32px row
-        // pitch -> 5 cells @32). Exact division + standard pitch only, so tiling
-        // water bands or full-bleed art are never cut into phantom cells.
-        int syncX = cx.Count == 1 ? 0 : cx.Frame + cx.Pad;
-        int syncY = rx.Count == 1 ? 0 : rx.Frame + rx.Pad;
-        if (cx.Count == 1) cx = SplitMergedAxis(cx, img.Width, syncY);
-        if (rx.Count == 1) rx = SplitMergedAxis(rx, img.Height, syncX);
-
-        return (cx.Count, rx.Count, cx.Frame, rx.Frame, cx.Start, rx.Start, cx.Pad, rx.Pad);
-    }
-
-    /// <summary>Uniform cell metrics from one axis's ink runs: Count = number of
-    /// runs; Frame = the widest run; Pad = the typical run-to-run spacing (median
-    /// start-to-start distance minus the widest run), never negative; Start = first
-    /// run's offset. Touching sprites (spacing smaller than the width) collapse the
-    /// padding to 0 with the stride as the frame size. The frame is then SNAPPED to
-    /// the nearest STANDARD size (16/32/64/...) within 2 px — padding absorbs the
-    /// difference so cells stay aligned with the measured run stride.</summary>
-    private static (int Start, int Frame, int Pad, int Count) FitAxis(List<(int Start, int End)> segs)
-    {
-        int n = segs.Count;
-        int widest = 0;
-        foreach (var s in segs) widest = Math.Max(widest, s.End - s.Start + 1);
-        var strides = new List<int>(n - 1);
-        for (int i = 1; i < n; i++) strides.Add(segs[i].Start - segs[i - 1].Start);
-        strides.Sort();
-        int stride = strides[strides.Count / 2];
-
-        int frame = widest;
-        int pad = stride - widest;
-        if (pad < 0) { frame = stride; pad = 0; }
-
-        // STANDARD-SIZE SNAP: a measured cell of 30/62/126px (anti-aliased edges of
-        // a true 32/64/128 grid) becomes the standard size; the stride is kept by
-        // growing the padding, so run alignment is never lost. The cell may GROW up
-        // to 2px into its own transparent border but never shrink into the ink of
-        // the next run (pad must stay >= 0).
-        SnapToStandard(ref frame, ref pad, stride, maxGrow: 2);
-
-        // STANDARD-PITCH PROMOTION (16x16, 32x32, 64x64...): when the measured pitch
-        // (median run-start spacing) is EXACTLY a standard size, promote the whole
-        // CELL to that standard — frame = pitch, pad = 0. The pitch is unchanged, so
-        // run alignment and ink containment stay exact; the cell just fills its
-        // measured stride. A 60px ink run in a 64px pitch becomes a true 64x64 cell
-        // instead of 60x60 + 4px pad. (Snapping pitch to a NON-exact standard would
-        // drift 1-2px per index and eventually cut remote runs' ink — never done.)
-        if (Array.IndexOf(StandardFrameSizes, stride) >= 0)
-        {
-            frame = stride;
-            pad = 0;
-        }
-        return (segs[0].Start, frame, pad, n);
-    }
-
-    /// <summary>Split a FULLY MERGED axis (one run spanning the whole extent) into
-    /// exact cells when the other axis's pitch matches a STANDARD size (exactly, or
-    /// within 2 px — snapped; the snapped pitch influences only the CELL COUNT, never
-    /// cell placement, and the merged axis's ink is continuous so nothing can be cut.
-    /// 16/32/64... are thus prioritized for touching columns/rows). Returns the axis
-    /// unchanged for anything else (not merged, uneven division, or a <2 division).
-    /// </summary>
-    private static (int Start, int Frame, int Pad, int Count) SplitMergedAxis(
-        (int Start, int Frame, int Pad, int Count) axis, int extent, int otherPitch)
-    {
-        if (axis.Frame != extent) return axis;                 // not a full-span merged run
-        if (otherPitch <= 1) return axis;
-        int pitch = otherPitch;
-        if (!StandardFrameSizes.Contains(pitch))
-        {
-            int nearest = -1, bestGap = 3;                     // within 2 px of a standard
-            foreach (int s in StandardFrameSizes)
-            {
-                int gap = Math.Abs(pitch - s);
-                if (gap < bestGap) { nearest = s; bestGap = gap; }
-            }
-            if (nearest <= 0) return axis;
-            pitch = nearest;
-        }
-        if (extent % pitch != 0) return axis;                  // uneven — no exact grid
-        int count = extent / pitch;
-        if (count < 2) return axis;
-        return (0, pitch, 0, count);
-    }
-
-    /// <summary>Snap ONE run to a standard frame size: the cell may GROW up to 100px
-    /// for trivially-small sprites but never beyond the axis extent, and only to a
-    /// size within 2 px of the ink (a 30px sprite -> 32px cell). Padding stays 0 —
-    /// a single row/column has no partner to space from.</summary>
-    private static (int Start, int Frame, int Pad, int Count) SnapSingleRun((int Start, int End) seg, int axisExtent)
-    {
-        int frame = seg.End - seg.Start + 1;
-        foreach (int s in StandardFrameSizes)
-        {
-            if (s >= frame && s - frame <= 2 && s <= axisExtent)
-            {
-                frame = s;
-                break;
-            }
-        }
-        return (seg.Start, frame, 0, 1);
-    }
-
-    /// <summary>Shared standard-size snap for a measured cell: pick the standard
-    /// size closest to `frame` within 2 px that keeps pad = stride - frame >= 0.
-    /// `maxGrow` bounds how far the cell may exceed the measured ink run.</summary>
-    private static void SnapToStandard(ref int frame, ref int pad, int stride, int maxGrow)
-    {
-        int best = -1, bestGap = int.MaxValue;
-        foreach (int s in StandardFrameSizes)
-        {
-            int gap = s - frame; if (frame > s) continue;
-            if (gap > 2 || gap >= bestGap) continue;
-            int newPad = stride - s;
-            if (newPad < 0) continue;                     // cell would overlap the next run
-            if (s - frame > maxGrow) continue;            // cell may not overgrow the ink
-            best = s;
-            bestGap = gap;
-        }
-        if (best > 0)
-        {
-            frame = best;
-            pad = stride - best;
-        }
-    }
-
-    /// <summary>Runs of true values in the flag array. A transparent gap of at most
-    /// 2 px is bridged into the surrounding run (internal sprite gaps are tiny;
-    /// real gutters are the bigger gaps).</summary>
-    private static List<(int Start, int End)> InkRuns(bool[] flags)
-    {
-        var runs = new List<(int Start, int End)>();
-        int runStart = -1, lastInk = -1;
-        for (int x = 0; x < flags.Length; x++)
-        {
-            if (flags[x])
-            {
-                if (runStart < 0) runStart = x;
-                lastInk = x;
-                continue;
-            }
-            if (runStart < 0) continue; // not inside a run
-            int gap = 0;
-            while (x + gap < flags.Length && !flags[x + gap]) gap++;
-            if (x + gap >= flags.Length)
-            {
-                runs.Add((runStart, lastInk)); // trailing blanks — close the run
-                runStart = -1;
-                break;
-            }
-            if (gap <= 2) { x += gap - 1; continue; } // bridge a tiny gap
-            runs.Add((runStart, lastInk));           // real gutter ends the run
-            runStart = -1;
-        }
-        if (runStart >= 0) runs.Add((runStart, lastInk));
-        return runs;
     }
 
     /// <summary>Save all sprite sheets to the default project location.</summary>
