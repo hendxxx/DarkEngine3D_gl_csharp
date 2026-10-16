@@ -34,6 +34,13 @@ public class SpriteSheet
     public int OffsetX;
     public int OffsetY;
 
+    /// <summary>Per-sheet COLUMN OFFSET: how many whole grid cells every row is shifted
+    /// right before the first sliced frame (`Frame X += ColOffset * (FrameWidth +
+    /// PaddingX)`). Used when the art's first inked column is not the grid's first cell.
+    /// Set in the Sprite Editor → Sheet Settings, persisted in SpriteSheetData so
+    /// `*-sprite-anim.json` exports and reloaded sheets keep the same alignment.</summary>
+    public int ColOffset;
+
     // ── Per-sheet render normalization (set in Sprite Editor) ──
     /// <summary>Master box WIDTH in pixels — the shared render width this sheet's frames
     /// normalize into. 0 = square box of MasterHeight.</summary>
@@ -102,7 +109,7 @@ public class SpriteSheet
         int col = frameIndex % Columns;
         int row = frameIndex / Columns;
 
-        float u0 = (float)(OffsetX + col * (FrameWidth + PaddingX)) / ImageWidth;
+        float u0 = (float)(OffsetX + ColOffset * (FrameWidth + PaddingX) + col * (FrameWidth + PaddingX)) / ImageWidth;
         float u1 = u0 + (float)FrameWidth / ImageWidth;
         // Flip V for OpenGL
         float v0 = 1f - (float)(OffsetY + (row + 1) * (FrameHeight + PaddingY)) / ImageHeight;
@@ -146,7 +153,7 @@ public class SpriteSheet
             {
                 CustomFrames.Add(new SpriteFrame
                 {
-                    X = OffsetX + c * (FrameWidth + PaddingX),
+                    X = OffsetX + ColOffset * (FrameWidth + PaddingX) + c * (FrameWidth + PaddingX),
                     Y = OffsetY + r * (FrameHeight + PaddingY),
                     Width = FrameWidth,
                     Height = FrameHeight,
@@ -185,6 +192,7 @@ public class SpriteSheet
         PaddingY = PaddingY,
         OffsetX = OffsetX,
         OffsetY = OffsetY,
+        ColOffset = ColOffset,
         MasterWidth = MasterWidth,
         MasterHeight = MasterHeight,
         SpriteOffsetX = SpriteOffsetX,
@@ -221,6 +229,9 @@ public class SpriteSheet
         PaddingY = data.PaddingY,
         OffsetX = data.OffsetX,
         OffsetY = data.OffsetY,
+        // NULL (no ColOffset in the file) keeps 0 here — callers that have the source
+        // image predict it via SpriteEditorPanel.PredictColOffsetFromImage.
+        ColOffset = data.ColOffset ?? 0,
         MasterWidth = data.MasterWidth,
         MasterHeight = data.MasterHeight,
         SpriteOffsetX = data.SpriteOffsetX,
@@ -284,6 +295,14 @@ public class SpriteSheetData
     public int PaddingY { get; set; }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
+    /// <summary>Per-sheet COLUMN OFFSET in grid cells (see SpriteSheet.ColOffset).
+    /// NULL = the file carries no value (every export written before the field existed):
+    /// the loader then PREDICTS it from the source image's pixels. An explicit value,
+    /// including 0, is honoured verbatim so a saved choice is never overwritten.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? ColOffset { get; set; }
+
     // ── Per-sheet render normalization (Sprite Editor) ──
     public float MasterWidth { get; set; } = 0f;
     public float MasterHeight { get; set; } = 0f;

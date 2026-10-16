@@ -61,6 +61,14 @@ static class Program
         // Full-bleed opaque background: one native frame.
         Check("opaque 128x64 full-bleed", BuildSingle(128, 64, 0, 0, 128, 64), new SpriteGridFit(1, 1, 128, 64, 0, 0, 0, 0));
 
+        // ── Column Offset prediction (whole leading columns empty) ──
+        // Whatever reading the detector picks for such a sheet, ColOffset must never shift
+        // the grid off the art: the first cell has to land on the first inked column.
+        OffsetInvariant("32 pitch cols4, leading column empty",
+            BuildGridSkipCols(4, 2, 32, 32, 0, 0, 1), 32);
+        OffsetInvariant("16 pitch cols5 pad4, two leading columns empty",
+            BuildGridSkipCols(5, 2, 16, 16, 4, 0, 2), 2 * 20);
+
         Console.WriteLine();
         var blank = new byte[16 * 16 * 4];
         var r = SpriteGridDetector.Detect(blank, 16, 16);
@@ -86,7 +94,45 @@ static class Program
 
     private static bool Same(in SpriteGridFit a, in SpriteGridFit b) =>
         a.Cols == b.Cols && a.Rows == b.Rows && a.FrameW == b.FrameW && a.FrameH == b.FrameH &&
-        a.OffX == b.OffX && a.OffY == b.OffY && a.PadX == b.PadX && a.PadY == b.PadY;
+        a.OffX == b.OffX && a.OffY == b.OffY && a.PadX == b.PadX && a.PadY == b.PadY &&
+        a.ColOffset == b.ColOffset;
+
+    /// <summary>A sheet whose leading grid columns are EMPTY can be read two correct ways —
+    /// fewer columns with a larger OffX (ColOffset 0), or the artist's fuller lattice with
+    /// ColOffset = the skipped columns. Both are right, so the invariant checked here is the
+    /// one that must hold either way: the first cell (OffX + ColOffset * pitch) lands on the
+    /// first inked column, i.e. the offset never drags the grid off the art.</summary>
+    private static void OffsetInvariant(string name, (byte[] px, int w, int h) sheet, int firstInkCol)
+    {
+        var got = SpriteGridDetector.Detect(sheet.px, sheet.w, sheet.h);
+        if (!got.HasValue)
+        {
+            Console.WriteLine($"FAIL {name}: detect returned null");
+            _fails++;
+            return;
+        }
+        var f = got.Value;
+        int pitch = f.FrameW + f.PadX;
+        int firstCell = f.OffX + f.ColOffset * pitch;
+        bool ok = firstCell == firstInkCol;
+        Console.WriteLine($"{(ok ? "OK  " : "FAIL")} {name}: {f} colOffset={f.ColOffset} "
+                          + $"(first cell {firstCell}, first ink {firstInkCol})"
+                          + (ok ? "" : $"   WANT first cell {firstInkCol}"));
+        if (!ok) _fails++;
+    }
+
+    /// <summary>Uniform grid with the first `skip` columns of every row left EMPTY.</summary>
+    private static (byte[] px, int w, int h) BuildGridSkipCols(int cols, int rows, int cw, int ch,
+        int padX, int padY, int skip)
+    {
+        int w = cols * (cw + padX) - padX;
+        int h = rows * (ch + padY) - padY;
+        var px = new byte[w * h * 4];
+        for (int r = 0; r < rows; r++)
+            for (int c = skip; c < cols; c++)
+                Paint(px, w, c * (cw + padX), r * (ch + padY), cw, ch, symmetric: false);
+        return (px, w, h);
+    }
 
     // ─────────────────────────── synthetic sheet builders ───────────────────────────
 

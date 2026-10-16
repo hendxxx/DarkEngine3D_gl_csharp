@@ -105,6 +105,7 @@ public class SpriteEditorPanel
     private int _editFrameH = 64;
     private int _editPadX, _editPadY;
     private int _editOffsetX, _editOffsetY;
+    private int _editColOffset;
 
     // ── Frame selection ──
     private int _selectedFrameIdx = -1;
@@ -369,6 +370,9 @@ public class SpriteEditorPanel
                     gridChanged |= ImGui.InputInt("Padding Y", ref _editPadY);
                     gridChanged |= ImGui.InputInt("Offset X", ref _editOffsetX);
                     gridChanged |= ImGui.InputInt("Offset Y", ref _editOffsetY);
+                    gridChanged |= ImGui.InputInt("Column Offset (cells)", ref _editColOffset);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("COLUMN OFFSET — how many whole grid cells every row is shifted right\nbefore the first sliced frame. Use it when this art's first inked column is not\nthe grid's first cell.\nLOADED from this sheet's *-sprite-anim.json when that file carries the field;\nPREDICTED from the image's pixels when it does not (or on a plain image import).\nChanging ANY grid value here (Columns, Rows, Frame size, Padding, Offset X/Y or this\none) writes the new grid straight back into the sheet's *-sprite-anim.json next to\nthe image, so the file keeps slicing exactly like the sheet.");
 
                     if (gridChanged)
                     {
@@ -381,7 +385,13 @@ public class SpriteEditorPanel
                         SelectedSheet.PaddingY = Math.Max(0, _editPadY);
                         SelectedSheet.OffsetX = Math.Max(0, _editOffsetX);
                         SelectedSheet.OffsetY = Math.Max(0, _editOffsetY);
+                        SelectedSheet.ColOffset = Math.Max(0, _editColOffset);
                         SelectedSheet.BakeUniformFrames();
+                        // An edited GRID belongs to the sheet's own export file: write it back
+                        // into <image>-sprite-anim.json right away, so the export and the sheet
+                        // never disagree. No-op when that file does not exist — the canonical
+                        // sprites.sheets.json stays the Save button's job.
+                        SpritePatternExport.SaveGridToExport(SelectedSheet.ImagePath, SelectedSheet);
                     }
                     ImGui.Text($"Frames: {SelectedSheet.FrameCount}");
 
@@ -397,6 +407,8 @@ public class SpriteEditorPanel
                         {
                             SelectedSheet.BakeUniformFrames();
                             LoadSheetSettings(); // keep every field in sync with the fit
+                            // Auto Detect IS a grid change: the sheet's own export follows.
+                            SpritePatternExport.SaveGridToExport(SelectedSheet.ImagePath, SelectedSheet);
                         }
                         else if (string.IsNullOrEmpty(absPath) || !File.Exists(absPath))
                             Console.WriteLine($"[SpriteEditor] Auto Detect: source image not found for '{SelectedSheet.Name}'");
@@ -991,7 +1003,9 @@ public class SpriteEditorPanel
         {
             for (int c = 0; c < SelectedSheet.Columns; c++)
             {
-                float fx = cursorPos.X + (SelectedSheet.OffsetX + c * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)) * scale;
+                float fx = cursorPos.X + (SelectedSheet.OffsetX
+                    + SelectedSheet.ColOffset * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)
+                    + c * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)) * scale;
                 float fy = cursorPos.Y + (SelectedSheet.OffsetY + r * (SelectedSheet.FrameHeight + SelectedSheet.PaddingY)) * scale;
                 float fw = SelectedSheet.FrameWidth * scale;
                 float fh = SelectedSheet.FrameHeight * scale;
@@ -1397,7 +1411,9 @@ public class SpriteEditorPanel
                 int col = frameIdx % cols;
 
                 // Calculate UV coordinates for this specific frame
-                float u0 = (SelectedSheet.OffsetX + col * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)) / (float)SelectedSheet.ImageWidth;
+                float u0 = (SelectedSheet.OffsetX
+                    + SelectedSheet.ColOffset * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)
+                    + col * (SelectedSheet.FrameWidth + SelectedSheet.PaddingX)) / (float)SelectedSheet.ImageWidth;
                 float v0 = (SelectedSheet.OffsetY + row * (SelectedSheet.FrameHeight + SelectedSheet.PaddingY)) / (float)SelectedSheet.ImageHeight;
                 float u1 = u0 + SelectedSheet.FrameWidth / (float)SelectedSheet.ImageWidth;
                 float v1 = v0 + SelectedSheet.FrameHeight / (float)SelectedSheet.ImageHeight;
@@ -1850,7 +1866,16 @@ public class SpriteEditorPanel
 
     private SpriteSheetsSaveData CaptureUndoData()
     {
-        var data = CaptureSaveData();
+        var data = new SpriteSheetsSaveData
+        {
+            Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
+            AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
+            PreviewStartFrame = _animStartFrame,
+            PreviewEndFrame = _animEndFrame,
+            PreviewFps = _animFPS,
+            PreviewLoop = _animLoop,
+            PatternActions = _patternActions
+        };
         data.UndoSourceSheets = SpriteSheets.Select(s => s.ToData()).ToList();
         return data;
     }
@@ -1895,7 +1920,8 @@ public class SpriteEditorPanel
                 int row = index / Math.Max(1, source.Columns);
                 frame = new SpriteFrame
                 {
-                    X = source.OffsetX + col * (source.FrameWidth + source.PaddingX),
+                    X = source.OffsetX + source.ColOffset * (source.FrameWidth + source.PaddingX)
+                        + col * (source.FrameWidth + source.PaddingX),
                     Y = source.OffsetY + row * (source.FrameHeight + source.PaddingY),
                     Width = source.FrameWidth,
                     Height = source.FrameHeight,
@@ -2037,9 +2063,13 @@ public class SpriteEditorPanel
             sheet.PaddingY = Math.Max(0, fit.PadY);
             sheet.OffsetX = Math.Max(0, fit.OffX);
             sheet.OffsetY = Math.Max(0, fit.OffY);
+            // COLUMN OFFSET: the sibling *-sprite-anim.json wins when it carries the field;
+            // otherwise PREDICT it from this image's own pixels.
+            int? fileColOffset = SpritePatternExport.TryLoadColOffset(absPath);
+            sheet.ColOffset = fileColOffset ?? Math.Max(0, fit.ColOffset);
             sheet.Columns = Math.Max(1, fit.Cols);
             sheet.Rows = Math.Max(1, fit.Rows);
-            Console.WriteLine($"[SpriteEditor] {label}: auto-fit {fit.Cols}x{fit.Rows} @ {fit.FrameW}x{fit.FrameH}px, offset {fit.OffX},{fit.OffY}, pad {fit.PadX},{fit.PadY}");
+            Console.WriteLine($"[SpriteEditor] {label}: auto-fit {fit.Cols}x{fit.Rows} @ {fit.FrameW}x{fit.FrameH}px, offset {fit.OffX},{fit.OffY}, pad {fit.PadX},{fit.PadY}, col offset {sheet.ColOffset} ({(fileColOffset.HasValue ? "from *-sprite-anim.json" : "predicted")})");
 
             // Keep the editable settings in sync so the UI shows what was detected.
             _editCols = sheet.Columns;
@@ -2050,6 +2080,7 @@ public class SpriteEditorPanel
             _editPadY = sheet.PaddingY;
             _editOffsetX = sheet.OffsetX;
             _editOffsetY = sheet.OffsetY;
+            _editColOffset = sheet.ColOffset;
             return true;
         }
         catch (Exception ex)
@@ -2359,6 +2390,9 @@ public class SpriteEditorPanel
             PaddingY = pattern.PaddingY,
             OffsetX = pattern.OffsetX,
             OffsetY = pattern.OffsetY,
+            // The pattern's Column Offset travels with the export so a reloaded
+            // *-sprite-anim.json slices exactly like the sheet it was generated from.
+            ColOffset = pattern.ColOffset,
             MasterWidth = pattern.MasterWidth,
             MasterHeight = pattern.MasterHeight,
             SpriteOffsetX = pattern.SpriteOffsetX,
@@ -2375,7 +2409,8 @@ public class SpriteEditorPanel
             var indices = new List<int>();
             for (int col = 0; col < sheet.Columns; col++)
             {
-                int x = sheet.OffsetX + col * (sheet.FrameWidth + sheet.PaddingX);
+                int x = sheet.OffsetX + sheet.ColOffset * (sheet.FrameWidth + sheet.PaddingX)
+                        + col * (sheet.FrameWidth + sheet.PaddingX);
                 int y = sheet.OffsetY + row * (sheet.FrameHeight + sheet.PaddingY);
                 if (!IsFrameEmpty(image, x, y, sheet.FrameWidth, sheet.FrameHeight))
                     indices.Add(row * sheet.Columns + col);
@@ -2441,10 +2476,22 @@ public class SpriteEditorPanel
     {
         int clipsBaked = 0;
         bool touched = false;
-        var sourceSheets = (data.Sheets ?? [])
-            .Where(sd => !string.IsNullOrWhiteSpace(sd?.Name))
-            .Select(SpriteSheet.FromData)
-            .ToList();
+
+        // Every sheet entry in the export, with the Column Offset resolved the same way the
+        // rest of the editor resolves it (file value first, prediction as the fallback).
+        var sourceSheets = new List<SpriteSheet>();
+        foreach (var sd in data.Sheets ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(sd?.Name)) continue;
+            var source = SpriteSheet.FromData(sd);
+            // Exports written before ColOffset existed carry no value: PREDICT it from the
+            // source image instead of silently slicing as if it were 0. Only entries WITHOUT
+            // frames need it (a file that carries CustomFrames is cropped from those
+            // verbatim), which keeps the per-file image decode off this hot path.
+            if (sd.ColOffset == null && source.CustomFrames == null)
+                source.ColOffset = SpritePatternExport.PredictColOffset(source.ImagePath);
+            sourceSheets.Add(source);
+        }
 
         // Pattern-export sheets exist only as bake inputs. Each clip is
         // cropped from its original image and immediately moved to an atlas.
@@ -2551,6 +2598,10 @@ public class SpriteEditorPanel
             foreach (var sheetData in data.Sheets)
             {
                 var sheet = SpriteSheet.FromData(sheetData);
+                // Column Offset: honour the file's value when it has one, otherwise PREDICT
+                // it from the source image (files saved before the field existed).
+                if (sheetData.ColOffset == null)
+                    sheet.ColOffset = SpritePatternExport.PredictColOffset(sheet.ImagePath);
                 if (IsBakedAtlas(sheet.Name))
                 {
                     _bakedAtlasSheets.Add(sheet);
@@ -3003,26 +3054,10 @@ public class SpriteEditorPanel
         if (_importDialog.IsConfirmed && _importDialog.SelectedPath != null)
         {
             string path = _importDialog.SelectedPath;
-            var sheet = new SpriteSheet
-            {
-                Name = System.IO.Path.GetFileNameWithoutExtension(path),
-                ImagePath = Tilemap2D.MakeDataPathRelative(path),
-                Columns = _editCols,
-                Rows = _editRows,
-                FrameWidth = _editFrameW,
-                FrameHeight = _editFrameH,
-                PaddingX = _editPadX,
-                PaddingY = _editPadY,
-                OffsetX = _editOffsetX,
-                OffsetY = _editOffsetY
-            };
-
-            // Content-aware fit from the image's own pixels (default 64x64 frame
-            // triggers the full frame-size + padding/offset detection; explicit user
-            // sizing keeps its frame size and only recomputes cols/rows).
-            AutoFitSheetFromImageFile(sheet, path, force: false, label: $"Import '{sheet.Name}'");
-
-            sheet.BakeUniformFrames();
+            // The image's OWN export wins when one sits beside it: its grid, frames, master
+            // box and clips ARE this art's data. Without one, the sheet is auto-fitted from
+            // the image's pixels exactly as before.
+            var sheet = CreateSheetForImport(path, out var siblingExport);
             SpriteSheets.Add(sheet);
             _selectedSheetIdx = SpriteSheets.Count - 1;
             _multiSelectedSheets.Clear(); // a fresh import = a single selection
@@ -3036,22 +3071,48 @@ public class SpriteEditorPanel
             // Load preview texture
             LoadPreviewTexture(path);
 
+            // Clips carried by that same export come back with the sheet (baked exactly like
+            // the *-sprite-anim.json pipeline bakes them), and are persisted right away so the
+            // import survives a restart.
+            if (BakeSiblingExportClips(sheet, siblingExport) > 0)
+                SaveAllSheets();
+
             Console.WriteLine($"[SpriteEditor] Imported: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
         }
     }
 
-    /// <summary>Import ONE sprite sheet from a direct path (multi-import worker).
-    /// Same defaults + auto-detect as the single import path but WITHOUT global side
-    /// effects (no selection/preview changes) — the multi-import loop owns those.
-    /// Returns true when the sheet was added.</summary>
-    private bool ImportOneSheet(string path)
+    /// <summary>Build the sheet a new import starts from. When an export named after the image
+    /// sits beside it (`<image>-sprite-anim.json`), that file IS this art's data: grid, frames,
+    /// master box, flips and Column Offset are taken from it (the Column Offset is predicted
+    /// from the pixels when the export predates the field). Without an export the sheet is
+    /// auto-fitted from the image itself.</summary>
+    private SpriteSheet CreateSheetForImport(string path, out SpriteSheetsSaveData? siblingExport)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
-
-        var sheet = new SpriteSheet
+        string dataPath = Tilemap2D.MakeDataPathRelative(path);
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (SpritePatternExport.TryLoadExport(path, out var data, out var entry))
         {
-            Name = Path.GetFileNameWithoutExtension(path),
-            ImagePath = Tilemap2D.MakeDataPathRelative(path),
+            siblingExport = data;
+            var sheet = SpriteSheet.FromData(entry!);
+            // The sheet points at the image being imported, and its size is read from that
+            // file: a recorded size must never win over the real pixels.
+            sheet.ImagePath = dataPath;
+            if (TryReadImageSize(path, out int width, out int height))
+            {
+                sheet.ImageWidth = width;
+                sheet.ImageHeight = height;
+            }
+            if (entry!.ColOffset == null)
+                sheet.ColOffset = SpritePatternExport.PredictColOffset(path);
+            Console.WriteLine($"[SpriteEditor] Import '{name}': grid + frames from {name}-sprite-anim.json ({sheet.Columns}x{sheet.Rows} @ {sheet.FrameWidth}x{sheet.FrameHeight}px, col offset {sheet.ColOffset}{(entry.ColOffset == null ? " predicted" : "")})");
+            return sheet;
+        }
+
+        siblingExport = null;
+        var fresh = new SpriteSheet
+        {
+            Name = name,
+            ImagePath = dataPath,
             Columns = _editCols,
             Rows = _editRows,
             FrameWidth = _editFrameW,
@@ -3061,13 +3122,76 @@ public class SpriteEditorPanel
             OffsetX = _editOffsetX,
             OffsetY = _editOffsetY
         };
-        // Content-aware fit (same rules as the single import; no UI side effects
-        // beyond the _edit* sync, which the multi loop overwrites via LoadSheetSettings).
-        AutoFitSheetFromImageFile(sheet, path, force: false, label: $"Import '{sheet.Name}'");
+        // Content-aware fit from the image's own pixels (default 64x64 frame triggers the
+        // full frame-size + padding/offset detection; explicit user sizing keeps its frame
+        // size and only recomputes cols/rows). The Column Offset comes from the sibling export
+        // when it carries the field, otherwise from the pixels — see AutoFitSheetFromImageFile.
+        AutoFitSheetFromImageFile(fresh, path, force: false, label: $"Import '{fresh.Name}'");
+        fresh.BakeUniformFrames();
+        // The image has no export yet: write the one that belongs to it (grid + predicted
+        // Column Offset), so what the editor just derived is on disk from now on.
+        SpritePatternExport.CreateExportIfMissing(fresh.ImagePath, fresh);
+        return fresh;
+    }
 
-        sheet.BakeUniformFrames();
+    /// <summary>Read just an image's pixel dimensions (the imported file's real size).</summary>
+    private static bool TryReadImageSize(string absPath, out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        try
+        {
+            using var stream = File.OpenRead(absPath);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            width = image.Width;
+            height = image.Height;
+            return width > 0 && height > 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Could not read the size of '{Path.GetFileName(absPath)}': {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Bake the Animation Clips this import's own export carries — the same bake the
+    /// *-sprite-anim.json pipeline uses — so importing an image whose export exists brings the
+    /// sheet AND its animations back in one step. Returns the number of clips baked.</summary>
+    private int BakeSiblingExportClips(SpriteSheet sheet, SpriteSheetsSaveData? data)
+    {
+        if (data?.AnimationClips == null || data.AnimationClips.Count == 0) return 0;
+        int bakedCount = 0;
+        foreach (var clipData in data.AnimationClips)
+        {
+            if (string.IsNullOrEmpty(clipData?.Name)) continue;
+            // Only the clips that belong to the sheet being imported.
+            if (!string.Equals(clipData.SpriteSheetName, sheet.Name, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var clip = AnimationClip2D.FromData(clipData);
+            if (!TryBakeClip(sheet, clip, out var bakedClip)) continue;
+            AddOrReplaceClip(bakedClip);
+            _autoLoadedPatternClips.Add(bakedClip);
+            bakedCount++;
+        }
+        if (bakedCount > 0)
+            Console.WriteLine($"[SpriteEditor] Import '{sheet.Name}': {bakedCount} clip(s) baked from its '{sheet.Name}-sprite-anim.json'");
+        return bakedCount;
+    }
+
+    /// <summary>Import ONE sprite sheet from a direct path (multi-import worker and
+    /// drag-and-drop). Same rules as the single import path — including taking the image's own
+    /// `<image>-sprite-anim.json` when it exists — but WITHOUT global side effects (no
+    /// selection/preview changes); the multi-import loop owns those.
+    /// Returns true when the sheet was added.</summary>
+    private bool ImportOneSheet(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+
+        var sheet = CreateSheetForImport(path, out var siblingExport);
         SpriteSheets.Add(sheet);
         LoadPreviewTexture(path);
+        if (BakeSiblingExportClips(sheet, siblingExport) > 0)
+            SaveAllSheets();
         Console.WriteLine($"[SpriteEditor] Imported: {sheet.Name} ({sheet.Columns}x{sheet.Rows} = {sheet.FrameCount} frames, {sheet.ImageWidth}x{sheet.ImageHeight}px)");
         return true;
     }
@@ -3225,6 +3349,7 @@ public class SpriteEditorPanel
         _editPadY = SelectedSheet.PaddingY;
         _editOffsetX = SelectedSheet.OffsetX;
         _editOffsetY = SelectedSheet.OffsetY;
+        _editColOffset = SelectedSheet.ColOffset;
         // Tree group buffer follows the primary selection (empty = tree root).
         _newGroupName = SelectedSheet.GroupName ?? "";
     }

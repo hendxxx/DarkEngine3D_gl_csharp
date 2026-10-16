@@ -10,13 +10,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
     /// </summary>
     public readonly struct SpriteGridFit
     {
-        public readonly int Cols, Rows, FrameW, FrameH, OffX, OffY, PadX, PadY;
+        public readonly int Cols, Rows, FrameW, FrameH, OffX, OffY, PadX, PadY, ColOffset;
 
         public SpriteGridFit(int cols, int rows, int frameW, int frameH,
-                             int offX, int offY, int padX, int padY)
+                             int offX, int offY, int padX, int padY, int colOffset = 0)
         {
             Cols = cols; Rows = rows; FrameW = frameW; FrameH = frameH;
             OffX = offX; OffY = offY; PadX = padX; PadY = padY;
+            ColOffset = colOffset;
         }
 
         /// <summary>Cell stride per axis (frame + gutter).</summary>
@@ -133,7 +134,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             if (rx.Count == 1) rx = SplitMergedAxis(rx, height, cx.Pitch);
 
             return new SpriteGridFit(cx.Count, rx.Count, cx.Frame, rx.Frame,
-                                     cx.Start, rx.Start, cx.Pad, rx.Pad);
+                                     cx.Start, rx.Start, cx.Pad, rx.Pad,
+                                     PredictColOffset(cx, colRuns, width));
         }
 
         // ─────────────────────────── per-axis solve ───────────────────────────
@@ -459,6 +461,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             }
             if (na <= 0 || nb <= 0) return false;
             return dot / Math.Sqrt(na * nb) >= MinPeriodicity;
+        }
+
+        /// <summary>PREDICT the per-sheet Column Offset for a sheet whose JSON carries no
+        /// ColOffset (every export written before the field existed): the number of whole
+        /// cell widths the artist left EMPTY in front of the first inked column. A grid that
+        /// already resolved its lead-in into an origin (OffX / cx.Start) predicts 0, so the
+        /// two never double-shift the same sheet.
+        ///
+        ///   lead-in 160 px, cell pitch 32 px -> 5 empty columns -> ColOffset 5
+        ///   lead-in   3 px, cell pitch 32 px -> 0 (antialiasing, not a missing column)
+        /// </summary>
+        private static int PredictColOffset(Axis cx, List<(int Start, int End)> colRuns, int width)
+        {
+            if (cx.Count < 1 || cx.Start != 0) return 0;
+            int firstInk = colRuns[0].Start;
+            int pitch = cx.Pitch;
+            if (pitch <= 0) return 0;
+            int emptyCols = firstInk / pitch;                  // whole cells only: 3 px is not a column
+            if (emptyCols < 0) emptyCols = 0;
+            int maxCols = Math.Max(1, width / pitch);         // never more leading cells than cells
+            return Math.Min(emptyCols, maxCols);
         }
 
         /// <summary>Preference of a cell size: 1.0 for the most-wanted standard (8x8 first,
