@@ -19,7 +19,11 @@ public class ShopEditorPanel
     private readonly IDEBridge _bridge;
     private int _selectedIndex = -1;
     private string _newShopId = "";
-    private bool _show;
+    // Visible by default like every other panel: a closed-by-default window never
+    // calls Begin(), so ImGui never registers it in imgui.ini and the menu's ✓
+    // state starts false — the panel then only appears after an extra click.
+    private bool _visible = true;
+    private bool _focusPending;
     private bool _dirty;
 
     public ShopEditorPanel(IDEBridge bridge) => _bridge = bridge;
@@ -38,22 +42,37 @@ public class ShopEditorPanel
     {
         // ref overload → ImGui draws the ✓ checkmark like every other panel menu item
         // (the click-only overload renders as a bare entry with no state indicator).
-        bool was = _show;
-        ImGui.MenuItem("Shop Editor", null, ref _show);
-        if (_show && !was && ShopSystem.Shops.Count > 0 && _selectedIndex < 0)
-            _selectedIndex = 0; // opening with no selection → select the first shop
+        bool was = _visible;
+        ImGui.MenuItem("Shop Editor", null, ref _visible);
+        if (_visible && !was)
+        {
+            // Opening from the menu must SHOW the window: without a focus request a
+            // window restored to the same floating rect as another panel stays hidden
+            // underneath it and the click looks ignored.
+            _focusPending = true;
+            if (ShopSystem.Shops.Count > 0 && _selectedIndex < 0)
+                _selectedIndex = 0; // opening with no selection → select the first shop
+        }
     }
 
     public void Render()
     {
-        if (!_show) return;
+        if (!_visible) return;
+        if (_focusPending)
+        {
+            // Only on the closed→open transition (ShowInMenu sets it): a permanent
+            // SetNextWindowFocus would steal focus from every other panel each frame.
+            ImGui.SetNextWindowFocus();
+            _focusPending = false;
+        }
         ImGui.SetNextWindowSize(new Vector2(760, 520), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(560, 380), new Vector2(1100, 860));
-        if (!ImGui.Begin("Shop Editor##ShopEditorPanel", ref _show))
+        if (!ImGui.Begin("Shop Editor##ShopEditorPanel", ref _visible))
         {
             ImGui.End();
             return;
         }
+        IDE.PanelFocus.Notify("Shop Editor");
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
             ImGui.TextDisabled("Open a project first — shops are saved to Artifacts/Shops/shops.json.");

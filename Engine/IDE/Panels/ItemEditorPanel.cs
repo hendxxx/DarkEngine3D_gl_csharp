@@ -20,6 +20,11 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 public class ItemEditorPanel
 {
     private readonly IDEBridge _bridge;
+    // Visible by default like every other panel: a closed-by-default window never
+    // calls Begin(), so ImGui never registers it in imgui.ini and the menu's ✓
+    // state starts false — the panel then only appears after an extra click.
+    private bool _visible = true;
+    private bool _focusPending;
     private int _selectedIndex = -1;
     private string _newItemId = "";
     private bool _dirty;
@@ -46,28 +51,40 @@ public class ItemEditorPanel
     {
         // ref overload → ImGui draws the ✓ checkmark like every other panel menu item
         // (the click-only overload renders as a bare entry with no state indicator).
-        bool was = _show;
-        ImGui.MenuItem("Item Editor", null, ref _show);
-        if (_show && !was && InventorySystem.Items.Count > 0 && _selectedIndex < 0)
-            _selectedIndex = 0; // opening with no selection → select the first item
+        bool was = _visible;
+        ImGui.MenuItem("Item Editor", null, ref _visible);
+        if (_visible && !was)
+        {
+            // Opening from the menu must SHOW the window: without a focus request a
+            // window restored to the same floating rect as another panel stays hidden
+            // underneath it and the click looks ignored.
+            _focusPending = true;
+            if (InventorySystem.Items.Count > 0 && _selectedIndex < 0)
+                _selectedIndex = 0; // opening with no selection → select the first item
+        }
     }
-    private bool _show;
 
     public void Render()
     {
-        if (!_show) return;
-        // SANE SIZE EVERY OPEN (Appearing — not FirstUseEver): the imgui.ini layout
-        // may carry a monster size saved by the earlier auto-sized version, and
-        // FirstUseEver would never correct it. Appearing resets to 800×560 each time
-        // the panel opens (user can still resize freely while it stays open), and the
-        // constraints keep any session resize within a tidy tool window.
+        if (!_visible) return;
+        if (_focusPending)
+        {
+            // Only on the closed→open transition (ShowInMenu sets it): a permanent
+            // SetNextWindowFocus would steal focus from every other panel each frame.
+            ImGui.SetNextWindowFocus();
+            _focusPending = false;
+        }
+        // FirstUseEver 800×560 only seeds a fresh layout; a layout saved in imgui.ini
+        // keeps the user's own rect. The constraints still clamp a monster size from
+        // an older auto-sized version (and the min keeps the two columns readable).
         ImGui.SetNextWindowSize(new Vector2(800, 560), ImGuiCond.FirstUseEver);
         ImGui.SetNextWindowSizeConstraints(new Vector2(620, 430), new Vector2(1180, 880));
-        if (!ImGui.Begin("Item Editor##ItemEditorPanel", ref _show))
+        if (!ImGui.Begin("Item Editor##ItemEditorPanel", ref _visible))
         {
             ImGui.End();
             return;
         }
+        IDE.PanelFocus.Notify("Item Editor");
         if (!Engine.Project.ProjectManager.IsProjectLoaded)
         {
             ImGui.TextColored(new Vector4(1f, 0.6f, 0.3f, 1f), "Open a project first — catalog saves to Artifacts/Items/items.json");
