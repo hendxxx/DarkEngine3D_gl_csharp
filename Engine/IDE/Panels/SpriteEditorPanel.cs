@@ -70,7 +70,11 @@ public class SpriteEditorPanel
     private Queue<(string Path, SpriteSheetsSaveData Data)>? _autoLoadPending;
     private int _autoLoadTotal;
     private int _autoLoadDone;
-    private int _autoLoadClipsBaked;    private string _autoLoadStatus = "";
+    private int _autoLoadClipsBaked;
+    /// <summary>Clips this Auto Load run KEPT because they already existed (name present
+    /// + baked atlas still on disk) instead of rebaking them.</summary>
+    private int _autoLoadClipsSkipped;
+    private string _autoLoadStatus = "";
 
 
     // ── Sprite sheets ──
@@ -288,7 +292,7 @@ public class SpriteEditorPanel
             if (ImGui.Button("Auto Load All Files"))
                 AutoLoadProjectSheets();
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Auto Load All Files: load baked clips from Artifacts/Sprites/sprites.sheets.json, then find + bake ALL *-sprite-anim.json exports under the project.\nASYNC — scanning + JSON parsing in a background task, baking a few files per frame; the editor stays responsive.\nProgress + status appear below while it works.\nRequires an open project.");
+                ImGui.SetTooltip("Auto Load All Files: load baked clips from Artifacts/Sprites/sprites.sheets.json, then find ALL *-sprite-anim.json exports under the project.\nA clip that already exists (its baked atlas is still on disk) is SKIPPED — only missing clips are baked.\nASYNC — scanning + JSON parsing in a background task, baking a few files per frame; the editor stays responsive.\nProgress + status appear below while it works.\nRequires an open project.");
             ImGui.SameLine();
             ImGui.TextDisabled($"({SpriteSheets.Count} source sheets, {_bakedAtlasSheets.Count} baked atlases, {AnimationClips.Count} clips)");
 
@@ -2472,10 +2476,40 @@ public class SpriteEditorPanel
     /// immediately moved to an atlas (baked). Names already present (manual
     /// sheets/clips, the sheets file) are kept as-is and never duplicated.
     /// Returns the number of clips baked from this file.</summary>
-    private int MergePatternExportFile(string file, SpriteSheetsSaveData data)
+    /// <param name="skipExistingClips">TRUE for the Auto Load All Files sweep: a clip that
+    /// already exists (same name AND its baked atlas still on disk) is KEPT — nothing is
+    /// rebaked — and only clips that are missing are created. FALSE for the targeted
+    /// Save As Pattern merge, which must show the pattern it just wrote.</param>
+    private int MergePatternExportFile(string file, SpriteSheetsSaveData data, bool skipExistingClips = false)
     {
         int clipsBaked = 0;
+        int clipsSkipped = 0;
         bool touched = false;
+
+        // SKIP-WHEN-PRESENT, first pass: an existing usable clip is already baked and saved —
+        // rebaking it would decode the source image and repack its atlas for nothing. This runs
+        // BEFORE the source sheets are read, so an export whose clips all exist costs nothing
+        // (no image decode, no grid prediction) and the sweep stays fast on huge pattern sets.
+        var pendingClips = new List<AnimationClip2DData>();
+        foreach (var clipData in data.AnimationClips ?? [])
+        {
+            if (string.IsNullOrEmpty(clipData?.Name)) continue;
+            if (skipExistingClips && HasUsableBakedClip(clipData.Name))
+            {
+                clipsSkipped++;
+                continue;
+            }
+            pendingClips.Add(clipData);
+        }
+        if (pendingClips.Count == 0)
+        {
+            if (clipsSkipped > 0)
+            {
+                _autoLoadClipsSkipped += clipsSkipped;
+                Console.WriteLine($"[SpriteEditor] Pattern merge {Path.GetFileName(file)}: kept {clipsSkipped} existing clip(s) (skip, no rebake)");
+            }
+            return 0;
+        }
 
         // Every sheet entry in the export, with the Column Offset resolved the same way the
         // rest of the editor resolves it (file value first, prediction as the fallback).
@@ -2495,9 +2529,8 @@ public class SpriteEditorPanel
 
         // Pattern-export sheets exist only as bake inputs. Each clip is
         // cropped from its original image and immediately moved to an atlas.
-        foreach (var clipData in data.AnimationClips ?? [])
+        foreach (var clipData in pendingClips)
         {
-            if (string.IsNullOrEmpty(clipData?.Name)) continue;
             var source = sourceSheets.FirstOrDefault(s => string.Equals(s.Name,
                 clipData.SpriteSheetName, StringComparison.OrdinalIgnoreCase))
                 ?? sourceSheets.FirstOrDefault();
@@ -2516,7 +2549,27 @@ public class SpriteEditorPanel
             _autoLoadClipsBaked += clipsBaked;
             Console.WriteLine($"[SpriteEditor] Pattern merge {Path.GetFileName(file)}: {clipsBaked} clips");
         }
+        if (clipsSkipped > 0)
+        {
+            _autoLoadClipsSkipped += clipsSkipped;
+            Console.WriteLine($"[SpriteEditor] Pattern merge {Path.GetFileName(file)}: kept {clipsSkipped} existing clip(s) (skip, no rebake)");
+        }
         return clipsBaked;
+    }
+
+    /// <summary>TRUE when a clip with this name already exists AND is ready to use: it is
+    /// baked into an atlas that is loaded here, and that atlas image is still on disk.
+    /// Auto Load skips these clips; anything else (no clip, unbaked clip, deleted atlas
+    /// PNG) is recreated by baking it again.</summary>
+    private bool HasUsableBakedClip(string name)
+    {
+        var existing = AnimationClips.FirstOrDefault(c => string.Equals(c.Name, name,
+            StringComparison.OrdinalIgnoreCase));
+        if (existing == null || !IsBakedAtlas(existing.SpriteSheetName)) return false;
+        var atlas = _bakedAtlasSheets.FirstOrDefault(s => string.Equals(s.Name,
+            existing.SpriteSheetName, StringComparison.OrdinalIgnoreCase));
+        if (atlas == null || string.IsNullOrEmpty(atlas.ImagePath)) return false;
+        return File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(atlas.ImagePath));
     }
 
     /// <summary>All *-sprite-anim.json files INSIDE THE LOADED PROJECT folder only:
@@ -2808,6 +2861,7 @@ public class SpriteEditorPanel
         _autoLoadTotal = 0;
         _autoLoadDone = 0;
         _autoLoadClipsBaked = 0;
+        _autoLoadClipsSkipped = 0;
         _autoLoadStatus = "";
         _groupEditOld = "";
         _groupEditBuffer = "";
@@ -2868,6 +2922,7 @@ public class SpriteEditorPanel
         _autoLoadTotal = files.Count;
         _autoLoadDone = 0;
         _autoLoadClipsBaked = 0;
+        _autoLoadClipsSkipped = 0;
         _autoLoadStatus = files.Count == 0
             ? "Auto Load: no *-sprite-anim.json files found"
             : $"Auto Load: scanning {files.Count} file(s)...";
@@ -2948,7 +3003,8 @@ public class SpriteEditorPanel
                 if (!Engine.Helpers.BinaryObjectCache.LastLoadWasBinary)
                     Engine.Helpers.BinaryObjectCache.TryWrite(file, data);
                 int before = _autoLoadClipsBaked;
-                MergePatternExportFile(file, data);
+                // Auto Load = sweep: keep every clip that already exists + is usable.
+                MergePatternExportFile(file, data, skipExistingClips: true);
                 if (_autoLoadClipsBaked > before)
                     _autoLoadStatus = $"Auto Load: autofitting clips from {_autoLoadDone}/{_autoLoadTotal} file(s) ({_autoLoadClipsBaked} clips)...";
                 else
@@ -2969,8 +3025,8 @@ public class SpriteEditorPanel
     private void FinishAutoLoad()
     {
         _autoLoadPending = null;
-        _autoLoadStatus = $"Auto Load complete: {_autoLoadClipsBaked} clipped baked from {_autoLoadTotal} file(s)";
-        Console.WriteLine($"[SpriteEditor] Auto Load complete: {SpriteSheets.Count} sheets, {_bakedAtlasSheets.Count} atlases, {AnimationClips.Count} clips alive ({_autoLoadClipsBaked} newly baked this run, {_autoLoadTotal} file(s) seen)");
+        _autoLoadStatus = $"Auto Load complete: {_autoLoadClipsBaked} clip(s) baked, {_autoLoadClipsSkipped} existing kept from {_autoLoadTotal} file(s)";
+        Console.WriteLine($"[SpriteEditor] Auto Load complete: {SpriteSheets.Count} sheets, {_bakedAtlasSheets.Count} atlases, {AnimationClips.Count} clips alive ({_autoLoadClipsBaked} newly baked, {_autoLoadClipsSkipped} existing skipped, {_autoLoadTotal} file(s) seen)");
 
         // 3) Keep sheet selection + preview range valid after removals/additions.
         if (_selectedSheetIdx >= SpriteSheets.Count)
