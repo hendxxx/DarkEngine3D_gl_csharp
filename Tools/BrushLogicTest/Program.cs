@@ -367,6 +367,25 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     probe.RevertSculpt();
     Check("Revert sculpt detaches the bake", probe.SculptDeltaPath.Length == 0,
         $"path after revert '{probe.SculptDeltaPath}'");
+
+    // UNDO REVERT — the revert parks the live field instead of destroying it, so one
+    // undo restores the exact painted state (weights + bake path) and the panel's
+    // CanUndoSplatRevert flips off. A later stroke invalidates that stash.
+    Check("Revert exposes a one-level undo", probe.CanUndoSplatRevert,
+        $"CanUndoSplatRevert={probe.CanUndoSplatRevert}");
+    bool undone = probe.UndoSplatRevert();
+    Check("Undo revert restores the bake", undone && probe.SplatMapPath == bakePath,
+        $"path '{probe.SplatMapPath}'");
+    Check("Undo revert restores the paint", probe.HasSplatEdits && probe.SplatPaintCoverage() > 0.01f,
+        $"coverage {probe.SplatPaintCoverage() * 100:F1}%");
+    Check("Undo revert is single-use", !probe.CanUndoSplatRevert && !probe.UndoSplatRevert(),
+        $"CanUndoSplatRevert={probe.CanUndoSplatRevert}");
+    probe.RevertSplat();
+    Check("Second revert parks again", probe.CanUndoSplatRevert && probe.SplatMapPath.Length == 0,
+        $"stash={probe.CanUndoSplatRevert} path='{probe.SplatMapPath}'");
+    probe.SplatBeginStroke();     // a new stroke makes the parked state stale
+    Check("New stroke clears the revert stash", !probe.CanUndoSplatRevert,
+        $"CanUndoSplatRevert={probe.CanUndoSplatRevert}");
     try { File.Delete(bakePath); } catch { /* temp fixture only */ }
 }
 

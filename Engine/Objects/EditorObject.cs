@@ -1221,6 +1221,16 @@ public unsafe class EditorObject
     // sculpted elevation; the brush always wins where it painted.
     private TerrainSplatField? _splatField;
     private TerrainSplatField? _splatFieldForBands;   // band-computed buffer while paint owns the live one
+    // ONE-LEVEL "Undo revert paint": the field that was live when the revert ran is
+    // kept ALIVE (never disposed) instead of being thrown away — its CPU weights,
+    // stroke history and GPU texture are exactly what the undo restores. One level
+    // only, and any new stroke drops the stash (a later undo would resurrect stale
+    // paint on top of fresh strokes).
+    private TerrainSplatField? _splatRevertField;      // the paint field (if one was live)
+    private TerrainSplatField? _splatRevertFieldBands; // the band/base buffer (if that was live)
+    private string _splatRevertPath = "";              // stored bake path at revert time
+    private string? _splatRevertLoadedPath;
+    private bool _splatHasRevertStash;
     private string? _splatLoadedPath;                 // file the live field was decoded from
     private string? _splatDecodeFailedPath;           // sticky failure cache (no decode storms)
     private bool _splatBandsPending;                  // bands recompute requested (param/sculpt change)
@@ -1723,6 +1733,7 @@ public unsafe class EditorObject
     /// convention as <see cref="SculptApply"/>). The dirty region uploads live.</summary>
     public void SplatApply(float localX, float localZ, SplatBrushSession b, float dt, int frameStamp)
     {
+        ClearSplatRevertStash();   // no-op unless a revert is parked; painting invalidates it
         var f = EnsureSplatPaintField();
         if (f == null) return;
         f.ApplyBrush(localX, localZ, MathF.Abs(Scale.X), MathF.Abs(Scale.Z), b, dt, frameStamp);
@@ -1731,7 +1742,13 @@ public unsafe class EditorObject
 
     /// <summary>Mark the start of a splat stroke (mouse press) — arms the lazy
     /// pre-stroke snapshot.</summary>
-    public void SplatBeginStroke() => _splatField?.BeginStroke();
+    public void SplatBeginStroke()
+    {
+        // A new stroke makes the revert undo stale — drop the parked field (and its
+        // texture) BEFORE the stroke mutates anything.
+        ClearSplatRevertStash();
+        _splatField?.BeginStroke();
+    }
 
     /// <summary>Finish a splat stroke: flush + bake the weights to the splat TGA
     /// and repoint <see cref="SplatMapPath"/> at the bake. A stroke that mutated
@@ -1792,13 +1809,59 @@ public unsafe class EditorObject
     /// decoded splat file) — drives the paint status line in the Terrain panel.</summary>
     public bool HasSplatEdits => _splatField?.HasAnyEdits == true;
 
-    /// <summary>Discard ALL paint edits: detach the stored splat bake, drop the live
-    /// field (undo history included) and rebuild an empty base so the viewport clears
-    /// on the next frame. Layer textures, height bands and slope tiers are kept.</summary>
+    /// <summary>True while the last REVERT can still be undone (one level, cleared by
+    /// any new stroke) — drives the "Undo revert" button + the Ctrl+Z fallback.</summary>
+    public bool CanUndoSplatRevert => _splatHasRevertStash;
+
+    /// <summary>Throw the one-level revert stash away — a new stroke makes it stale
+    /// (undoing the revert later would resurrect old paint ON TOP of fresh strokes).
+    /// Disposes the kept GPU texture because it can never be restored after this.</summary>
+    public void ClearSplatRevertStash()
+    {
+        if (!_splatHasRevertStash) return;
+        _splatRevertField?.DisposeTexture();
+        _splatRevertFieldBands?.DisposeTexture();
+        _splatRevertField = null;
+        _splatRevertFieldBands = null;
+        _splatRevertPath = "";
+        _splatRevertLoadedPath = null;
+        _splatHasRevertStash = false;
+    }
+
+    /// <summary>Discard ALL paint edits: detach the stored splat bake, park the live
+    /// field in a ONE-LEVEL undo stash (never disposed — its weights, stroke history
+    /// and GPU texture are what <see cref="UndoSplatRevert"/> brings back) and rebuild
+    /// an empty base so the viewport clears on the next frame. Layer textures, height
+    /// bands and slope tiers are kept. No-op when there is nothing to revert, so a
+    /// stray click can never consume the undo slot.</summary>
     public void RevertSplat()
     {
+        bool hasPaintState = _splatField != null || _splatFieldForBands != null || _splatMapPath.Length > 0;
+        if (!hasPaintState) return;
+
+        // Park the current state BEFORE dropping anything. An older stash is replaced
+        // (one level only — a second revert must not stack).
+        ClearSplatRevertStash();
+        _splatRevertField = _splatField;
+        _splatRevertFieldBands = _splatFieldForBands;
+        // No live field (the paint only existed on disk, not drawn since load) → decode
+        // it NOW, CPU-only, so "Undo revert" restores the painted weights as well. GL is
+        // untouched here: the draw builds the texture for a CPU-only field.
+        if (_splatRevertField == null && _splatRevertFieldBands == null && _splatMapPath.Length > 0)
+        {
+            string resolvedRevert = PathHelpers.Resolve(_splatMapPath);
+            if (File.Exists(resolvedRevert))
+                _splatRevertField = TerrainSplatField.FromFile(resolvedRevert);
+        }
+        _splatRevertPath = _splatMapPath;
+        _splatRevertLoadedPath = _splatLoadedPath;
+        _splatHasRevertStash = true;
+
         string detached = _splatMapPath;
-        DropSplatField();
+        // Detach the live slots WITHOUT disposing what the stash just took ownership of.
+        _splatField = null;
+        _splatFieldForBands = null;
+        _splatLoadedPath = null;
         // THE STORED BAKE *IS* THE PAINT. Dropping only the live field made the very
         // next draw re-decode the SAME TGA → every "reverted" stroke came straight
         // back, the coverage line kept reporting Painted and Ctrl+Z could not help
@@ -1808,7 +1871,7 @@ public unsafe class EditorObject
         SplatMapPath = "";
         _splatDecodeFailedPath = null;
         if (!string.IsNullOrEmpty(detached))
-            Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — detached {detached}");
+            Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — detached {detached} (undo available)");
         // Empty base for THIS frame: height bands rebuild from the elevation, else the
         // neutral layer-0 fill the per-pixel splat/slope variants blend over (without
         // it the splat gate would go dark for a frame and the paint would look stuck).
@@ -1825,6 +1888,33 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>Restore the painted state a <see cref="RevertSplat"/> replaced — the
+    /// EXACT field instance (weights + stroke history + GPU texture) and the stored
+    /// bake path, so both the viewport and Ctrl+Z keep working. One level only.</summary>
+    public bool UndoSplatRevert()
+    {
+        if (!_splatHasRevertStash) return false;
+        // The EMPTY base this revert built goes away; the stash owns the kept field.
+        _splatField?.DisposeTexture();
+        _splatFieldForBands?.DisposeTexture();
+        _splatField = _splatRevertField;
+        _splatFieldForBands = _splatRevertFieldBands;
+        _splatLoadedPath = _splatRevertLoadedPath;
+        // Assign the backing field directly: the SplatMapPath SETTER drops a field
+        // without edits and we are about to install a painted one.
+        _splatMapPath = _splatRevertPath;
+        _splatDecodeFailedPath = null;
+        _splatRevertField = null;
+        _splatRevertFieldBands = null;
+        _splatRevertPath = "";
+        _splatRevertLoadedPath = null;
+        _splatHasRevertStash = false;
+        InvalidateSplatBands();
+        Console.WriteLine($"[TerrainSplat] '{Name}' undo revert paint — restored "
+            + (string.IsNullOrEmpty(_splatMapPath) ? "in-memory strokes" : _splatMapPath));
+        return true;
+    }
+
     /// <summary>Weight coverage of layers 1-3 (0 = fully layer 0) — drives the
     /// splat status line and the paintable-region outline visibility.</summary>
     public float SplatPaintCoverage()
@@ -1838,6 +1928,9 @@ public unsafe class EditorObject
     /// those; the weight field re-decodes/recomputes on next use).</summary>
     public void DropSplatField()
     {
+        // A scene reload / close owns the state — a parked revert must never resurrect
+        // paint from the previous scene.
+        ClearSplatRevertStash();
         _splatField?.DisposeTexture();
         _splatField = null;
         _splatFieldForBands?.DisposeTexture();
@@ -3205,6 +3298,12 @@ public unsafe class EditorObject
         if (_splatField == null && _splatFieldForBands == null
             && _splatMapPath.Length > 0 && _splatDecodeFailedPath != _splatMapPath)
             _ = EnsureSplatBandField();
+        // A CPU-only weight field can legitimately exist (undo-revert restores the
+        // decoded weights without touching GL, e.g. when the paint only lived on disk).
+        // Build its texture ONCE here: without this the gate below reads
+        // GpuTexture == 0 and the restored paint would stay invisible until a stroke.
+        if (_splatField != null && _splatField.GpuTexture == 0) _splatField.FlushTexture();
+        if (_splatFieldForBands != null && _splatFieldForBands.GpuTexture == 0) _splatFieldForBands.FlushTexture();
         bool splatLiveField = _splatField != null && _splatField.GpuTexture != 0;
         bool splatLiveBands = _splatFieldForBands != null && _splatFieldForBands.GpuTexture != 0;
         bool splatActive = (splatLiveField || splatLiveBands)

@@ -5111,9 +5111,13 @@ ImGui.SameLine();
                 // ── Per-stroke undo/redo while the paint session is ON ──
                 if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Z, false))
                 {
-                    if (ImGui.GetIO().KeyShift
+                    // No stroke left to undo → fall back to the one-level "undo revert
+                    // paint" (a revert drops the stroke history, so this is the only way
+                    // back from an accidental click).
+                    bool did = ImGui.GetIO().KeyShift
                         ? splatObj.SplatRedo()
-                        : splatObj.SplatUndo())
+                        : (splatObj.SplatUndo() || splatObj.UndoSplatRevert());
+                    if (did)
                         Console.WriteLine($"[TerrainSplat] '{splatObj.Name}' {(ImGui.GetIO().KeyShift ? "redo" : "undo")} (depth {splatObj.SplatUndoDepth}/{splatObj.SplatRedoDepth})");
                 }
                 if (ImGui.GetIO().KeyCtrl && ImGui.IsKeyPressed(ImGuiKey.Y, false))

@@ -31,7 +31,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private bool _visible = true;
 
         private readonly ImGuiFileDialog _dialog = new();
-        private bool _dialogTerrain; // the browse dialog targets the elevation slot
+        private bool _dialogTerrain;      // the browse dialog targets the elevation slot
+        private bool _confirmRevertSplat;            // "Revert paint?" confirm requested
+        private EditorObject? _revertSplatTarget;    // object the confirm/revert applies to
 
         public TerrainPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -43,6 +45,50 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
             ImGui.Begin("Terrain", ref _visible);
             IDE.PanelFocus.Notify("Terrain");
+
+            // ── Revert paint CONFIRM modal. Rendered BEFORE the early returns below so
+            //    it can never be left "open" by switching the selection (popups render in
+            //    the current window scope; outside Begin/End they never open). ──
+            if (_confirmRevertSplat)
+            {
+                ImGui.OpenPopup("Revert paint?");
+                _confirmRevertSplat = false;
+            }
+            if (ImGui.BeginPopupModal("Revert paint?", ref _confirmRevertSplat, ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                var target = _revertSplatTarget;
+                if (target == null)
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+                else
+                {
+                    ImGui.TextColored(new Vector4(1f, 0.65f, 0.25f, 1f), "Revert ALL terrain paint?");
+                    ImGui.Separator();
+                    float covNow = target.SplatPaintCoverage() * 100f;
+                    int strokes = target.SplatUndoDepth;
+                    ImGui.Text($"This clears every painted weight on '{target.Name}'"
+                        + (covNow > 0.01f ? $" ({covNow:F1}% coverage)" : "") + ".");
+                    if (strokes > 0)
+                        ImGui.TextDisabled($"{strokes} stroke(s) of undo history are discarded.");
+                    ImGui.TextDisabled("Layer textures, height bands and slope tiers are kept.\nThe baked weight map is detached (the file stays on disk).");
+                    ImGui.TextDisabled("Undoable ONCE right after it runs: 'Undo revert' / Ctrl+Z.");
+                    ImGui.Separator();
+                    if (ImGui.Button("Revert paint", new Vector2(150, 0)))
+                    {
+                        target.RevertSplat();
+                        _revertSplatTarget = null;
+                        ImGui.CloseCurrentPopup();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                    {
+                        _revertSplatTarget = null;
+                        ImGui.CloseCurrentPopup();
+                    }
+                }
+                ImGui.EndPopup();
+            }
 
             var obj = _bridge?.SelectedEditorObject;
             if (obj == null)
@@ -523,9 +569,21 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Painted — each stroke bakes into the splat file.");
                 if (obj.SplatUndoDepth > 0 || obj.SplatRedoDepth > 0)
                     ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SplatUndoDepth} stroke(s) back, {obj.SplatRedoDepth} to redo");
+                // DESTRUCTIVE — always behind a confirm, and undoable exactly once.
                 if (ImGui.SmallButton("Revert paint##terrain_splat"))
-                    obj.RevertSplat();
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits: the baked weight map is detached and every layer\nreturns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept.");
+                {
+                    _revertSplatTarget = obj;
+                    _confirmRevertSplat = true;
+                }
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits: the baked weight map is detached and every layer\nreturns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept.\nAsks for confirmation and can be undone once (Undo revert / Ctrl+Z).");
+                if (obj.CanUndoSplatRevert)
+                {
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton("Undo revert##terrain_splat"))
+                        obj.UndoSplatRevert();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Restore the painted state the last revert replaced —\nweights, stroke history and the stored bake path all come back.\nA new stroke clears this one-level undo.");
+                }
                 ImGui.Separator();
             }
 
