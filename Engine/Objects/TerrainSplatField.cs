@@ -577,7 +577,14 @@ public sealed class TerrainSplatField
     /// painted a different layer, at the cost of displacing that paint there.</item></list>
     /// Call AFTER the base weights exist (ComputeHeightBands / FillNeutralLayer0); the
     /// pass is NOT idempotent — callers rebuild a fresh base each time.
-    /// Requires a subsequent FlushTexture().</summary>
+    /// Requires a subsequent FlushTexture().
+    /// <para>NOTE: this CPU fold is NOT the runtime slope path any more. Slope based
+    /// texturing is evaluated PER PIXEL in objectPbr_fragment.glsl (uniforms
+    /// u_slopeRule* tiers / u_slopeOverride / u_slopeFloor), because a CPU fold must be
+    /// re-baked for every slider move and is skipped on any field that carries paint
+    /// (every stored splat file does) — i.e. the slope simply never appeared on a
+    /// painted terrain. This method is kept as the CPU reference / offline bake
+    /// utility and is covered by Tools/BrushLogicTest.</para></summary>
     public void ComputeSlopeWeights(TerrainHeightfield? hf, TerrainHeightfield? delta, float deltaAmp,
         float baseHeight, float offset, float tilingX, float tilingY,
         float spanX, float spanZ, int layer, float threshold, float fade,

@@ -1216,7 +1216,6 @@ public unsafe class EditorObject
     private string? _splatLoadedPath;                 // file the live field was decoded from
     private string? _splatDecodeFailedPath;           // sticky failure cache (no decode storms)
     private bool _splatBandsPending;                  // bands recompute requested (param/sculpt change)
-    private bool _splatSlopeDirty = true;             // slope weights need (re)building / re-applying
 
     /// <summary>Stored splat weight map (RGBA TGA — R/G/B/A = layers 0-3). Written
     /// by the paint bake; loadable from any 32-bit image. Empty = never painted.</summary>
@@ -1265,21 +1264,21 @@ public unsafe class EditorObject
     public bool SplatSlopeEnabled
     {
         get => _splatSlopeEnabled;
-        set { if (_splatSlopeEnabled != value) { _splatSlopeEnabled = value; _splatSlopeDirty = true; } }
+        set => _splatSlopeEnabled = value;
     }
     private int _splatSlopeLayer = 1;
     /// <summary>Slope layer index 1..3 (0 = base PBR material is not a slope target).</summary>
     public int SplatSlopeLayer
     {
         get => _splatSlopeLayer;
-        set { var v = Math.Clamp(value, 1, 3); if (_splatSlopeLayer != v) { _splatSlopeLayer = v; _splatSlopeDirty = true; } }
+        set => _splatSlopeLayer = Math.Clamp(value, 1, 3);
     }
     private float _splatSlopeThreshold = 0.35f;
     /// <summary>Slope threshold: 0 = every surface, 1 = vertical cliffs only (N.Y).</summary>
     public float SplatSlopeThreshold
     {
         get => _splatSlopeThreshold;
-        set { var v = Math.Clamp(value, 0f, 0.98f); if (_splatSlopeThreshold != v) { _splatSlopeThreshold = v; _splatSlopeDirty = true; } }
+        set => _splatSlopeThreshold = Math.Clamp(value, 0f, 0.98f);
     }
 
     // ── SLOPE BRUSH v2 (degrees + alpha range + paint interplay + own PBR set) ──
@@ -1292,11 +1291,11 @@ public unsafe class EditorObject
     /// <summary>Slope definition in DEGREES: 0 = flat ground, 90 = a vertical wall.
     /// Computed from the same surface the shading uses (central differences on the
     /// combined base+delta elevation), so the visual matches the geometry.</summary>
-    private bool _splatSlopeUseDegrees;
+    private bool _splatSlopeUseDegrees = true;   // new objects: degrees (0° flat … 90° wall)
     public bool SplatSlopeUseDegrees
     {
         get => _splatSlopeUseDegrees;
-        set { if (_splatSlopeUseDegrees != value) { _splatSlopeUseDegrees = value; _splatSlopeDirty = true; } }
+        set => _splatSlopeUseDegrees = value;
     }
 
     private float _splatSlopeAngleMin = 35f;
@@ -1305,7 +1304,7 @@ public unsafe class EditorObject
     public float SplatSlopeAngleMin
     {
         get => _splatSlopeAngleMin;
-        set { var v = Math.Clamp(value, 0f, 89f); if (_splatSlopeAngleMin != v) { _splatSlopeAngleMin = v; _splatSlopeDirty = true; } }
+        set => _splatSlopeAngleMin = Math.Clamp(value, 0f, 89f);
     }
 
     private float _splatSlopeAngleMax = 65f;
@@ -1314,7 +1313,12 @@ public unsafe class EditorObject
     public float SplatSlopeAngleMax
     {
         get => _splatSlopeAngleMax;
-        set { var v = Math.Clamp(value, 1f, 90f); if (v <= _splatSlopeAngleMin) v = MathF.Min(_splatSlopeAngleMin + 1f, 90f); if (_splatSlopeAngleMax != v) { _splatSlopeAngleMax = v; _splatSlopeDirty = true; } }
+        set
+        {
+            float v = Math.Clamp(value, 1f, 90f);
+            if (v <= _splatSlopeAngleMin) v = MathF.Min(_splatSlopeAngleMin + 1f, 90f);
+            _splatSlopeAngleMax = v;
+        }
     }
 
     /// <summary>Slope/paint interplay: false (Combine) = the slope mask MULTIPLIES
@@ -1327,7 +1331,7 @@ public unsafe class EditorObject
     public bool SplatSlopeOverridePaint
     {
         get => _splatSlopeOverridePaint;
-        set { if (_splatSlopeOverridePaint != value) { _splatSlopeOverridePaint = value; _splatSlopeDirty = true; } }
+        set => _splatSlopeOverridePaint = value;
     }
 
     private float _splatSlopePaintFloor = 0.25f;
@@ -1337,14 +1341,14 @@ public unsafe class EditorObject
     public float SplatSlopePaintFloor
     {
         get => _splatSlopePaintFloor;
-        set { var v = Math.Clamp(value, 0f, 0.9f); if (_splatSlopePaintFloor != v) { _splatSlopePaintFloor = v; _splatSlopeDirty = true; } }
+        set => _splatSlopePaintFloor = Math.Clamp(value, 0f, 0.9f);
     }
     private float _splatSlopeFade = 0.2f;
     /// <summary>Blend width above the threshold (same units as the threshold).</summary>
     public float SplatSlopeFade
     {
         get => _splatSlopeFade;
-        set { var v = Math.Clamp(value, 0.002f, 1f); if (_splatSlopeFade != v) { _splatSlopeFade = v; _splatSlopeDirty = true; } }
+        set => _splatSlopeFade = Math.Clamp(value, 0.002f, 1f);
     }
     /// <summary>Number of elevation bands that influence weights (1..4) — the
     /// remaining layers keep weight 0 unless painted.</summary>
@@ -1385,7 +1389,108 @@ public unsafe class EditorObject
     public float SplatSlopeTiling
     {
         get => _splatSlopeTiling;
-        set { var v = Math.Clamp(value, 0.25f, 16f); if (_splatSlopeTiling != v) { _splatSlopeTiling = v; _splatSlopeDirty = true; } }
+        set => _splatSlopeTiling = Math.Clamp(value, 0.25f, 16f);
+    }
+
+    // ── SLOPE TIER 2 / 3 (grass → dirt → rock) ──
+    // A single slope rule can only say "this texture appears above X°" — on a cliff
+    // that same texture therefore covers the WHOLE cliff. Tier 2 and 3 add the two
+    // steeper bands so a terrain can go base grass (flat) → dirt (medium slopes) →
+    // rock (cliffs). The shader applies the enabled tiers sorted by their START angle,
+    // so the STEEPEST tier always wins where two ranges overlap. Each tier points at
+    // its own splat layer (textures in Layer textures) and carries its own tiling.
+    // Per-pixel in the shader → no weight-map rebake; painted weights stay the base.
+
+    /// <summary>Slope tier 2 on/off (the middle band, e.g. dirt).</summary>
+    public bool SplatSlope2Enabled { get; set; }
+    /// <summary>Slope tier 2 target splat layer (1..3).</summary>
+    public int SplatSlope2Layer { get; set; } = 2;
+    /// <summary>Slope tier 2 start angle in DEGREES (alpha 0 at/below this).</summary>
+    public float SplatSlope2AngleMin { get; set; } = 45f;
+    /// <summary>Slope tier 2 full angle in DEGREES (alpha 1 at/above this).</summary>
+    public float SplatSlope2AngleMax { get; set; } = 90f;
+    /// <summary>Slope tier 2 texture tiling (overrides its layer's tiling while the tier is on).</summary>
+    public float SplatSlope2Tiling { get; set; } = 2f;
+
+    /// <summary>Slope tier 3 on/off (the steepest band, e.g. bare rock on cliffs).</summary>
+    public bool SplatSlope3Enabled { get; set; }
+    /// <summary>Slope tier 3 target splat layer (1..3).</summary>
+    public int SplatSlope3Layer { get; set; } = 3;
+    /// <summary>Slope tier 3 start angle in DEGREES (alpha 0 at/below this).</summary>
+    public float SplatSlope3AngleMin { get; set; } = 60f;
+    /// <summary>Slope tier 3 full angle in DEGREES (alpha 1 at/above this).</summary>
+    public float SplatSlope3AngleMax { get; set; } = 90f;
+    /// <summary>Slope tier 3 texture tiling (overrides its layer's tiling while the tier is on).</summary>
+    public float SplatSlope3Tiling { get; set; } = 2f;
+
+    /// <summary>True when ANY slope tier is enabled (part of the splat-render gate).</summary>
+    public bool SplatSlopeAnyEnabled => SplatSlopeEnabled || SplatSlope2Enabled || SplatSlope3Enabled;
+
+    /// <summary>Session-only tuning view: paint each slope tier's coverage in the
+    /// viewport so angle ranges are readable without guessing (gray = flat ground,
+    /// orange / blue / magenta = tiers 1-3). Global on purpose (like the 2D cull
+    /// debug flag) and NEVER persisted — it is a viewing aid, not scene data.</summary>
+    public static bool ShowSlopeDebug { get; set; }
+
+    /// <summary>Upload buffer for the ordered slope tiers (max 3).</summary>
+    private readonly (int Layer, float Start, float End, float Tiling)[] _slopeUpload =
+        new (int, float, float, float)[3];
+
+    /// <summary>Convert a surface ANGLE in degrees to the shader's slope units
+    /// (Rastertek t14): slope = 1 − N.y = 1 − cos(angle). 45° = 0.293, 70° = 0.658.</summary>
+    public static float SlopeFromDegrees(float degrees)
+        => 1f - MathF.Cos(Math.Clamp(degrees, 0f, 90f) * MathF.PI / 180f);
+
+    /// <summary>Collect the ENABLED slope tiers, sorted by start slope (gentlest
+    /// first — the shader applies them in order so the steepest tier wins on cliffs)
+    /// and return the count. Tier 1 keeps the legacy abstract units when Angle mode
+    /// is off (old scenes load unchanged); tiers 2-3 are always degrees.</summary>
+    private int BuildSlopeTiers()
+    {
+        int n = 0;
+        if (SplatSlopeEnabled)
+        {
+            float s0, s1;
+            if (SplatSlopeUseDegrees)
+            {
+                s0 = SlopeFromDegrees(MathF.Min(SplatSlopeAngleMin, SplatSlopeAngleMax - 0.1f));
+                s1 = SlopeFromDegrees(SplatSlopeAngleMax);
+            }
+            else
+            {
+                s0 = Math.Clamp(SplatSlopeThreshold, 0f, 0.98f);
+                s1 = s0 + Math.Max(SplatSlopeFade, 0.002f);
+            }
+            if (s1 <= s0) s1 = s0 + 0.002f;
+            _slopeUpload[n++] = (Math.Clamp(SplatSlopeLayer, 1, 3), s0, s1, SplatSlopeTiling);
+        }
+        if (SplatSlope2Enabled)
+        {
+            float s0 = SlopeFromDegrees(MathF.Min(SplatSlope2AngleMin, SplatSlope2AngleMax - 0.1f));
+            float s1 = SlopeFromDegrees(SplatSlope2AngleMax);
+            if (s1 <= s0) s1 = s0 + 0.002f;
+            _slopeUpload[n++] = (Math.Clamp(SplatSlope2Layer, 1, 3), s0, s1, SplatSlope2Tiling);
+        }
+        if (SplatSlope3Enabled)
+        {
+            float s0 = SlopeFromDegrees(MathF.Min(SplatSlope3AngleMin, SplatSlope3AngleMax - 0.1f));
+            float s1 = SlopeFromDegrees(SplatSlope3AngleMax);
+            if (s1 <= s0) s1 = s0 + 0.002f;
+            _slopeUpload[n++] = (Math.Clamp(SplatSlope3Layer, 1, 3), s0, s1, SplatSlope3Tiling);
+        }
+        // Insertion sort by Start (n ≤ 3) — gentlest tier applies first.
+        for (int i = 1; i < n; i++)
+        {
+            var t = _slopeUpload[i];
+            int j = i - 1;
+            while (j >= 0 && _slopeUpload[j].Start > t.Start)
+            {
+                _slopeUpload[j + 1] = _slopeUpload[j];
+                j--;
+            }
+            _slopeUpload[j + 1] = t;
+        }
+        return n;
     }
 
     /// <summary>GPU textures for the splat layers: slots 0-3 albedo, 4-7 normal,
@@ -1524,10 +1629,6 @@ public unsafe class EditorObject
     /// 256² pass runs at most once per frame inside the draw.</summary>
     public void InvalidateSplatBands() => _splatBandsPending = true;
 
-    /// <summary>Force the slope weight pass to re-run next draw (threshold/fade/layer
-    /// edits, or the elevation/sculpt changed underneath).</summary>
-    public void InvalidateSplatSlope() => _splatSlopeDirty = true;
-
     /// <summary>Recompute the auto height-band weights from the sculpted elevation
     /// (the "splat driven by terrain height" half). Runs in the draw when pending.</summary>
     private void ComputeSplatBands()
@@ -1536,7 +1637,10 @@ public unsafe class EditorObject
         if (!SplatHeightBandsEnabled)
         {
             // Bands turned OFF — drop the band-only buffer (paint fields stay).
-            if (_splatFieldForBands != null && !_splatFieldForBands.HasAnyEdits)
+            // NEVER drop it while the SLOPE layer is on: that neutral layer-0 field
+            // is the base the per-pixel slope blends over (dropping it would toggle
+            // the whole splat variant off for a frame).
+            if (_splatFieldForBands != null && !_splatFieldForBands.HasAnyEdits && !SplatSlopeAnyEnabled)
             {
                 _splatFieldForBands.DisposeTexture();
                 _splatFieldForBands = null;
@@ -1583,127 +1687,31 @@ public unsafe class EditorObject
         sf.FlushTexture();
     }
 
-    /// <summary>SLOPE layer rebuild (runs in the draw when enabled & dirty): make
-    /// sure base weights exist (height bands, or a neutral layer-0 fill when bands
-    /// are off), then fold the steepness mask into the chosen layer. Painted fields
-    /// are NEVER touched — the brush always wins. Sculpt/bands rebuilds clear
-    /// SlopeApplied → this re-applies the mask on top of the fresh base.</summary>
-    private void ComputeSplatSlopeBands()
+    /// <summary>Make sure a WEIGHT FIELD exists when the slope layer is the only
+    /// weight source — the splat shader variant (which evaluates the slope per pixel)
+    /// is only selected when a live field / band buffer / stored splat exists.
+    /// Bands (when enabled) build the base from the elevation; otherwise the base is
+    /// the neutral layer-0 fill (the PBR material itself). A stored splat bake is
+    /// adopted AS-IS — its paint/band weights stay the base the slope blends over.</summary>
+    private void EnsureSplatSlopeBase()
     {
-        if (!SplatSlopeEnabled)
+        if (_splatField != null || _splatFieldForBands != null) return;
+        if (SplatHeightBandsEnabled)
         {
-            // Slope OFF — drop the auto buffer only when it carries no paint (the
-            // same rule as the bands OFF path).
-            if (_splatFieldForBands != null && !_splatFieldForBands.HasAnyEdits)
-            {
-                _splatFieldForBands.DisposeTexture();
-                _splatFieldForBands = null;
-            }
-            _splatSlopeDirty = false;
+            _splatBandsPending = true;
+            ComputeSplatBands();
             return;
         }
-        var sf = SplatIsPainted ? EnsureSplatPaintField() : EnsureSplatBandField();
-        if (sf == null) { _splatSlopeDirty = false; return; }
-        // OVERRIDE MODE vs PAINT: combine mode keeps the v1 contract (paint wins
-        // outright — no auto pass on a painted field), but OVERRIDE's whole point is
-        // to displace paint on steep texels, so it MUST fold into painted fields too.
-        // The fold below is IDEMPOTENT (each run first rebuilds the base) so this is
-        // safe to re-run whenever the slope params change.
-        if (sf.HasPaint && !SplatSlopeOverridePaint) { _splatSlopeDirty = false; return; }
-        // OVERRIDE/painted: REBUILD-then-fold is impossible without erasing the
-        // paint (a band/neutral recompute rewrites every texel). Instead: snapshot →
-        // restore the STORED splat file (or neutral layer-0 when none) → fold →
-        // re-apply the paint delta captured by the snapshot. Result: deterministic,
-        // no double-slope, paint preserved verbatim.
-        byte[]? paintSnapshot = null;
-        bool foldOverPaint = sf.HasPaint;
-        if (foldOverPaint)
+        var f = EnsureSplatBandField();
+        if (f == null) return;
+        if (!f.HasAnyEdits)
         {
-            paintSnapshot = sf.ExportSnapshot();
-            // Rebuild the AUTO base the usual way (decode the stored splat file if
-            // one exists — NOT the live painted field — else a fresh neutral layer-0
-            // fill), so the fold starts from a slope-free base every time.
-            string storedSplat = SplatMapPath;
-            bool reloadedFromStored = false;
-            if (!string.IsNullOrEmpty(storedSplat))
-            {
-                var resolvedSplat = PathHelpers.Resolve(storedSplat);
-                if (File.Exists(resolvedSplat))
-                {
-                    var storedField = TerrainSplatField.FromFile(resolvedSplat);
-                    if (storedField != null)
-                    {
-                        sf.ImportSnapshot(storedField.ExportSnapshot());
-                        reloadedFromStored = true;
-                    }
-                }
-            }
-            if (!reloadedFromStored)
-                sf.FillNeutralLayer0();
+            f.FillNeutralLayer0();
+            f.FlushTexture();   // GpuTexture != 0 is the draw gate — an unflushed
+                                // fresh field would keep the splat variant OFF
         }
-        else
-        {
-            // Non-painted path: ALWAYS rebuild the base weights first — a slope fold
-            // is not idempotent, so re-running it over already-slope-weighted weights
-            // would double-apply. A fresh base (bands or neutral) each rebuild makes
-            // the pass deterministic. Cost is one 256² pass, only while a rebuild
-            // is actually pending.
-            if (SplatHeightBandsEnabled)
-            {
-                _splatBandsPending = true;
-                ComputeSplatBands();            // fresh band-weighted base
-            }
-            else
-            {
-                sf.FillNeutralLayer0();         // flat base — slope is the only term
-            }
-            if (!sf.HasWeights) { _splatSlopeDirty = false; return; }
-        }
-        // Elevation sources — the SAME combination the vertex stage displaces with.
-        string src = TerrainHeightSourcePath;
-        TerrainHeightfield? hf = _baseFieldForSampling;
-        if (hf == null && string.IsNullOrEmpty(src))
-            hf = _baseFieldForSampling = TerrainHeightfield.CreateFlat(1f);
-        var d = HasSculptDelta ? EnsureSculptField() : null;
-        int layer = Math.Clamp(SplatSlopeLayer, 1, 3);
-        // Slope mask parameters: the DEGREES path derives threshold/fade from the
-        // angle range (Atan(slope)/2π), the LEGACY path keeps the raw normal units
-        // so a loaded old scene reproduces its v1 look exactly.
-        float th, fd;
-        if (SplatSlopeUseDegrees)
-        {
-            // slope (abstract 1−N.Y) → tan(pitch): on world-unit gradients N.Y =
-            // 1/√(1+g²), so slope = g²/(1+g²) → g = √(s/(1−s)). Angles in degrees.
-            float gradMin = MathF.Tan(Math.Clamp(MathF.Min(SplatSlopeAngleMin, SplatSlopeAngleMax - 0.1f), 0f, 89.9f) * MathF.PI / 180f);
-            float gradMax = MathF.Tan(Math.Clamp(SplatSlopeAngleMax, 0.1f, 90f) * MathF.PI / 180f);
-            // Cap the abstract-space conversion at 0.98/0.95 (fade widths beyond
-            // vertical would smear the edge over the whole terrain).
-            float sMin = Math.Clamp(gradMin * gradMin / (1f + gradMin * gradMin), 0f, 0.98f);
-            float sMax = Math.Clamp(gradMax * gradMax / (1f + gradMax * gradMax), 0.001f, 0.995f);
-            th = sMin;
-            fd = MathF.Max(0.002f, sMax - sMin);
-        }
-        else
-        {
-            th = Math.Clamp(SplatSlopeThreshold, 0f, 0.98f);
-            fd = Math.Max(SplatSlopeFade, 0.002f);
-        }
-        sf.ComputeSlopeWeights(hf, d, Math.Clamp(TerrainSculptAmp, 0f, 250f),
-            Math.Clamp(TerrainBaseHeight, 0f, 500f),
-            Math.Clamp(TerrainHeightOffset, -250f, 250f),
-            Math.Clamp(TerrainHeightTilingX, 0.01f, 100f),
-            Math.Clamp(TerrainHeightTilingY, 0.01f, 100f),
-            MathF.Abs(Scale.X), MathF.Abs(Scale.Z),
-            layer,
-            th, fd,
-            SplatSlopeOverridePaint, Math.Clamp(SplatSlopePaintFloor, 0f, 0.9f));
-        // Re-apply the captured paint ON TOP of the slope-folded base — the paint
-        // stack wins where it painted, the slope displaced it underneath elsewhere.
-        if (paintSnapshot != null)
-            sf.ImportSnapshot(paintSnapshot, blendPaintOverBase: true);
-        sf.FlushTexture();
-        _splatSlopeDirty = false;
     }
+
     /// convention as <see cref="SculptApply"/>). The dirty region uploads live.</summary>
     public void SplatApply(float localX, float localZ, SplatBrushSession b, float dt, int frameStamp)
     {
@@ -1731,10 +1739,6 @@ public unsafe class EditorObject
         if (!f.NeedsBake || f.LastStrokeStamp == frameStamp) return;
         f.LastStrokeStamp = frameStamp;
         BakeSplatField(f);
-        // OVERRIDE slope mode folds INTO painted fields — a fresh paint stroke
-        // invalidates the slope fold so the next draw re-runs it on top.
-        if (SplatSlopeEnabled && SplatSlopeOverridePaint)
-            InvalidateSplatSlope();
     }
 
     /// <summary>Write the splat bake files (weights RGBA + painted mask R8) under
@@ -1760,7 +1764,6 @@ public unsafe class EditorObject
         if (f == null || !f.Undo()) return false;
         f.FlushTexture();
         BakeSplatField(f);
-        if (SplatSlopeEnabled && SplatSlopeOverridePaint) InvalidateSplatSlope();
         return true;
     }
 
@@ -1771,7 +1774,6 @@ public unsafe class EditorObject
         if (f == null || !f.Redo()) return false;
         f.FlushTexture();
         BakeSplatField(f);
-        if (SplatSlopeEnabled && SplatSlopeOverridePaint) InvalidateSplatSlope();
         return true;
     }
 
@@ -1940,7 +1942,7 @@ public unsafe class EditorObject
         !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null ||
         (PrimitiveType == EditorPrimitiveType.Plane &&
             (_splatField != null || _splatFieldForBands != null ||
-             _splatMapPath.Length > 0 || SplatHeightBandsEnabled || SplatSlopeEnabled ||
+             _splatMapPath.Length > 0 || SplatHeightBandsEnabled || SplatSlopeAnyEnabled ||
              SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))));
 
     // ── glb reference (only used when PrimitiveType == GlbReference) ──
@@ -2698,6 +2700,9 @@ public unsafe class EditorObject
         public int SplatWeights, SplatActive;
         public int SplatHasAlbedo, SplatHasNormal, SplatHasMetal, SplatHasRough, SplatHasAo, SplatHasHeight;
         public int SplatTint, SplatNormalStr, SplatDetail;
+        // SLOPE BASED TEXTURING (per-pixel 1 − N.y; the base program has none → -1)
+        public int SlopeActive, SlopeRuleCount, SlopeRuleLayer, SlopeRuleStart, SlopeRuleEnd,
+                   SlopeRuleTiling, SlopeOverride, SlopeFloor, SlopeDebug;
         public readonly int[] SplatLayerTiling = new int[4];   // u_splatLayerTiling[4]
         public readonly int[] SplatAlbedo = new int[4];
         public readonly int[] SplatNormal = new int[4];
@@ -2787,6 +2792,15 @@ public unsafe class EditorObject
             SplatTint = GL.GetUniformLocation(Program, "u_splatTint");
             SplatNormalStr = GL.GetUniformLocation(Program, "u_splatNormalStr");
             SplatDetail = GL.GetUniformLocation(Program, "u_splatDetail");
+            SlopeActive = GL.GetUniformLocation(Program, "u_slopeActive");
+            SlopeRuleCount = GL.GetUniformLocation(Program, "u_slopeRuleCount");
+            SlopeRuleLayer = GL.GetUniformLocation(Program, "u_slopeRuleLayer");
+            SlopeRuleStart = GL.GetUniformLocation(Program, "u_slopeRuleStart");
+            SlopeRuleEnd = GL.GetUniformLocation(Program, "u_slopeRuleEnd");
+            SlopeRuleTiling = GL.GetUniformLocation(Program, "u_slopeRuleTiling");
+            SlopeOverride = GL.GetUniformLocation(Program, "u_slopeOverride");
+            SlopeFloor = GL.GetUniformLocation(Program, "u_slopeFloor");
+            SlopeDebug = GL.GetUniformLocation(Program, "u_slopeDebug");
         }
     }
 
@@ -2981,18 +2995,15 @@ public unsafe class EditorObject
         if (PrimitiveType == EditorPrimitiveType.Plane && (_splatBandsPending || SplatHeightBandsEnabled && _splatFieldForBands == null && _splatField == null))
             ComputeSplatBands();
         EnsureSplatTextures();
-        // SLOPE layer: rebuild the 256² weight buffer when enabled (or parameters just
-        // changed) and no painted field exists — EXCEPT Override mode, which folds
-        // into painted fields too (the WHOLE point of Override — the painted gate
-        // applies only to Combine mode).
-        // Fires after ANY band recompute too (bands reset SlopeApplied → re-fold).
-        bool slopeCanFoldPaint = SplatSlopeOverridePaint && _splatField is { } slopePaintField
-                                 && slopePaintField.GpuTexture != 0;
-        if (PrimitiveType == EditorPrimitiveType.Plane && SplatSlopeEnabled
-            && (_splatField == null || slopeCanFoldPaint)
-            && (_splatFieldForBands == null || _splatField == null || _splatSlopeDirty
-                || (_splatFieldForBands != null && !_splatFieldForBands.SlopeApplied)))
-            ComputeSplatSlopeBands();
+        // SLOPE BASED TEXTURING (Rastertek t14) is evaluated PER PIXEL by the splat
+        // shader (u_slope* uniforms) from the real surface normal — nothing is folded
+        // into the weight map any more. The old CPU fold SKIPPED any field carrying
+        // paint (every baked splat file does), so enabling the slope layer or dragging
+        // its size on a painted terrain did nothing at all; per-pixel also means the
+        // layer/angle/texture sliders respond instantly, no 256² rebake.
+        // Only a BASE field must exist so the splat variant is selected at all.
+        if (PrimitiveType == EditorPrimitiveType.Plane && SplatSlopeAnyEnabled)
+            EnsureSplatSlopeBase();
 
         // Program choice: planes with a terrain elevation heightmap (or a sculpt
         // delta) use the geometric-displacement vertex stage; everything else the
@@ -3166,7 +3177,7 @@ public unsafe class EditorObject
         bool splatLiveField = _splatField != null && _splatField.GpuTexture != 0;
         bool splatLiveBands = _splatFieldForBands != null && _splatFieldForBands.GpuTexture != 0;
         bool splatActive = (splatLiveField || splatLiveBands)
-                           && (SplatIsPainted || SplatHeightBandsEnabled || SplatSlopeEnabled);
+                           && (SplatIsPainted || SplatHeightBandsEnabled || SplatSlopeAnyEnabled);
         if (u.SplatWeights >= 0)
             GL.Uniform1i(u.SplatWeights, splatActive ? 10 : 0);
         if (u.SplatActive >= 0)
@@ -3235,15 +3246,32 @@ public unsafe class EditorObject
             for (int l = 0; l < 4; l++)
                 if (u.SplatLayerTiling[l] >= 0)
                     GL.Uniform1f(u.SplatLayerTiling[l], Math.Clamp(SplatLayerTiling[l], 0.01f, 100f));
-            // SLOPE layer override: slopes STRETCH — the slope layer's own tiling
-            // replaces its per-layer value when slope auto-assign is on (the uniform
-            // belongs to that layer slot; the bands' tiling for it is ignored).
-            if (SplatSlopeEnabled)
-            {
-                int sLayer = Math.Clamp(SplatSlopeLayer, 1, 3);
-                if (u.SplatLayerTiling[sLayer] >= 0)
-                    GL.Uniform1f(u.SplatLayerTiling[sLayer], Math.Clamp(SplatSlopeTiling, 0.25f, 16f));
-            }
+            // ── SLOPE BASED TEXTURING (Rastertek t14) — up to 3 ordered tiers ──
+            //    The shader compares its geometry slope (1 − N.y, the reference
+            //    formula) against a live table of ranges. Degrees map EXACTLY onto the
+            //    reference units: slope = 1 − cos(angle), so 45° = 0.293, 70° = 0.658.
+            //    Legacy scenes keep the raw abstract units for tier 1. Tiers upload
+            //    sorted gentlest → steepest (BuildSlopeTiers) so the rock tier wins on
+            //    cliffs; each tier's own tiling replaces its layer's tiling while the
+            //    tier is on (unused slots keep their per-layer value).
+            bool slopeOn = PrimitiveType == EditorPrimitiveType.Plane && SplatSlopeAnyEnabled;
+            int slopeCount = slopeOn ? BuildSlopeTiers() : 0;
+            float rl0 = 1f, rl1 = 2f, rl2 = 3f;
+            float rs0 = 0f, rs1 = 1f, rs2 = 1f;
+            float re0 = 0.002f, re1 = 1f, re2 = 1f;
+            float rt0 = 1f, rt1 = 1f, rt2 = 1f;
+            if (slopeCount > 0) { rl0 = _slopeUpload[0].Layer; rs0 = _slopeUpload[0].Start; re0 = _slopeUpload[0].End; rt0 = _slopeUpload[0].Tiling; }
+            if (slopeCount > 1) { rl1 = _slopeUpload[1].Layer; rs1 = _slopeUpload[1].Start; re1 = _slopeUpload[1].End; rt1 = _slopeUpload[1].Tiling; }
+            if (slopeCount > 2) { rl2 = _slopeUpload[2].Layer; rs2 = _slopeUpload[2].Start; re2 = _slopeUpload[2].End; rt2 = _slopeUpload[2].Tiling; }
+            if (u.SlopeActive >= 0) GL.Uniform1i(u.SlopeActive, slopeOn ? 1 : 0);
+            if (u.SlopeRuleCount >= 0) GL.Uniform1i(u.SlopeRuleCount, slopeCount);
+            if (u.SlopeRuleLayer >= 0) GL.Uniform4f(u.SlopeRuleLayer, rl0, rl1, rl2, 3f);
+            if (u.SlopeRuleStart >= 0) GL.Uniform4f(u.SlopeRuleStart, rs0, rs1, rs2, 1f);
+            if (u.SlopeRuleEnd >= 0) GL.Uniform4f(u.SlopeRuleEnd, re0, re1, re2, 1f);
+            if (u.SlopeRuleTiling >= 0) GL.Uniform4f(u.SlopeRuleTiling, rt0, rt1, rt2, 1f);
+            if (u.SlopeOverride >= 0) GL.Uniform1i(u.SlopeOverride, SplatSlopeOverridePaint ? 1 : 0);
+            if (u.SlopeFloor >= 0) GL.Uniform1f(u.SlopeFloor, Math.Clamp(SplatSlopePaintFloor, 0f, 0.9f));
+            if (u.SlopeDebug >= 0) GL.Uniform1i(u.SlopeDebug, ShowSlopeDebug ? 1 : 0);
             if (u.SplatDetail >= 0) GL.Uniform1f(u.SplatDetail, Math.Clamp(PbrParallaxScale, 0f, 0.5f) > 0f ? 1f : 0f);
             // Layer textures: units 11-14 albedo, 21-24 normal, 31-34 metal,
             // 41-44 rough, 51-54 AO, 61-64 height (layer 0 → the base maps).

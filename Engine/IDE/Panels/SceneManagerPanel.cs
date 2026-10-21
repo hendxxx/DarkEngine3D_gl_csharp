@@ -1083,6 +1083,16 @@ public class SceneManagerPanel
                         SplatSlopeOverridePaint = obj.SplatSlopeOverridePaint,
                         SplatSlopePaintFloor = obj.SplatSlopePaintFloor,
                         SplatSlopeTiling = obj.SplatSlopeTiling,
+                        SplatSlope2Enabled = obj.SplatSlope2Enabled,
+                        SplatSlope2Layer = obj.SplatSlope2Layer,
+                        SplatSlope2AngleMin = obj.SplatSlope2AngleMin,
+                        SplatSlope2AngleMax = obj.SplatSlope2AngleMax,
+                        SplatSlope2Tiling = obj.SplatSlope2Tiling,
+                        SplatSlope3Enabled = obj.SplatSlope3Enabled,
+                        SplatSlope3Layer = obj.SplatSlope3Layer,
+                        SplatSlope3AngleMin = obj.SplatSlope3AngleMin,
+                        SplatSlope3AngleMax = obj.SplatSlope3AngleMax,
+                        SplatSlope3Tiling = obj.SplatSlope3Tiling,
                         PbrTexTiling = obj.PbrTexTiling,
                         PbrParallaxScale = obj.PbrParallaxScale,
                         PbrPomShadowStrength = obj.PbrPomShadowStrength,
@@ -1529,6 +1539,18 @@ public class SceneManagerPanel
                         obj.SplatSlopeOverridePaint = objData.SplatSlopeOverridePaint;
                         obj.SplatSlopePaintFloor = Math.Clamp(objData.SplatSlopePaintFloor, 0f, 0.9f);
                         obj.SplatSlopeTiling = Math.Clamp(objData.SplatSlopeTiling, 0.25f, 16f);
+                        // Slope TIER 2 / 3 — absent in old scenes → OFF (the exact
+                        // single-tier look they were saved with).
+                        obj.SplatSlope2Enabled = objData.SplatSlope2Enabled;
+                        obj.SplatSlope2Layer = Math.Clamp(objData.SplatSlope2Layer, 1, 3);
+                        obj.SplatSlope2AngleMin = Math.Clamp(objData.SplatSlope2AngleMin, 0f, 89f);
+                        obj.SplatSlope2AngleMax = Math.Clamp(objData.SplatSlope2AngleMax, 1f, 90f);
+                        obj.SplatSlope2Tiling = Math.Clamp(objData.SplatSlope2Tiling, 0.25f, 16f);
+                        obj.SplatSlope3Enabled = objData.SplatSlope3Enabled;
+                        obj.SplatSlope3Layer = Math.Clamp(objData.SplatSlope3Layer, 1, 3);
+                        obj.SplatSlope3AngleMin = Math.Clamp(objData.SplatSlope3AngleMin, 0f, 89f);
+                        obj.SplatSlope3AngleMax = Math.Clamp(objData.SplatSlope3AngleMax, 1f, 90f);
+                        obj.SplatSlope3Tiling = Math.Clamp(objData.SplatSlope3Tiling, 0.25f, 16f);
                         if (objData.SplatHeightLayerCount > 0)
                             obj.SplatHeightLayerCount = Math.Clamp(objData.SplatHeightLayerCount, 1, 4);
                         if (objData.SplatHeightLayerFeather >= 0f)
@@ -2016,6 +2038,16 @@ public class SceneManagerPanel
                             SplatSlopeOverridePaint = obj.SplatSlopeOverridePaint,
                             SplatSlopePaintFloor = obj.SplatSlopePaintFloor,
                             SplatSlopeTiling = obj.SplatSlopeTiling,
+                            SplatSlope2Enabled = obj.SplatSlope2Enabled,
+                            SplatSlope2Layer = obj.SplatSlope2Layer,
+                            SplatSlope2AngleMin = obj.SplatSlope2AngleMin,
+                            SplatSlope2AngleMax = obj.SplatSlope2AngleMax,
+                            SplatSlope2Tiling = obj.SplatSlope2Tiling,
+                            SplatSlope3Enabled = obj.SplatSlope3Enabled,
+                            SplatSlope3Layer = obj.SplatSlope3Layer,
+                            SplatSlope3AngleMin = obj.SplatSlope3AngleMin,
+                            SplatSlope3AngleMax = obj.SplatSlope3AngleMax,
+                            SplatSlope3Tiling = obj.SplatSlope3Tiling,
                             PbrEmissionPath = PathHelpers.MakeRelative(obj.PbrEmissionPath),
                             PbrTexTiling = obj.PbrTexTiling,
                             PbrParallaxScale = obj.PbrParallaxScale,

@@ -118,6 +118,57 @@ uniform float u_splatLayerTiling[4];     // per-layer texture tiling for layers 
                                          // from the global Map Tiling (layer 0 = base maps)
 uniform float u_splatNormalStr = 1.0;    // normal-map strength for layer normals
 
+// ── SLOPE BASED TEXTURING (Rastertek terrain tutorial 14) ──
+// slope = 1 − N.y of the REAL surface normal (the displaced geometry normal — the
+// same value the reference shader uses) → a texture layer that appears on steep
+// ground. Evaluated PER PIXEL from live uniforms, so the target layer, the slope
+// ANGLE RANGE (how big the slope must be) and the layer's textures (with their
+// full PBR map set) all change WITHOUT a weight-map rebake, and the term stacks
+// on top of any painted/baked weight map instead of being skipped.
+//
+// THREE ORDERED TIERS: grass (base material) → dirt (medium slopes) → rock
+// (cliffs). The CPU uploads the ENABLED tiers sorted by their start slope, so
+// slot 0 is always the gentlest and slot 2 the steepest; tiers apply in that
+// order and each one hands its share to the next on steeper ground (the steeper
+// tier wins where two ranges overlap — that is what makes real tiering possible).
+uniform int u_slopeActive = 0;        // 1 = at least one slope tier enabled (Plane only)
+uniform int u_slopeRuleCount = 0;     // enabled tiers (0..3), ordered gentlest → steepest
+uniform vec4 u_slopeRuleLayer = vec4(1.0, 2.0, 3.0, 0.0);   // target splat layer 1..3
+uniform vec4 u_slopeRuleStart = vec4(0.18, 0.40, 0.62, 0.0); // slope (1−N.y) where alpha = 0
+uniform vec4 u_slopeRuleEnd = vec4(0.58, 0.70, 0.85, 0.0);   // slope where alpha = 1
+uniform vec4 u_slopeRuleTiling = vec4(1.0, 1.0, 1.0, 1.0);   // per-tier texture tiling
+uniform int u_slopeOverride = 0;      // 1 = may displace painted weights
+uniform float u_slopeFloor = 0.25;    // override mode: min weight at full alpha
+uniform int u_slopeDebug = 0;         // 1 = paint the tier masks (tuning view)
+
+// Apply ONE slope tier to the 4 layer weights. `a` = the tier's smooth alpha
+// (0 = untouched, 1 = the tier owns the texel). Blend mode = the reference lerp
+// (base fades out as the surface steepens, the tier takes the freed share);
+// override mode = the tier reaches max(current, floor·a) so manually painted
+// layers always keep at least the floor share. Sum stays 1 either way.
+void slopeApplyTier(inout float sw[4], int sl, float a)
+{
+    float cur = sw[sl];
+    if (u_slopeOverride == 1) {
+        float want = max(cur, clamp(u_slopeFloor, 0.0, 0.9) * a);
+        float gained = want - cur;
+        if (gained > 0.0001) {
+            float otherSum = 1.0 - cur;
+            sw[sl] = want;
+            if (otherSum > 0.0001) {
+                float f = max(0.0, 1.0 - gained / otherSum);
+                for (int k = 0; k < 4; k++)
+                    if (k != sl) sw[k] *= f;
+            }
+        }
+    } else {
+        float keep = 1.0 - a;
+        sw[sl] = cur + a * (1.0 - cur);
+        for (int k = 0; k < 4; k++)
+            if (k != sl) sw[k] *= keep;
+    }
+}
+
 // Blend two already-tuned PBR parameter sets by weight w (0..1).
 // NOTE: emission is intentionally NOT blended — layers carry no emission maps,
 // so faking it from layer albedo would make every terrain glow.
@@ -609,6 +660,37 @@ void main() {
         // and painting appeared to do nothing at all.
         float splatSum = splatW.x + splatW.y + splatW.z + splatW.w;
         if (splatSum > 0.001) splatW /= splatSum; else splatW = vec4(1.0, 0.0, 0.0, 0.0);
+
+        // ── SLOPE BASED TEXTURING (Rastertek t14) — up to 3 ORDERED TIERS ──
+        // `slope` = 1 − Normals.y from the DISPLACED geometry normal at the top of
+        // main() (backfaces already flipped) = the real visible surface. The CPU
+        // splat paint/bands stay the BASE (untouched on disk); each tier folds its
+        // steepness mask in on top. Tiers arrive sorted gentlest → steepest, so on a
+        // cliff the rock tier is applied last and takes the share the dirt tier gave
+        // up — real grass → dirt → rock tiering without any weight-map rebake.
+        vec3 slopeMasks = vec3(0.0);
+        // Per-layer tiling, overridable per slope tier (a rock texture on a cliff
+        // usually wants its OWN density, independent of the painted layer's tiling).
+        float lTiling[4] = float[4](max(u_splatLayerTiling[0], 0.01),
+                                    max(u_splatLayerTiling[1], 0.01),
+                                    max(u_splatLayerTiling[2], 0.01),
+                                    max(u_splatLayerTiling[3], 0.01));
+        if (u_slopeActive == 1) {
+            float sw[4] = float[4](splatW.x, splatW.y, splatW.z, splatW.w);
+            for (int r = 0; r < 3; r++) {
+                if (r >= u_slopeRuleCount) break;
+                int sl = clamp(int(u_slopeRuleLayer[r] + 0.5), 1, 3);
+                float s0 = u_slopeRuleStart[r];
+                float s1 = max(u_slopeRuleEnd[r], s0 + 0.002);
+                float a = smoothstep(s0, s1, clamp(slope, 0.0, 1.0));
+                slopeMasks[r] = a;
+                lTiling[sl] = max(u_slopeRuleTiling[r], 0.01);
+                if (a > 0.0005) slopeApplyTier(sw, sl, a);
+            }
+            splatW = vec4(sw[0], sw[1], sw[2], sw[3]);
+            float s2 = splatW.x + splatW.y + splatW.z + splatW.w;
+            if (s2 > 0.001) splatW /= s2;
+        }
         // Layer 0 full → the plain PBR path above is already exactly right.
         if (dot(splatW, vec4(0.0, 1.0, 1.0, 1.0)) > 0.001) {
             vec3 tsN = tsNormal;
@@ -631,7 +713,7 @@ void main() {
                     lr = uvRough    - pomOffPerMap[3];
                     lao = uvAo      - pomOffPerMap[4];
                 } else {
-                    float lt = max(u_splatLayerTiling[l], 0.01);
+                    float lt = max(lTiling[l], 0.01);
                     float lrot;
                     vec2 luv = randTiledUv(TexCoord * lt, vec2(lt), lrot);
                     la = luv; ln = luv; lm = luv; lr = luv; lao = luv;
@@ -664,6 +746,21 @@ void main() {
                     metL, rghL, aoL, w);
             }
             tsNormal = tsN;
+        }
+        // ── SLOPE TIER TUNING VIEW ──
+        // Colors each enabled tier's coverage so angle ranges/image sizes can be
+        // tuned without guessing: gray = flat ground (no tier), orange = tier 1,
+        // blue = tier 2, magenta = tier 3. Lighting still applies so the shape reads.
+        if (u_slopeDebug == 1) {
+            vec3 dbg = vec3(0.28, 0.30, 0.28)
+                     + slopeMasks.r * vec3(0.95, 0.55, 0.10)
+                     + slopeMasks.g * vec3(0.18, 0.45, 1.00)
+                     + slopeMasks.b * vec3(0.95, 0.20, 0.60);
+            albedo = clamp(dbg, 0.0, 1.0);
+            metallic = 0.0;
+            roughness = 0.7;
+            ao = 1.0;
+            tsNormal = vec3(0.0, 0.0, 1.0);
         }
     }
 #endif   // TERRAIN_SPLAT — splat layer blend

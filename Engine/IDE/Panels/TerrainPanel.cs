@@ -284,7 +284,17 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 float shard = sp.Hardness;
                 if (ImGui.SliderFloat("Hardness##terrain_splat", ref shard, 0f, 1f, "%.2f")) sp.Hardness = shard;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Falloff shape: 0 = fully soft, 1 = hard-edged disc.");
+                ImGui.Unindent();
+            }
 
+            // ── ALWAYS-ON layering controls ──
+            // The auto layers + layer textures are DATA, not a brush: they used to
+            // live inside the paint-session block, so the slope layer (and the
+            // textures it blends) could only be configured while the viewport
+            // brush was enabled — reading as "slope texturing doesn't work".
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Auto Layers (no painting needed)");
+            {
                 // ── AUTO height bands (weights from the sculpted elevation) ──
                 bool bandsOn = obj.SplatHeightBandsEnabled;
                 if (ImGui.Checkbox("Auto layers from height##terrain_splat", ref bandsOn))
@@ -340,78 +350,123 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.Unindent();
                 }
 
-                // ── AUTO slope layer (PBR steepness mask) ──
-                bool slopeOn = obj.SplatSlopeEnabled;
-                if (ImGui.Checkbox("Auto layer from slope (PBR)##terrain_splat", ref slopeOn))
-                    obj.SplatSlopeEnabled = slopeOn;
+                // ── SLOPE BASED TEXTURING (Rastertek terrain tutorial 14) — 3 TIERS ──
+                // Each enabled tier owns an angle range and blends ONE splat layer in
+                // per pixel, so grass (base) → dirt (medium slopes) → rock (cliffs)
+                // works without rebaking the weight map. The shader applies the tiers
+                // sorted by START angle, so the STEEPEST tier wins where ranges overlap.
+                ImGui.Separator();
+                ImGui.TextColored(new Vector4(0.6f, 0.9f, 1f, 1f), "Slope Based Texturing (3 tiers)");
+                bool deg = obj.SplatSlopeUseDegrees;
+                if (ImGui.Checkbox("Angle mode (degrees)##terrain_slope", ref deg))
+                    obj.SplatSlopeUseDegrees = deg;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Assign ONE texture layer by surface STEEPNESS automatically:\nflat ground keeps its layers, slopes take the slope layer.\nUses the REAL displaced-geometry normal (same as the PBR shading).");
-                if (slopeOn)
+                    ImGui.SetTooltip("ON = each tier's range is a surface ANGLE in degrees\n(0° = flat, 90° = vertical wall).\nOFF = the legacy abstract 1 − Normal.y units for tier 1 (old scenes).\nTiers 2-3 are always degrees.\n\nWith tiers 2-3 OFF the first tier behaves exactly like before —\nold scenes load unchanged.");
+                var slopeTiers = new (bool On, int Layer, float Min, float Max, float Tiling)[]
                 {
-                    ImGui.Indent();
-                    int slopeLayer = obj.SplatSlopeLayer;
-                    if (ImGui.SliderInt("Layer##terrain_slope", ref slopeLayer, 1, 3))
-                        obj.SplatSlopeLayer = slopeLayer;
+                    (obj.SplatSlopeEnabled, obj.SplatSlopeLayer, obj.SplatSlopeAngleMin, obj.SplatSlopeAngleMax, obj.SplatSlopeTiling),
+                    (obj.SplatSlope2Enabled, obj.SplatSlope2Layer, obj.SplatSlope2AngleMin, obj.SplatSlope2AngleMax, obj.SplatSlope2Tiling),
+                    (obj.SplatSlope3Enabled, obj.SplatSlope3Layer, obj.SplatSlope3AngleMin, obj.SplatSlope3AngleMax, obj.SplatSlope3Tiling),
+                };
+                string[] tierNames =
+                [
+                    "Tier 1 - gentle slopes##terrain_slope",
+                    "Tier 2 - steeper band##terrain_slope",
+                    "Tier 3 - cliffs##terrain_slope",
+                ];
+                for (int t = 0; t < 3; t++)
+                {
+                    ImGui.PushID($"slopetier{t}");
+                    var tier = slopeTiers[t];
+                    ImGui.Checkbox(tierNames[t], ref tier.On);
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Which layer (1-3) takes the steep areas.\nAssign its textures in 'Layer textures' below.");
-
-                    // ANGLE RANGE in DEGREES (the intuitive axis — 45° walkable, 70° cliff).
-                    // Normal-abstract sliders stay under 'Advanced' for old-scene parity.
-                    bool deg = obj.SplatSlopeUseDegrees;
-                    if (ImGui.Checkbox("Angle mode (degrees)##terrain_slope", ref deg))
-                        obj.SplatSlopeUseDegrees = deg;
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("ON = threshold/blend in surface ANGLE degrees\n(0° = flat, 90° = vertical wall).\nOFF = the legacy abstract N.Y units (old scenes).\nDefaults to ON for new params.");
-                    if (deg)
+                        ImGui.SetTooltip(t == 0
+                            ? "Blends ONE splat layer onto ground steeper than the range below.\nThe rastertek terrain tutorial 14 layer (slope = 1 − Normal.y).\nPainted/baked weights stay the base — nothing is rebaked."
+                            : "An EXTRA steepness band. Tiers apply from gentle to steep,\nso this one takes over where the gentler tiers fade out.\nClassic setup: base grass -> tier 1 dirt -> tier 2 rock.");
+                    if (tier.On)
                     {
-                        float aMin = obj.SplatSlopeAngleMin;
-                        if (ImGui.SliderFloat("Angle start##terrain_slope", ref aMin, 0f, 89f, "%.0f°"))
-                            obj.SplatSlopeAngleMin = aMin;
+                        ImGui.Indent();
+                        ImGui.SliderInt("Layer##terrain_slope", ref tier.Layer, 1, 3);
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Slope ALPHA = 0 at/below this angle.\n45° = walkable slope, 70° = cliff-face rock.");
-                        float aMax = obj.SplatSlopeAngleMax;
-                        if (ImGui.SliderFloat("Angle full##terrain_slope", ref aMax, 1f, 90f, "%.0f°"))
-                            obj.SplatSlopeAngleMax = aMax;
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Slope ALPHA = 1 at/above this angle\n(the slope layer fully replaces the base).\nKept ≥ start + 1° automatically.");
-                    }
-                    else
-                    {
-                        float slopeTh = obj.SplatSlopeThreshold;
-                        if (ImGui.SliderFloat("Threshold##terrain_slope", ref slopeTh, 0f, 0.95f, "%.2f"))
-                            obj.SplatSlopeThreshold = slopeTh;
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("LEGACY abstract units: 0 = any non-flat surface,\n0.7 = near-vertical cliffs only (N.Y of the displaced mesh).\n Prefer Angle mode for new params.");
-                        float slopeFade = obj.SplatSlopeFade;
-                        if (ImGui.SliderFloat("Blend##terrain_slope", ref slopeFade, 0.005f, 0.6f, "%.3f"))
-                            obj.SplatSlopeFade = slopeFade;
-                        if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Blend width above the threshold —\n0.02 = hard cliff edge, 0.4 = soft gradual transition.");
-                    }
+                            ImGui.SetTooltip("Which splat layer (1-3) this tier uses.\nAssign its albedo/normal/roughness/… in 'Layer textures' below.");
 
-                    // PAINT INTERPLAY — does the slope layer displace manual paint?
+                        if (t == 0 && !deg)
+                        {
+                            // LEGACY raw units — old scenes never stored an angle range.
+                            float slopeTh = obj.SplatSlopeThreshold;
+                            if (ImGui.SliderFloat("Threshold##terrain_slope", ref slopeTh, 0f, 0.95f, "%.2f"))
+                                obj.SplatSlopeThreshold = slopeTh;
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip("LEGACY abstract units: 0 = any non-flat surface,\n0.7 = near-vertical cliffs only (1 − Normal.y).\nSwitch Angle mode on for readable degrees.");
+                            float slopeFade = obj.SplatSlopeFade;
+                            if (ImGui.SliderFloat("Blend##terrain_slope", ref slopeFade, 0.005f, 0.6f, "%.3f"))
+                                obj.SplatSlopeFade = slopeFade;
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip("Blend width above the threshold —\n0.02 = hard cliff edge, 0.4 = soft gradual transition.");
+                            float aLo = MathF.Acos(1f - Math.Clamp(slopeTh, 0f, 0.9999f)) * 180f / MathF.PI;
+                            float aHi = MathF.Acos(1f - Math.Clamp(slopeTh + slopeFade, 0f, 0.9999f)) * 180f / MathF.PI;
+                            ImGui.TextDisabled($"≈ {aLo:F0}° .. {aHi:F0}° surface angle (1 − Normal.y units)");
+                        }
+                        else
+                        {
+                            ImGui.SliderFloat("Start##terrain_slope", ref tier.Min, 0f, 89f, "%.0f°");
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip("This tier's alpha is 0 at/below this angle.\n45° = walkable slope, 70° = cliff face.");
+                            ImGui.SliderFloat("Full##terrain_slope", ref tier.Max, 1f, 90f, "%.0f°");
+                            if (ImGui.IsItemHovered())
+                                ImGui.SetTooltip("Alpha = 1 at/above this angle (the tier fully replaces the\nground below it). Kept ≥ Start + 1° automatically.");
+                            if (tier.Max <= tier.Min) tier.Max = MathF.Min(tier.Min + 1f, 90f);
+                        }
+
+                        ImGui.SliderFloat("Tiling##terrain_slope", ref tier.Tiling, 0.25f, 16f, "%.2f", ImGuiSliderFlags.Logarithmic);
+                        if (ImGui.IsItemHovered())
+                            ImGui.SetTooltip("Tiling of THIS tier's layer textures across the terrain.\nSlopes stretch — a rock texture usually wants 2-4× the ground's,\nindependent of the painted layer tiling.");
+                        if (string.IsNullOrEmpty(obj.GetSplatLayerPath(0, tier.Layer) ?? ""))
+                            ImGui.TextDisabled($"-> Layer {tier.Layer} has no albedo yet — only its tint shows.");
+                        ImGui.Unindent();
+                    }
+                    slopeTiers[t] = tier;
+                    ImGui.PopID();
+                }
+                // Push the edited tiers back (setters clamp; AngleMax auto-lifts past Min).
+                obj.SplatSlopeEnabled = slopeTiers[0].On;
+                obj.SplatSlopeLayer = slopeTiers[0].Layer;
+                obj.SplatSlopeAngleMin = slopeTiers[0].Min;
+                obj.SplatSlopeAngleMax = slopeTiers[0].Max;
+                obj.SplatSlopeTiling = slopeTiers[0].Tiling;
+                obj.SplatSlope2Enabled = slopeTiers[1].On;
+                obj.SplatSlope2Layer = slopeTiers[1].Layer;
+                obj.SplatSlope2AngleMin = slopeTiers[1].Min;
+                obj.SplatSlope2AngleMax = slopeTiers[1].Max;
+                obj.SplatSlope2Tiling = slopeTiers[1].Tiling;
+                obj.SplatSlope3Enabled = slopeTiers[2].On;
+                obj.SplatSlope3Layer = slopeTiers[2].Layer;
+                obj.SplatSlope3AngleMin = slopeTiers[2].Min;
+                obj.SplatSlope3AngleMax = slopeTiers[2].Max;
+                obj.SplatSlope3Tiling = slopeTiers[2].Tiling;
+
+                if (obj.SplatSlopeAnyEnabled)
+                {
+                    // PAINT INTERPLAY — does a slope tier displace manual paint?
                     bool ovPaint = obj.SplatSlopeOverridePaint;
                     if (ImGui.Checkbox("Override painted areas##terrain_slope", ref ovPaint))
                         obj.SplatSlopeOverridePaint = ovPaint;
                     if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("OFF = painted weights keep their share (v1: the slope\nfades into paint, often reads as 'the slope layer does nothing').\nON = on steep-enough ground the slope layer TAKES OVER\neven where a different layer was painted.");
+                        ImGui.SetTooltip("OFF = BLEND (the reference lerp): each tier fades in as the surface\nsteepens — at full alpha it covers painted weights there.\nON = OVERRIDE: the tier takes max(paint, floor × alpha) on steep texels,\nso a painted layer always keeps at least the floor share.");
                     if (ovPaint)
                     {
                         float floor = obj.SplatSlopePaintFloor;
                         if (ImGui.SliderFloat("Slope floor##terrain_slope", ref floor, 0f, 0.9f, "%.2f"))
                             obj.SplatSlopePaintFloor = floor;
                         if (ImGui.IsItemHovered())
-                            ImGui.SetTooltip("Minimum weight the slope layer reaches on any texel\nits mask covers — 0.25 keeps a hint of the painted\nlayer visible at full slope alpha.");
+                            ImGui.SetTooltip("Minimum weight a slope tier reaches on any texel its mask\ncovers — 0.25 keeps a hint of the painted layer visible.");
                     }
-
-                    float sTiling = obj.SplatSlopeTiling;
-                    if (ImGui.SliderFloat("Slope tiling##terrain_slope", ref sTiling, 0.25f, 16f, "%.2f", ImGuiSliderFlags.Logarithmic))
-                        obj.SplatSlopeTiling = sTiling;
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Tiling of the slope layer's textures across the terrain.\nSLOPES STRETCH — a rock texture usually wants 2-4× the\nground's tiling here, without touching the other layers.");
-                    ImGui.Unindent();
                 }
-
+                bool slopeDbg = EditorObject.ShowSlopeDebug;
+                if (ImGui.Checkbox("Slope preview (tier coverage)##terrain_slope", ref slopeDbg))
+                    EditorObject.ShowSlopeDebug = slopeDbg;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Session-only tuning view (not saved):\ngray = flat ground (no tier), orange = tier 1, blue = tier 2,\nmagenta = tier 3. Line the angle ranges up with the terrain shape.");
                 // ── Layer textures (albedo + full PBR map set per layer) ──
                 if (ImGui.TreeNode("Layer textures##terrain_splat"))
                 {
@@ -471,7 +526,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.SmallButton("Revert paint##terrain_splat"))
                     obj.RevertSplat();
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits and reload the stored splat map (or reset to layer 0).\nLayer textures and height-band settings are kept.");
-                ImGui.Unindent();
+                ImGui.Separator();
             }
 
             ImGui.End();

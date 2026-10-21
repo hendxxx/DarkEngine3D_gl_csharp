@@ -500,6 +500,16 @@ public unsafe class EditorObjectManager
                 SplatSlopeOverridePaint = source.SplatSlopeOverridePaint,
                 SplatSlopePaintFloor = source.SplatSlopePaintFloor,
                 SplatSlopeTiling = source.SplatSlopeTiling,
+                SplatSlope2Enabled = source.SplatSlope2Enabled,
+                SplatSlope2Layer = source.SplatSlope2Layer,
+                SplatSlope2AngleMin = source.SplatSlope2AngleMin,
+                SplatSlope2AngleMax = source.SplatSlope2AngleMax,
+                SplatSlope2Tiling = source.SplatSlope2Tiling,
+                SplatSlope3Enabled = source.SplatSlope3Enabled,
+                SplatSlope3Layer = source.SplatSlope3Layer,
+                SplatSlope3AngleMin = source.SplatSlope3AngleMin,
+                SplatSlope3AngleMax = source.SplatSlope3AngleMax,
+                SplatSlope3Tiling = source.SplatSlope3Tiling,
                 // ── Everything the .ing save persists MUST travel with the duplicate:
                 // a clone used to lose the whole 2D/NPC block (sprite art, actions,
                 // camera follow, render layers…) and only healed after a save+reload.

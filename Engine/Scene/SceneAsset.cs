@@ -453,6 +453,18 @@ public class EditorObjectData
     public float SplatSlopePaintFloor { get; set; } = 0.25f;
     /// <summary>Tiling of the slope layer's textures (slopes stretch — usually 2-4×).</summary>
     public float SplatSlopeTiling { get; set; } = 1f;
+    // ── Slope TIER 2 / 3 (grass → dirt → rock). Absent in old scenes → OFF, which is
+    //    exactly the single-tier behavior they were saved with. ──
+    public bool SplatSlope2Enabled { get; set; } = false;
+    public int SplatSlope2Layer { get; set; } = 2;
+    public float SplatSlope2AngleMin { get; set; } = 45f;
+    public float SplatSlope2AngleMax { get; set; } = 90f;
+    public float SplatSlope2Tiling { get; set; } = 2f;
+    public bool SplatSlope3Enabled { get; set; } = false;
+    public int SplatSlope3Layer { get; set; } = 3;
+    public float SplatSlope3AngleMin { get; set; } = 60f;
+    public float SplatSlope3AngleMax { get; set; } = 90f;
+    public float SplatSlope3Tiling { get; set; } = 2f;
     public int SplatHeightLayerCount { get; set; } = -1;      // absent = legacy → 4
     public float SplatHeightLayerFeather { get; set; } = -1f; // absent = legacy → 2
     /// <summary>Per-layer band edges (world units): 8 floats — L0.low, L0.high, L1.low, …</summary>
