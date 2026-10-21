@@ -227,7 +227,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                         ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SculptUndoDepth} stroke(s) back, {obj.SculptRedoDepth} to redo");
                     if (ImGui.SmallButton("Revert sculpt##terrain_sculpt"))
                         obj.RevertSculpt();
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL brush edits (the sculpt layer resets to neutral).\nThe base heightmap image is never modified by sculpting.");
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL brush edits: the sculpt bake is detached and the terrain\nreturns to its base heightmap (the file stays on disk, just unreferenced).\nThe base heightmap image is never modified by sculpting.");
                 }
                 ImGui.Unindent();
             }
@@ -525,7 +525,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SplatUndoDepth} stroke(s) back, {obj.SplatRedoDepth} to redo");
                 if (ImGui.SmallButton("Revert paint##terrain_splat"))
                     obj.RevertSplat();
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits and reload the stored splat map (or reset to layer 0).\nLayer textures and height-band settings are kept.");
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits: the baked weight map is detached and every layer\nreturns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept.");
                 ImGui.Separator();
             }
 

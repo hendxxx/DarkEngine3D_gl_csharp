@@ -973,8 +973,16 @@ public unsafe class EditorObject
     /// heightmap is untouched by definition.</summary>
     public void RevertSculpt()
     {
+        string detached = _sculptDeltaPath;
         DropSculptField();
+        // THE STORED BAKE *IS* THE SCULPT: dropping only the live field made the next
+        // EnsureSculptField re-decode the SAME delta, so "Revert sculpt" appeared to do
+        // nothing (exactly the same trap as RevertSplat). The file stays on disk (a
+        // duplicated object shares the path); only the reference is detached.
+        SculptDeltaPath = "";
         _sculptDecodeFailedPath = null;
+        if (!string.IsNullOrEmpty(detached))
+            Console.WriteLine($"[TerrainSculpt] '{Name}' revert sculpt — detached {detached}");
     }
 
     /// <summary>Decode the SCULPT DELTA into a CPU heightfield (idempotent):
@@ -1784,14 +1792,37 @@ public unsafe class EditorObject
     /// decoded splat file) — drives the paint status line in the Terrain panel.</summary>
     public bool HasSplatEdits => _splatField?.HasAnyEdits == true;
 
-    /// <summary>Discard ALL paint edits: drop the live field and reload the stored
-    /// splat map on next use (or reset to the empty layer-0 field when none was
-    /// saved). Layer textures and height-band settings are kept.</summary>
+    /// <summary>Discard ALL paint edits: detach the stored splat bake, drop the live
+    /// field (undo history included) and rebuild an empty base so the viewport clears
+    /// on the next frame. Layer textures, height bands and slope tiers are kept.</summary>
     public void RevertSplat()
     {
+        string detached = _splatMapPath;
         DropSplatField();
+        // THE STORED BAKE *IS* THE PAINT. Dropping only the live field made the very
+        // next draw re-decode the SAME TGA → every "reverted" stroke came straight
+        // back, the coverage line kept reporting Painted and Ctrl+Z could not help
+        // (the history lived in the dropped field). The file itself stays on disk: a
+        // DUPLICATED object shares this path and must keep its own art — only this
+        // object's reference is detached.
+        SplatMapPath = "";
         _splatDecodeFailedPath = null;
+        if (!string.IsNullOrEmpty(detached))
+            Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — detached {detached}");
+        // Empty base for THIS frame: height bands rebuild from the elevation, else the
+        // neutral layer-0 fill the per-pixel splat/slope variants blend over (without
+        // it the splat gate would go dark for a frame and the paint would look stuck).
         InvalidateSplatBands();
+        if (!SplatHeightBandsEnabled
+            && (SplatSlopeAnyEnabled || SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))))
+        {
+            var f = EnsureSplatBandField();
+            if (f != null && !f.HasAnyEdits)
+            {
+                f.FillNeutralLayer0();
+                f.FlushTexture();
+            }
+        }
     }
 
     /// <summary>Weight coverage of layers 1-3 (0 = fully layer 0) — drives the
