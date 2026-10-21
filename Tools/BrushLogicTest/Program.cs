@@ -386,6 +386,68 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     probe.SplatBeginStroke();     // a new stroke makes the parked state stale
     Check("New stroke clears the revert stash", !probe.CanUndoSplatRevert,
         $"CanUndoSplatRevert={probe.CanUndoSplatRevert}");
+
+    // ── REGRESSION: a SECOND revert must never DESTROY the parked painting ──
+    // The viewport draw loop rebuilds an EMPTY base right after a revert (the live
+    // field is gone, the bake path is detached). Parking THAT empty base over the
+    // original painting made "undo revert" restore a blank map — the hours of
+    // paint were gone for good. The first parked state must win until consumed.
+    var probe2 = new EditorObject(EditorPrimitiveType.Plane, "revert_probe2");
+    probe2.SplatMapPath = bakePath;
+    probe2.RevertSplat();                  // park the painting
+    probe2.EnsureSplatPaintField();        // ← what the viewport does every frame
+    probe2.RevertSplat();                  // a second revert must NOT downgrade the stash
+    Check("Second revert keeps the original paint stashed", probe2.CanUndoSplatRevert,
+        $"CanUndoSplatRevert={probe2.CanUndoSplatRevert}");
+    probe2.UndoSplatRevert();
+    Check("Undo after a second revert restores the paint",
+        probe2.HasSplatEdits && probe2.SplatPaintCoverage() > 0.01f,
+        $"coverage {probe2.SplatPaintCoverage() * 100:F1}%");
+
+    // ── REGRESSION: the AUTO layers (height bands + slope tiers) are folded in
+    // PER PIXEL by the shader, so they survive a paint revert — which is exactly
+    // why a correct revert could still LOOK like it had done nothing. The revert
+    // must be able to switch them off, and the one-level undo must bring them
+    // back with the exact state they had before. ──
+    var probe3 = new EditorObject(EditorPrimitiveType.Plane, "revert_probe3");
+    probe3.SplatMapPath = bakePath;
+    probe3.SplatHeightBandsEnabled = true;
+    probe3.SplatSlopeEnabled = true;
+    probe3.SplatSlopeLayer = 1;
+    Check("Auto layers are described for the panel",
+        probe3.SplatAutoLayersEnabled && probe3.DescribeSplatAutoLayers().Contains("slope tier 1"),
+        $"'{probe3.DescribeSplatAutoLayers()}'");
+    probe3.RevertSplat();                  // a plain revert keeps the auto layers
+    Check("Plain revert keeps the auto layers", probe3.SplatAutoLayersEnabled,
+        $"auto={probe3.SplatAutoLayersEnabled} '{probe3.DescribeSplatAutoLayers()}'");
+    probe3.UndoSplatRevert();
+    probe3.RevertSplat(disableAutoLayers: true);
+    Check("Revert can switch the auto layers off",
+        !probe3.SplatAutoLayersEnabled && !probe3.SplatSlopeEnabled
+            && !probe3.SplatHeightBandsEnabled,
+        $"auto={probe3.SplatAutoLayersEnabled} slope={probe3.SplatSlopeEnabled}");
+    probe3.UndoSplatRevert();
+    Check("Undo revert brings the auto layers back",
+        probe3.SplatAutoLayersEnabled && probe3.SplatSlopeEnabled
+            && probe3.SplatHeightBandsEnabled,
+        $"auto={probe3.SplatAutoLayersEnabled} slope={probe3.SplatSlopeEnabled}");
+
+    // A terrain that was NEVER painted can still be reverted when the only thing
+    // to change is the auto layers — otherwise the switch-off would be dead UI.
+    var probe4 = new EditorObject(EditorPrimitiveType.Plane, "revert_probe4");
+    probe4.SplatSlopeEnabled = true;
+    probe4.RevertSplat();
+    Check("Revert without paint does not arm the undo", !probe4.CanUndoSplatRevert
+        && probe4.SplatAutoLayersEnabled,
+        $"stash={probe4.CanUndoSplatRevert} auto={probe4.SplatAutoLayersEnabled}");
+    probe4.RevertSplat(disableAutoLayers: true);
+    Check("Revert switches the auto layers off without paint",
+        !probe4.SplatAutoLayersEnabled && probe4.CanUndoSplatRevert,
+        $"auto={probe4.SplatAutoLayersEnabled} stash={probe4.CanUndoSplatRevert}");
+    probe4.UndoSplatRevert();
+    Check("Undo brings the auto layers back without paint", probe4.SplatAutoLayersEnabled,
+        $"auto={probe4.SplatAutoLayersEnabled}");
+
     try { File.Delete(bakePath); } catch { /* temp fixture only */ }
 }
 

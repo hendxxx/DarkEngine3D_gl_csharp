@@ -1231,6 +1231,13 @@ public unsafe class EditorObject
     private string _splatRevertPath = "";              // stored bake path at revert time
     private string? _splatRevertLoadedPath;
     private bool _splatHasRevertStash;
+    // The AUTO layers (height bands + the slope tiers) are parked with the paint:
+    // "undo revert" must bring back the exact terrain state, and a revert that is
+    // allowed to switch them off must be able to switch them back on.
+    private bool _splatRevertBands;
+    private bool _splatRevertSlope1;
+    private bool _splatRevertSlope2;
+    private bool _splatRevertSlope3;
     private string? _splatLoadedPath;                 // file the live field was decoded from
     private string? _splatDecodeFailedPath;           // sticky failure cache (no decode storms)
     private bool _splatBandsPending;                  // bands recompute requested (param/sculpt change)
@@ -1825,43 +1832,105 @@ public unsafe class EditorObject
         _splatRevertFieldBands = null;
         _splatRevertPath = "";
         _splatRevertLoadedPath = null;
+        _splatRevertBands = false;
+        _splatRevertSlope1 = false;
+        _splatRevertSlope2 = false;
+        _splatRevertSlope3 = false;
         _splatHasRevertStash = false;
+    }
+
+    /// <summary>True when an AUTO layer (height bands or any slope tier) will still
+    /// texture the terrain. Those are folded in PER PIXEL by the shader, so they
+    /// survive a paint revert — which is exactly why a revert could look like it
+    /// had done nothing at all.</summary>
+    public bool SplatAutoLayersEnabled => SplatHeightBandsEnabled || SplatSlopeAnyEnabled;
+
+    /// <summary>Switch the auto layers (height bands + every slope tier) on or off
+    /// as ONE group — the revert dialog's "also disable auto layers" option.</summary>
+    public void SetSplatAutoLayersEnabled(bool enabled)
+    {
+        SplatHeightBandsEnabled = enabled;
+        SplatSlopeEnabled = enabled;
+        SplatSlope2Enabled = enabled;
+        SplatSlope3Enabled = enabled;
+        InvalidateSplatBands();
+    }
+
+    /// <summary>One line naming the auto layers that keep texturing the terrain
+    /// after a paint revert (the Terrain panel shows it, so a revert never looks
+    /// like a no-op). Empty when no auto layer is active.</summary>
+    public string DescribeSplatAutoLayers()
+    {
+        var parts = new List<string>();
+        if (SplatHeightBandsEnabled) parts.Add("height bands");
+        if (SplatSlopeEnabled) parts.Add($"slope tier 1 → layer {Math.Clamp(SplatSlopeLayer, 1, 3)}");
+        if (SplatSlope2Enabled) parts.Add($"slope tier 2 → layer {Math.Clamp(SplatSlope2Layer, 1, 3)}");
+        if (SplatSlope3Enabled) parts.Add($"slope tier 3 → layer {Math.Clamp(SplatSlope3Layer, 1, 3)}");
+        return string.Join(", ", parts);
     }
 
     /// <summary>Discard ALL paint edits: detach the stored splat bake, park the live
     /// field in a ONE-LEVEL undo stash (never disposed — its weights, stroke history
     /// and GPU texture are what <see cref="UndoSplatRevert"/> brings back) and rebuild
-    /// an empty base so the viewport clears on the next frame. Layer textures, height
-    /// bands and slope tiers are kept. No-op when there is nothing to revert, so a
-    /// stray click can never consume the undo slot.</summary>
-    public void RevertSplat()
+    /// an empty base so the viewport clears on the next frame. Layer textures are
+    /// always kept. No-op when there is nothing to revert, so a stray click can
+    /// never consume the undo slot.</summary>
+    /// <param name="disableAutoLayers">Also switch OFF the auto layers (height bands
+    /// + every slope tier) so the terrain really returns to the base PBR material.
+    /// They are folded in PER PIXEL by the shader, so with them on the terrain keeps
+    /// its auto texture after a paint revert — that is what made "revert" look like
+    /// it had done nothing.</param>
+    public void RevertSplat(bool disableAutoLayers = false)
     {
         bool hasPaintState = _splatField != null || _splatFieldForBands != null || _splatMapPath.Length > 0;
-        if (!hasPaintState) return;
+        // Nothing to clear AND no auto layer to switch off → a stray click must not
+        // consume the undo slot. With "auto layers off" asked for, the switch-off
+        // IS the change: it must work on a terrain that was never painted.
+        if (!hasPaintState && !(disableAutoLayers && SplatAutoLayersEnabled)) return;
 
-        // Park the current state BEFORE dropping anything. An older stash is replaced
-        // (one level only — a second revert must not stack).
-        ClearSplatRevertStash();
-        _splatRevertField = _splatField;
-        _splatRevertFieldBands = _splatFieldForBands;
-        // No live field (the paint only existed on disk, not drawn since load) → decode
-        // it NOW, CPU-only, so "Undo revert" restores the painted weights as well. GL is
-        // untouched here: the draw builds the texture for a CPU-only field.
-        if (_splatRevertField == null && _splatRevertFieldBands == null && _splatMapPath.Length > 0)
+        // ONE LEVEL, AND NEVER DOWNGRADE. A SECOND revert must not replace the
+        // parked painting with the EMPTY base the draw loop rebuilt in the
+        // meantime: that silently DESTROYED the original painting (the undo then
+        // restored a blank map and the hours of paint were gone for good). The
+        // FIRST parked state wins until it is consumed.
+        if (!_splatHasRevertStash)
         {
-            string resolvedRevert = PathHelpers.Resolve(_splatMapPath);
-            if (File.Exists(resolvedRevert))
-                _splatRevertField = TerrainSplatField.FromFile(resolvedRevert);
+            _splatRevertField = _splatField;
+            _splatRevertFieldBands = _splatFieldForBands;
+            // No live field (the paint only existed on disk, not drawn since load) → decode
+            // it NOW, CPU-only, so "Undo revert" restores the painted weights as well. GL is
+            // untouched here: the draw builds the texture for a CPU-only field.
+            if (_splatRevertField == null && _splatRevertFieldBands == null && _splatMapPath.Length > 0)
+            {
+                string resolvedRevert = PathHelpers.Resolve(_splatMapPath);
+                if (File.Exists(resolvedRevert))
+                    _splatRevertField = TerrainSplatField.FromFile(resolvedRevert);
+            }
+            _splatRevertPath = _splatMapPath;
+            _splatRevertLoadedPath = _splatLoadedPath;
+            // The auto-layer switches ride along — "undo revert" must bring back the
+            // exact terrain state, and a revert that switches them off must be able
+            // to switch them back on.
+            _splatRevertBands = SplatHeightBandsEnabled;
+            _splatRevertSlope1 = SplatSlopeEnabled;
+            _splatRevertSlope2 = SplatSlope2Enabled;
+            _splatRevertSlope3 = SplatSlope3Enabled;
+            _splatHasRevertStash = true;
         }
-        _splatRevertPath = _splatMapPath;
-        _splatRevertLoadedPath = _splatLoadedPath;
-        _splatHasRevertStash = true;
-
-        string detached = _splatMapPath;
-        // Detach the live slots WITHOUT disposing what the stash just took ownership of.
+        else
+        {
+            // A stash already exists → KEEP the original parked painting. The live
+            // field is whatever the previous revert built (or fresh paint made
+            // after it) and goes away with this revert.
+            _splatField?.DisposeTexture();
+            _splatFieldForBands?.DisposeTexture();
+        }
         _splatField = null;
         _splatFieldForBands = null;
         _splatLoadedPath = null;
+        string detached = _splatMapPath;
+        if (disableAutoLayers)
+            SetSplatAutoLayersEnabled(false);
         // THE STORED BAKE *IS* THE PAINT. Dropping only the live field made the very
         // next draw re-decode the SAME TGA → every "reverted" stroke came straight
         // back, the coverage line kept reporting Painted and Ctrl+Z could not help
@@ -1871,7 +1940,15 @@ public unsafe class EditorObject
         SplatMapPath = "";
         _splatDecodeFailedPath = null;
         if (!string.IsNullOrEmpty(detached))
+        {
             Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — detached {detached} (undo available)");
+            // The auto layers are folded in PER PIXEL by the shader: with them on,
+            // the terrain keeps its auto texture and the revert LOOKS like a no-op.
+            // Say it in the console so the cause is never a mystery.
+            if (SplatAutoLayersEnabled)
+                Console.WriteLine($"[TerrainSplat] '{Name}' auto layers still active ({DescribeSplatAutoLayers()})"
+                    + " — the terrain keeps that texture; use 'Revert paint' with auto layers off for a clean base.");
+        }
         // Empty base for THIS frame: height bands rebuild from the elevation, else the
         // neutral layer-0 fill the per-pixel splat/slope variants blend over (without
         // it the splat gate would go dark for a frame and the paint would look stuck).
@@ -1909,9 +1986,20 @@ public unsafe class EditorObject
         _splatRevertPath = "";
         _splatRevertLoadedPath = null;
         _splatHasRevertStash = false;
+        // The auto layers come back exactly as they were — a revert that switched
+        // them off must be fully undone by the one-level undo.
+        SplatHeightBandsEnabled = _splatRevertBands;
+        SplatSlopeEnabled = _splatRevertSlope1;
+        SplatSlope2Enabled = _splatRevertSlope2;
+        SplatSlope3Enabled = _splatRevertSlope3;
+        _splatRevertBands = false;
+        _splatRevertSlope1 = false;
+        _splatRevertSlope2 = false;
+        _splatRevertSlope3 = false;
         InvalidateSplatBands();
         Console.WriteLine($"[TerrainSplat] '{Name}' undo revert paint — restored "
-            + (string.IsNullOrEmpty(_splatMapPath) ? "in-memory strokes" : _splatMapPath));
+            + (!string.IsNullOrEmpty(_splatMapPath) ? _splatMapPath
+                : (_splatField != null ? "in-memory strokes" : "the auto layers")));
         return true;
     }
 
