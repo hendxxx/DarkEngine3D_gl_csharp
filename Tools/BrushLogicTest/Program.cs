@@ -329,10 +329,51 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
         $"s20={s20:F3} s45={t45:F3} s70={s70:F3}");
 }
 
+// ── REVERT PAINT / SCULPT MUST DETACH THE STORED BAKE ──
+// The reported bug: "Revert paint engga jalan" — the button dropped the live field
+// but left the path pointing at the baked TGA, so the next draw re-decoded the same
+// strokes and the panel kept reporting Painted. This pins the contract: after the
+// revert BOTH stored paths are empty (and the fixture proves the bake really carried
+// paint, so the check cannot pass on an empty field by accident).
+{
+    string bakePath = Path.Combine(Path.GetTempPath(), "revert_paint_test_splat.tga");
+    var painted = TerrainSplatField.CreateDefault();
+    painted.FillNeutralLayer0();
+    var brush = new SplatBrushSession
+    {
+        Mode = SplatBrushMode.Paint,
+        Layer = 2,
+        Radius = 8f,
+        Strength = 6f,
+        Hardness = 0.8f,
+    };
+    painted.BeginStroke();
+    for (int i = 0; i < 40; i++)
+        painted.ApplyBrush(0f, 0f, 64f, 64f, brush, 1f / 60f, i);
+    bool baked = painted.BakeToTga(bakePath);
+    var decoded = baked ? TerrainSplatField.FromFile(bakePath) : null;
+    float cov = decoded?.PaintCoverage() ?? 0f;
+    Check("Revert fixture: bake carries paint", decoded != null && cov > 0.01f,
+        $"coverage {cov * 100:F1}%");
+
+    var probe = new EditorObject(EditorPrimitiveType.Plane, "revert_probe");
+    probe.SplatMapPath = bakePath;
+    probe.SculptDeltaPath = "Artifacts/Terrain/probe_sculpt.tga";
+    probe.RevertSplat();
+    Check("Revert paint detaches the bake", probe.SplatMapPath.Length == 0,
+        $"path after revert '{probe.SplatMapPath}'");
+    Check("Revert paint clears the UI state", !probe.HasSplatEdits && probe.SplatPaintCoverage() <= 0.0001f,
+        $"hasEdits={probe.HasSplatEdits} coverage={probe.SplatPaintCoverage() * 100:F2}%");
+    probe.RevertSculpt();
+    Check("Revert sculpt detaches the bake", probe.SculptDeltaPath.Length == 0,
+        $"path after revert '{probe.SculptDeltaPath}'");
+    try { File.Delete(bakePath); } catch { /* temp fixture only */ }
+}
+
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
 WeatherProbe.Run();
-return BrushProbe.Fails + WeatherProbe.Fails;
+return fails + BrushProbe.Fails + WeatherProbe.Fails;
 
 /// <summary>WEATHER PER-PIXEL suite — pins the tileset outline contract through
 /// Effect2DSystem's private helpers via reflection: a synthetic 8×2 tileset with a
