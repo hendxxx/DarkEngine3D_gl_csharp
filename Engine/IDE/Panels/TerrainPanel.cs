@@ -64,7 +64,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 }
                 else
                 {
-                    ImGui.TextColored(new Vector4(1f, 0.65f, 0.25f, 1f), "Revert ALL terrain paint?");
+                    ImGui.TextColored(new Vector4(1f, 0.65f, 0.25f, 1f), "Revert Paint — clear ALL paint on this terrain?");
                     ImGui.Separator();
                     float covNow = target.SplatPaintCoverage() * 100f;
                     int strokes = target.SplatUndoDepth;
@@ -100,7 +100,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     }
                     ImGui.TextDisabled("Undoable ONCE right after it runs: 'Undo revert' / Ctrl+Z.");
                     ImGui.Separator();
-                    if (ImGui.Button("Revert paint", new Vector2(150, 0)))
+                    if (ImGui.Button("Revert Paint", new Vector2(150, 0)))
                     {
                         target.RevertSplat(_revertDisableAutoLayers);
                         _revertDisableAutoLayers = false;
@@ -343,13 +343,24 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             {
                 ImGui.Indent();
                 int smode = (int)sp.Mode;
-                if (ImGui.Combo("Brush##terrain_splat", ref smode, "Paint\0Erase\0Smooth\0"))
+                if (ImGui.Combo("Brush##terrain_splat", ref smode, "Paint\0Erase\0Smooth\0Erase All\0"))
                     sp.Mode = (SplatBrushMode)smode;
-                int layer = Math.Clamp(sp.Layer, 0, 3);
-                if (ImGui.SliderInt("Layer##terrain_splat", ref layer, 0, 3))
-                    sp.Layer = layer;
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("0 = the base PBR material (PBR panel maps), 1-3 = the layers below.");
+                    ImGui.SetTooltip("Paint = add the selected layer, Erase = remove it,\nSmooth = soften the edges,\nErase All = wipe EVERY layer in the footprint back to the\nbase material (the local counterpart of 'Revert paint').");
+                int layer = Math.Clamp(sp.Layer, 0, 3);
+                if (sp.Mode == SplatBrushMode.EraseAll)
+                {
+                    // The layer is meaningless here — the whole footprint goes back
+                    // to layer 0 (the base material).
+                    ImGui.TextDisabled("Erase All ignores the layer — the whole footprint\nreturns to the base material (layer 0).");
+                }
+                else
+                {
+                    if (ImGui.SliderInt("Layer##terrain_splat", ref layer, 0, 3))
+                        sp.Layer = layer;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = the base PBR material (PBR panel maps), 1-3 = the layers below.");
+                }
                 float srad = sp.Radius;
                 if (ImGui.SliderFloat("Radius (world)##terrain_splat", ref srad, 0.5f, 100f, "%.1f")) sp.Radius = srad;
                 float sstr = sp.Strength;
@@ -359,6 +370,49 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.SliderFloat("Hardness##terrain_splat", ref shard, 0f, 1f, "%.2f")) sp.Hardness = shard;
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Falloff shape: 0 = fully soft, 1 = hard-edged disc.");
                 ImGui.Unindent();
+            }
+
+            // ── PAINT STATUS + THE ONE "Revert Paint" BUTTON ──
+            // It sits right under the brush controls: this is the way out of a
+            // terrain covered in paint, so it must be where the user looks while
+            // painting — not buried at the bottom of the auto-layer settings.
+            {
+                float cov = obj.SplatPaintCoverage() * 100f;
+                if (cov > 0.01f)
+                    ImGui.TextDisabled($"Painted coverage: {cov:F1}% of the terrain");
+                if (obj.HasSplatEdits)
+                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Painted — each stroke bakes into the splat file.");
+                // The auto layers are folded in PER PIXEL by the shader, so they keep
+                // texturing the terrain after a paint revert — say so, otherwise a
+                // successful revert looks like it did nothing.
+                if (obj.SplatAutoLayersEnabled)
+                {
+                    string autoDesc = obj.DescribeSplatAutoLayers();
+                    if (obj.HasSplatEdits)
+                        ImGui.TextDisabled($"Auto layers: {autoDesc} (per pixel — survives a paint revert).");
+                    else
+                        ImGui.TextColored(new Vector4(1f, 0.75f, 0.35f, 1f),
+                            $"No paint — auto layers still texture the terrain ({autoDesc}).");
+                }
+                if (obj.SplatUndoDepth > 0 || obj.SplatRedoDepth > 0)
+                    ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SplatUndoDepth} stroke(s) back, {obj.SplatRedoDepth} to redo");
+                // DESTRUCTIVE — always behind a confirm, and undoable exactly once.
+                if (ImGui.Button("Revert Paint##terrain_splat"))
+                {
+                    _revertSplatTarget = obj;
+                    _confirmRevertSplat = true;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Clear ALL paint on this terrain: every painted weight goes and the\nterrain returns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept (the baked\nfile stays on disk, just unreferenced).\nAsks for confirmation and can be undone once (Undo revert / Ctrl+Z).");
+                if (obj.CanUndoSplatRevert)
+                {
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton("Undo revert##terrain_splat"))
+                        obj.UndoSplatRevert();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Restore the painted state the last revert replaced —\nweights, stroke history and the stored bake path all come back.\nA new stroke clears this one-level undo.");
+                }
+                ImGui.Separator();
             }
 
             // ── ALWAYS-ON layering controls ──
@@ -589,40 +643,6 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     }
                     ImGui.TextDisabled("Layer 0 = the base PBR material (PBR panel).\nEmpty slots keep neutral defaults (no texture, tint shows).\nAlbedo slot empty → the tint colors the band.");
                     ImGui.TreePop();
-                }
-                float cov = obj.SplatPaintCoverage() * 100f;
-                if (cov > 0.01f)
-                    ImGui.TextDisabled($"Painted coverage: {cov:F1}% of the terrain");
-                if (obj.HasSplatEdits)
-                    ImGui.TextColored(new Vector4(0.4f, 0.9f, 0.6f, 1f), "Painted — each stroke bakes into the splat file.");
-                // The auto layers are folded in PER PIXEL by the shader, so they keep
-                // texturing the terrain after a paint revert — say so, otherwise a
-                // successful revert looks like it did nothing.
-                if (obj.SplatAutoLayersEnabled)
-                {
-                    string autoDesc = obj.DescribeSplatAutoLayers();
-                    if (obj.HasSplatEdits)
-                        ImGui.TextDisabled($"Auto layers: {autoDesc} (per pixel — survives a paint revert).");
-                    else
-                        ImGui.TextColored(new Vector4(1f, 0.75f, 0.35f, 1f),
-                            $"No paint — auto layers still texture the terrain ({autoDesc}).");
-                }
-                if (obj.SplatUndoDepth > 0 || obj.SplatRedoDepth > 0)
-                    ImGui.TextDisabled($"Ctrl+Z undo · Ctrl+Y redo — {obj.SplatUndoDepth} stroke(s) back, {obj.SplatRedoDepth} to redo");
-                // DESTRUCTIVE — always behind a confirm, and undoable exactly once.
-                if (ImGui.SmallButton("Revert paint##terrain_splat"))
-                {
-                    _revertSplatTarget = obj;
-                    _confirmRevertSplat = true;
-                }
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Discard ALL paint edits: the baked weight map is detached and every layer\nreturns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept.\nAsks for confirmation and can be undone once (Undo revert / Ctrl+Z).");
-                if (obj.CanUndoSplatRevert)
-                {
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton("Undo revert##terrain_splat"))
-                        obj.UndoSplatRevert();
-                    if (ImGui.IsItemHovered())
-                        ImGui.SetTooltip("Restore the painted state the last revert replaced —\nweights, stroke history and the stored bake path all come back.\nA new stroke clears this one-level undo.");
                 }
                 ImGui.Separator();
             }

@@ -208,6 +208,37 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     Check("Paint survives bake/reload", c.Y > 0.6f, $"layer-1 weight at center {c.Y:F3} — want > 0.6");
 }
 
+// ── ERASE ALL — the brush wipes EVERY layer back to layer 0 in its footprint ──
+// The local counterpart of "Revert paint": the Erase mode only removes the
+// SELECTED layer, so a terrain painted on two layers could never be cleaned up
+// locally. EraseAll must return the whole footprint to the base material and
+// keep every texel summing to 1.
+{
+    var ea = TerrainSplatField.CreateDefault();
+    ea.FillNeutralLayer0();
+    // Two layers painted over the same footprint.
+    for (int i = 0; i < 30; i++)
+        ea.ApplyBrush(0f, 0f, Span, Span, new SplatBrushSession { Mode = SplatBrushMode.Paint, Layer = 1, Radius = 6f, Strength = 2f }, 1f / 60f, i);
+    for (int i = 0; i < 30; i++)
+        ea.ApplyBrush(0f, 0f, Span, Span, new SplatBrushSession { Mode = SplatBrushMode.Paint, Layer = 2, Radius = 6f, Strength = 2f }, 1f / 60f, i);
+    var pw = ea.SampleWeights(0.5f, 0.5f);
+    Check("EraseAll fixture: two layers painted", pw.Y > 0.1f && pw.Z > 0.1f,
+        $"L1={pw.Y:F3} L2={pw.Z:F3}");
+
+    ea.BeginStroke();
+    for (int i = 0; i < 60; i++)
+        ea.ApplyBrush(0f, 0f, Span, Span, new SplatBrushSession { Mode = SplatBrushMode.EraseAll, Layer = 1, Radius = 6f, Strength = 6f }, 1f / 60f, i);
+    var ew = ea.SampleWeights(0.5f, 0.5f);
+    Check("EraseAll wipes every painted layer", ew.Y < 0.02f && ew.Z < 0.02f && ew.W < 0.02f,
+        $"L1={ew.Y:F3} L2={ew.Z:F3} L3={ew.W:F3}");
+    Check("EraseAll returns the texel to layer 0", ew.X > 0.98f, $"L0={ew.X:F3}");
+    Check("EraseAll keeps the weights summing to 1",
+        MathF.Abs(ew.X + ew.Y + ew.Z + ew.W - 1f) < 0.01f,
+        $"sum={ew.X + ew.Y + ew.Z + ew.W:F3}");
+    Check("EraseAll clears the paint coverage", ea.PaintCoverage() < 0.001f,
+        $"coverage {ea.PaintCoverage() * 100:F2}%");
+}
+
 // ── SLOPE LAYER (PBR) — steepness mask folded into the weight map ──
 // Pins the contract: neutral base → slope pass lifts ONLY the target layer on
 // steep texels, flat texels stay untouched, the sum stays 1, and painted fields

@@ -13,6 +13,10 @@ public enum SplatBrushMode
     Erase = 1,
     /// <summary>Relax weight differences toward the local average (softens paint edges).</summary>
     Smooth = 2,
+    /// <summary>Wipe EVERY layer in the footprint back to layer 0 (the base
+    /// material) — the local counterpart of "Revert paint". Ignores the
+    /// selected layer: the whole texel returns to the base PBR material.</summary>
+    EraseAll = 3,
 }
 
 /// <summary>Live brush-session settings for splat painting. The Terrain panel edits
@@ -20,7 +24,7 @@ public enum SplatBrushMode
 /// <see cref="EditorObject.SplatBrush"/> — null = not painting.</summary>
 public sealed class SplatBrushSession
 {
-    /// <summary>Current paint operation (Paint/Erase/Smooth).</summary>
+    /// <summary>Current paint operation (Paint/Erase/Smooth/Erase All).</summary>
     public SplatBrushMode Mode;
     /// <summary>Target texture layer 0..3 the Paint/Erase ops modify.
     /// Default 1 (not 0): layer 0 IS the base material, so on fresh terrain painting
@@ -741,6 +745,7 @@ public sealed class TerrainSplatField
                 float l = _w[idx + layer];
                 float rate = Math.Clamp(b.Strength * falloff * dt, 0f, 1f);
                 if (rate <= 0f) continue;
+                bool skipRenorm = false;
 
                 if (b.Mode == SplatBrushMode.Smooth)
                 {
@@ -750,6 +755,18 @@ public sealed class TerrainSplatField
                 {
                     _w[idx + layer] = Math.Clamp(l * (1f - rate), 0f, 1f);
                 }
+                else if (b.Mode == SplatBrushMode.EraseAll)
+                {
+                    // Wipe EVERY layer in the footprint back to layer 0 (the base
+                    // material) — the local "Revert paint". The freed weight goes
+                    // to layer 0, so the texel still sums to 1 and the per-layer
+                    // renormalization below is skipped (the target is exact).
+                    float keep = 1f - rate;
+                    for (int c = 1; c < 4; c++)
+                        _w[idx + c] *= keep;
+                    _w[idx] = Math.Clamp(_w[idx] * keep + rate, 0f, 1f);
+                    skipRenorm = true;
+                }
                 else // Paint: push the layer toward full weight
                 {
                     _w[idx + layer] = Math.Clamp(l + (1f - l) * rate, 0f, 1f);
@@ -757,21 +774,24 @@ public sealed class TerrainSplatField
 
                 // Renormalize the OTHER channels so the texel always sums to 1:
                 // paint steals proportionally, erase gives back proportionally.
-                float newL = _w[idx + layer];
-                float otherSum = _w[idx] + _w[idx + 1] + _w[idx + 2] + _w[idx + 3] - newL;
-                float rest = 1f - newL;
-                if (otherSum > 0.001f)
+                if (!skipRenorm)
                 {
-                    float f = rest / otherSum;
-                    for (int c = 0; c < 4; c++)
-                        if (c != layer) _w[idx + c] *= f;
-                }
-                else
-                {
-                    // Nothing else to give (all others 0) — the first non-painted
-                    // channel takes the remainder so the texel never sums < 1.
-                    for (int c = 0; c < 4; c++)
-                        if (c != layer) { _w[idx + c] = rest; break; }
+                    float newL = _w[idx + layer];
+                    float otherSum = _w[idx] + _w[idx + 1] + _w[idx + 2] + _w[idx + 3] - newL;
+                    float rest = 1f - newL;
+                    if (otherSum > 0.001f)
+                    {
+                        float f = rest / otherSum;
+                        for (int c = 0; c < 4; c++)
+                            if (c != layer) _w[idx + c] *= f;
+                    }
+                    else
+                    {
+                        // Nothing else to give (all others 0) — the first non-painted
+                        // channel takes the remainder so the texel never sums < 1.
+                        for (int c = 0; c < 4; c++)
+                            if (c != layer) { _w[idx + c] = rest; break; }
+                    }
                 }
 
                 MarkDirty(x, z);
