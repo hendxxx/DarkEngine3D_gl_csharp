@@ -626,6 +626,10 @@ public unsafe class EditorObjectManager
             // ── Local point/spot lights (from editor Light markers) ──
             light.UploadLocalLights(_shaderProgram);
 
+            // ── 2D lighting: snapshot this frame's sun + Point/Spot markers for the
+            //    sprite / tilemap / particle passes (they share SpriteLighting2D). ──
+            SpriteLighting2D.Capture(light);
+
             // ── Send shadow uniforms if CSM provided ──
             if (csm != null)
             {

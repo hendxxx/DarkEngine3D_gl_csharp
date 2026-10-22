@@ -17,6 +17,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         // ── Shared geometry (unit cube for all sky types) ──
         private readonly uint _vao, _vbo;
 
+        // ── 2D celestial geometry (screen-space quad for the sun/moon) ──
+        private readonly uint _celestialVao, _celestialVbo;
+        private uint _celestialShader;
+        private int _celCenterLoc, _celHalfSizeLoc, _celColorLoc, _celDiscScaleLoc;
+        private int _celGlowLoc, _celUseTextureLoc, _celTexLoc;
+
+        /// <summary>2D-only sun track: NDC y of the sun at the horizon and at its peak.
+        /// The moon uses a lower band so day and night read as separate arcs.</summary>
+        private const float SunArcBottom = -0.05f;
+        private const float SunArcTop = 0.74f;
+        private const float MoonArcBottom = -0.85f;
+        private const float MoonArcTop = -0.46f;
+
         // ── Shader programs ──
         private uint _skyboxShader;
         private uint _domeShader;
@@ -35,6 +48,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
 
         // ── Uniform locations: Realtime ──
         private int _rtViewLoc, _rtProjLoc, _rtFogColorLoc, _rtSunDirLoc, _rtTimeLoc, _rtWeatherLoc, _rtAspectLoc;
+        private int _rtHideCelestialLoc;
         // Sun
         private int _rtSunSizeLoc, _rtSunSoftnessLoc, _rtSunColorLoc, _rtSunGlowLoc;
         // Scattering
@@ -100,6 +114,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.VertexAttribPointer(0, 3, Const.GL_FLOAT, false, 3 * sizeof(float), (void*)0);
             GL.BindVertexArray(0);
 
+            // ── 2D celestial quad (clip-space, drawn straight into NDC) ──
+            fixed (uint* pVao = &_celestialVao) GL.GenVertexArrays(1, pVao);
+            fixed (uint* pVbo = &_celestialVbo) GL.GenBuffers(1, pVbo);
+            GL.BindVertexArray(_celestialVao);
+            GL.BindBuffer(Const.GL_ARRAY_BUFFER, _celestialVbo);
+            fixed (float* p = _celestialQuad)
+            {
+                GL.BufferData(Const.GL_ARRAY_BUFFER, (uint)(_celestialQuad.Length * sizeof(float)), (void*)p, Const.GL_STATIC_DRAW);
+            }
+            GL.EnableVertexAttribArray(0);
+            GL.VertexAttribPointer(0, 2, Const.GL_FLOAT, false, 2 * sizeof(float), (void*)0);
+            GL.BindVertexArray(0);
+
             // ── Compile shaders ──
             _skyboxShader = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/skybox_vertex.glsl",
@@ -110,6 +137,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _realtimeShader = Helpers.ShaderHelpers.LoadShader(
                 "Artifacts/shaders/realtime_vertex.glsl",
                 "Artifacts/shaders/realtime_fragment.glsl");
+            _celestialShader = Helpers.ShaderHelpers.LoadShader(
+                "Artifacts/shaders/sky2d_celestial_vertex.glsl",
+                "Artifacts/shaders/sky2d_celestial_fragment.glsl");
 
             // ── Cache skybox uniform locations ──
             _sbViewLoc = GL.GetUniformLocation(_skyboxShader, "view");
@@ -147,6 +177,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _rtTimeLoc = GL.GetUniformLocation(_realtimeShader, "time");
             _rtWeatherLoc = GL.GetUniformLocation(_realtimeShader, "weatherMode");
             _rtAspectLoc = GL.GetUniformLocation(_realtimeShader, "u_aspectRatio");
+            _rtHideCelestialLoc = GL.GetUniformLocation(_realtimeShader, "hideCelestial");
 
             // Sun
             _rtSunSizeLoc = GL.GetUniformLocation(_realtimeShader, "sunSize");
@@ -203,7 +234,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             _rtSunRayLenLoc = GL.GetUniformLocation(_realtimeShader, "sunRayLength");
             _rtSunRayColorLoc = GL.GetUniformLocation(_realtimeShader, "sunRayColor");
             _rtSunRaysEnabledLoc = GL.GetUniformLocation(_realtimeShader, "sunRaysEnabled");
+
+            // ── Cache 2D celestial uniform locations ──
+            _celCenterLoc = GL.GetUniformLocation(_celestialShader, "uCenter");
+            _celHalfSizeLoc = GL.GetUniformLocation(_celestialShader, "uHalfSize");
+            _celColorLoc = GL.GetUniformLocation(_celestialShader, "uColor");
+            _celDiscScaleLoc = GL.GetUniformLocation(_celestialShader, "uDiscScale");
+            _celGlowLoc = GL.GetUniformLocation(_celestialShader, "uGlow");
+            _celUseTextureLoc = GL.GetUniformLocation(_celestialShader, "uUseTexture");
+            _celTexLoc = GL.GetUniformLocation(_celestialShader, "uTex");
         }
+
+        // Unit quad (triangle strip) for the 2D sun/moon billboard.
+        private readonly float[] _celestialQuad = [
+            -1f, -1f,  1f, -1f,  -1f,  1f,  1f,  1f
+        ];
 
         /// <summary>
         /// Load a texture from file, with caching to avoid reloading.
@@ -438,6 +483,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         }
 
         /// <summary>
+        /// Projection used to draw the sky only.
+        ///
+        /// The sky is a closed unit cube centred on the camera (the view matrix has its
+        /// translation stripped). A perspective camera sits inside that cube and every
+        /// view ray hits a face, so the sky fills the frame. Under an orthographic
+        /// projection the same cube is just 2×2 world units on screen — it shrinks to a
+        /// small box in the middle of the viewport, because ortho has no FOV for it to
+        /// fill. That is the bug this method fixes.
+        ///
+        /// In ortho we therefore draw the sky through a virtual perspective projection
+        /// built from the camera FOV/aspect, so the cube surrounds the eye again and the
+        /// sky fills the frame exactly like it does in perspective. Sky vertices always
+        /// write depth = w (gl_Position.xyww), so the sky still resolves to the far plane
+        /// and this projection cannot disturb the scene's depth buffer.
+        /// </summary>
+        private static Matrix4x4 GetSkyProjection(Camera camera)
+        {
+            if (!camera.IsOrthographic) return camera.GetProjectionMatrix();
+
+            float fov = camera.FoV > 1f ? camera.FoV : (camera.BaseFoV > 1f ? camera.BaseFoV : 60f);
+            float aspect = camera.GetAspect();
+            if (!(aspect > 0.001f)) aspect = 1f;
+            float near = camera.NearDist > 0.001f ? camera.NearDist : 0.1f;
+            float far = camera.FarDist > near ? camera.FarDist : near + 1000f;
+
+            return Matrix4x4.CreatePerspectiveFieldOfView(
+                Helpers.OGLMath.ToRadians(fov), aspect, near, far);
+        }
+
+        /// <summary>
         /// Draw the sky. Delegates to the appropriate renderer based on SkySettings.Type.
         /// </summary>
         public void Draw(Camera camera, Lights lights, float deltaTime, SkySettings skySettings,
@@ -460,6 +535,111 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     DrawProcedural(camera, lights, deltaTime, skySettings, legacyMoonTextures);
                     break;
             }
+
+            // ── 2D LEVELS ONLY: the ortho camera has a narrow sky window, so the sky's
+            //    sun/moon often sit outside it (or behind the level). Draw them as
+            //    dedicated 2D celestial discs that always travel the authored arc
+            //    (yellow sun over the sky, grey moon under it). 3D is untouched. ──
+            if (camera.IsOrthographic)
+                DrawCelestial2D(camera, lights, skySettings, legacyMoonTextures);
+        }
+
+        /// <summary>
+        /// Draw the sun and moon for 2D (orthographic) views only.
+        ///
+        /// Position comes from the SAME sun direction the 3D sky and the 2D sprite
+        /// lighting use, so the disc matches the scene's time of day / sun override:
+        ///   x = −dir.x   (0.5 / 1.0 in the sun direction ⇒ left → right across the day)
+        ///   y = arc band (sun above the level, moon below it)
+        /// The sun shows while the sun is above the horizon, the moon while it is below.
+        /// Drawn as screen-space billboards with blending, depth test off (the sky is
+        /// already the backmost thing in the frame).
+        /// </summary>
+        private void DrawCelestial2D(Camera camera, Lights lights, SkySettings settings,
+            Texture[]? legacyMoonTextures)
+        {
+            if (_celestialShader == 0) return;
+
+            // RealSunDir = where the sun really is. Lights.SunDir is the ACTIVE shading
+            // light, which flips to the moon at night — using it would put the "sun"
+            // above the horizon all night and never draw the moon.
+            var sun = lights.RealSunDir;
+            var xy = new Vector2(sun.X, sun.Y);
+            float len = xy.Length();
+            if (len < 1e-4f) return;
+            xy /= len;
+
+            float aspect = camera.GetAspect();
+            if (!(aspect > 0.001f)) aspect = 1f;
+
+            bool day = xy.Y >= 0f;
+            float elev = MathF.Abs(xy.Y);                     // 0 at the horizon, 1 at the peak
+            // x = −direction of the body: sun dir = xy, moon dir = −xy.
+            float xNdc = day ? -xy.X : xy.X;
+            float yNdc = day
+                ? SunArcBottom + (SunArcTop - SunArcBottom) * elev
+                : MoonArcBottom + (MoonArcTop - MoonArcBottom) * elev;
+
+            uint moonTex = 0;
+            if (!day)
+            {
+                if (!string.IsNullOrEmpty(settings.Moon.TexturePath))
+                    moonTex = LoadTextureCached(settings.Moon.TexturePath);
+                if (moonTex == 0 && legacyMoonTextures is { Length: > 0 })
+                    moonTex = legacyMoonTextures[0].ID;
+            }
+
+            GL.UseProgram(_celestialShader);
+            GL.BindVertexArray(_celestialVao);
+            GL.Disable(Const.GL_DEPTH_TEST);
+            GL.DepthMask(false);
+            GL.Enable(Const.GL_BLEND);
+            GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
+            if (_celTexLoc >= 0) GL.Uniform1i(_celTexLoc, 0);
+
+            if (day)
+            {
+                var sunColor = settings.Sun.Color;
+                float radius = 0.05f * Math.Clamp(settings.Sun.Size, 0.4f, 2.5f);
+                const float glowScale = 2.4f;
+                DrawCelestialQuad(xNdc, yNdc, radius * glowScale, aspect,
+                    sunColor.X, sunColor.Y, sunColor.Z, 1f,
+                    discScale: 1f / glowScale, glow: 1f, useTexture: false, texture: 0);
+            }
+            else
+            {
+                var moonTint = settings.Moon.TintColor;
+                float radius = 0.045f * Math.Clamp(settings.Moon.Size, 0.4f, 2.5f);
+                DrawCelestialQuad(xNdc, yNdc, radius, aspect,
+                    moonTint.X, moonTint.Y, moonTint.Z, 1f,
+                    discScale: 1f, glow: 0f, useTexture: moonTex != 0, texture: moonTex);
+            }
+
+            GL.ActiveTexture(Const.GL_TEXTURE0);
+            GL.BindTexture(Const.GL_TEXTURE_2D, 0);
+            GL.Disable(Const.GL_BLEND);
+            GL.DepthMask(true);
+            GL.Enable(Const.GL_DEPTH_TEST);
+            GL.BindVertexArray(0);
+            GL.UseProgram(0);
+        }
+
+        private void DrawCelestialQuad(float xNdc, float yNdc, float radiusNdc, float aspect,
+            float r, float g, float b, float a,
+            float discScale, float glow, bool useTexture, uint texture)
+        {
+            GL.Uniform2f(_celCenterLoc, xNdc, yNdc);
+            GL.Uniform2f(_celHalfSizeLoc, radiusNdc / aspect, radiusNdc);
+            GL.Uniform4f(_celColorLoc, r, g, b, a);
+            GL.Uniform1f(_celDiscScaleLoc, discScale);
+            GL.Uniform1f(_celGlowLoc, glow);
+            GL.Uniform1f(_celUseTextureLoc, useTexture ? 1f : 0f);
+            if (useTexture)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0);
+                GL.BindTexture(Const.GL_TEXTURE_2D, texture);
+            }
+            GL.DrawArrays(Const.GL_TRIANGLE_STRIP, 0, 4);
         }
 
         /// <summary>
@@ -472,7 +652,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Matrix4x4 view = camera.GetViewMatrix();
             view.M41 = view.M42 = view.M43 = 0;
             view.M14 = view.M24 = view.M34 = 0; view.M44 = 1;
-            Matrix4x4 projection = camera.GetProjectionMatrix();
+            Matrix4x4 projection = GetSkyProjection(camera);
 
             GL.UniformMatrix4fv(_sbViewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_sbProjLoc, 1, false, (float*)&projection);
@@ -521,7 +701,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Matrix4x4 view = camera.GetViewMatrix();
             view.M41 = view.M42 = view.M43 = 0;
             view.M14 = view.M24 = view.M34 = 0; view.M44 = 1;
-            Matrix4x4 projection = camera.GetProjectionMatrix();
+            Matrix4x4 projection = GetSkyProjection(camera);
 
             GL.UniformMatrix4fv(_domeViewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_domeProjLoc, 1, false, (float*)&projection);
@@ -604,7 +784,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             Matrix4x4 view = camera.GetViewMatrix();
             view.M41 = view.M42 = view.M43 = 0;
             view.M14 = view.M24 = view.M34 = 0; view.M44 = 1;
-            Matrix4x4 projection = camera.GetProjectionMatrix();
+            Matrix4x4 projection = GetSkyProjection(camera);
 
             GL.UniformMatrix4fv(_rtViewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_rtProjLoc, 1, false, (float*)&projection);
@@ -616,6 +796,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.Uniform3f(_rtTimeLoc, _totalTime, 0, 0);
             GL.Uniform1f(_rtWeatherLoc, currentWeather);
             GL.Uniform1f(_rtAspectLoc, camera.GetAspect());
+            // 2D: the arc sun/moon discs are drawn separately (DrawCelestial2D).
+            if (_rtHideCelestialLoc >= 0)
+                GL.Uniform1f(_rtHideCelestialLoc, camera.IsOrthographic ? 1f : 0f);
 
             // Sun
             var sun = settings.Sun;

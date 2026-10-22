@@ -5391,6 +5391,10 @@ public unsafe class EditorObject
         GL.Disable(Const.GL_CULL_FACE);
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
+        // 2D lighting: sun + Point/Spot Light markers, with this sheet's normal atlas
+        // (falls back to a flat normal when the sheet has none).
+        Begin2DLitPass(drawSheet);
+
         // Two triangles in WORLD space (identity model): pos(3) uv(2) tint(4).
         // The horizontal mirror was already applied to su0/su1 above (single flip
         // via Player2DFacingRight) — use them directly. Swapping again here would
@@ -5617,6 +5621,8 @@ public unsafe class EditorObject
         bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
         GL.Disable(Const.GL_CULL_FACE);
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
+
+        Begin2DLitPass(sheet);
 
         float tR = Color.X, tG = Color.Y, tB = Color.Z, tA = 1f;
         // Per-sprite emissive boost (Sprite2DGlow) — same mechanism as the player
@@ -5887,6 +5893,10 @@ public unsafe class EditorObject
         CollectEquipmentLayersForDraw(_equipLayerScratch);
         if (_equipLayerScratch.Count == 0 || _player2dVAO == 0 || reps < 1) return;
 
+        // The base sprite already switched the 2D pass to LIT; an overlay has its own
+        // sheet, so its UVs must not sample the base character's normal atlas.
+        SpriteLighting2D.BindNormal(_map2dShader, 0);
+
         GL.BindVertexArray(_player2dVAO);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
         GL.ActiveTexture(Const.GL_TEXTURE0);
@@ -6114,6 +6124,7 @@ public unsafe class EditorObject
                 GL.ActiveTexture(Const.GL_TEXTURE0);
                 SpriteBindTexture(texId);
                 GL.Uniform1i(_map2dLocTex, 0);
+                Begin2DLitPass(sheet);
                 GL.Enable(Const.GL_BLEND);
                 GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
                 bool cull = GL.IsEnabled(Const.GL_CULL_FACE);
@@ -6833,20 +6844,29 @@ uniform mat4 projection;
 uniform mat4 model;
 out vec2 vUV;
 out vec4 vTint;
+out vec3 vWorld;
 void main() {
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vec4 world = model * vec4(aPos, 1.0);
+    vWorld = world.xyz;
+    gl_Position = projection * view * world;
     vUV = aUV;
     vTint = aTint;
 }";
 
+        // 2D lighting (Direct sun + Point + Spotlight markers) is applied to every quad
+        // this shader draws; the shared block is defined once in SpriteLighting2D so the
+        // sprite, tilemap and particle shaders shade identically.
         string fragSrc = @"#version 330 core
 in vec2 vUV;
 in vec4 vTint;
+in vec3 vWorld;
 uniform sampler2D tex;
 out vec4 FragColor;
+" + SpriteLighting2D.GlslLighting + @"
 void main() {
     vec4 c = texture(tex, vUV) * vTint;
     if (c.a < 0.01) discard;
+    c.rgb = Apply2DLighting(c.rgb, vUV, vWorld);
     FragColor = c;
 }";
 
@@ -6870,6 +6890,20 @@ void main() {
         _map2dLocModel = GL.GetUniformLocation(_map2dShader, "model");
         _map2dLocTex = GL.GetUniformLocation(_map2dShader, "tex");
     }
+
+    /// <summary>Switch the (already bound) 2D shader to LIT and bind the sheet's baked
+    /// normal atlas — null / no atlas on disk → flat normal. Uploads the frame's lights
+    /// once per program; later calls in the same frame are free.</summary>
+    private static void Begin2DLitPass(SpriteSheet? sheet)
+    {
+        SpriteLighting2D.Apply(_map2dShader);
+        uint normal = sheet != null && SpriteLighting2D.TryGetNormalTexture(sheet, out uint tex) ? tex : 0;
+        SpriteLighting2D.BindNormal(_map2dShader, normal);
+    }
+
+    /// <summary>Editor-only 2D overlays (collision boxes, trigger volumes) keep their
+    /// authored colors: no lighting, so aids stay readable at any time of day.</summary>
+    private static void Begin2DUnlitPass() => SpriteLighting2D.ApplyUnlit(_map2dShader);
 
     private struct Map2DVertex
     {
@@ -7193,6 +7227,8 @@ void main() {
                 GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
                 GL.Uniform1i(_map2dLocTex, 0);
 
+                Begin2DLitPass(null); // tileset has no normal atlas: flat normals
+
                 GL.Enable(Const.GL_BLEND);
                 GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
 
@@ -7254,6 +7290,8 @@ void main() {
                 // Parallax quads are baked directly in world space → identity model.
                 var ident = Matrix4x4.Identity;
                 GL.UniformMatrix4fv(_map2dLocModel, 1, false, &ident.M11);
+
+                Begin2DLitPass(null); // layers have no normal atlas: flat normals
 
                 GL.Enable(Const.GL_BLEND);
                 GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
@@ -7465,6 +7503,7 @@ void main() {
                     EnsurePbrWhiteTex();
 
                     GL.UseProgram(_map2dShader);
+                    Begin2DUnlitPass(); // editor collision aid: keep its authored color
                     var view = camera.GetViewMatrix();
                     var proj = camera.GetProjectionMatrix();
                     GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);
@@ -7629,6 +7668,7 @@ void main() {
                 EnsurePbrWhiteTex();
 
                 GL.UseProgram(_map2dShader);
+                Begin2DUnlitPass(); // editor trigger aid: keep its amber color
                 var view = camera.GetViewMatrix();
                 var proj = camera.GetProjectionMatrix();
                 GL.UniformMatrix4fv(_map2dLocView, 1, false, &view.M11);

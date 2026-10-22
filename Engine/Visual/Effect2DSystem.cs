@@ -838,6 +838,9 @@ public static class Effect2DSystem
         GL.Disable(Const.GL_CULL_FACE);
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
 
+        // A weather WASH is an atmosphere overlay, not a lit surface: keep its color.
+        SpriteLighting2D.ApplyUnlit(_shader);
+
         GL.BindVertexArray(_vao);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
 
@@ -915,6 +918,8 @@ public static class Effect2DSystem
         GL.Disable(Const.GL_CULL_FACE);
         bool depth = GL.IsEnabled(Const.GL_DEPTH_TEST);
         GL.Disable(Const.GL_DEPTH_TEST); // frontmost overlay — draw order decides
+
+        SpriteLighting2D.ApplyUnlit(_shader); // front fog: an overlay, never a lit surface
 
         GL.BindVertexArray(_vao);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
@@ -1435,6 +1440,8 @@ public static class Effect2DSystem
 
         GL.BindVertexArray(_vao);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
+        SpriteLighting2D.Apply(_shader);
+        SpriteLighting2D.BindNormal(_shader, 0);
         unsafe
         {
             fixed (float* ptr = _vertBuf)
@@ -1523,6 +1530,8 @@ public static class Effect2DSystem
 
         GL.BindVertexArray(_vao);
         GL.BindBuffer(Const.GL_ARRAY_BUFFER, _vbo);
+        SpriteLighting2D.Apply(_shader);
+        SpriteLighting2D.BindNormal(_shader, 0);
         unsafe
         {
             var arr = _batch.ToArray();
@@ -1562,19 +1571,27 @@ uniform mat4 projection;
 uniform mat4 model;
 out vec2 vUV;
 out vec4 vTint;
+out vec3 vWorld;
 void main() {
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vec4 world = model * vec4(aPos, 1.0);
+    vWorld = world.xyz;
+    gl_Position = projection * view * world;
     vUV = aUV;
     vTint = aTint;
 }";
+        // Same 2D lighting block as the sprite/tilemap shader: world particles respond
+        // to the Point/Spot markers instead of glowing flat through a dark scene.
         string fragSrc = @"#version 330 core
 in vec2 vUV;
 in vec4 vTint;
+in vec3 vWorld;
 uniform sampler2D tex;
 out vec4 FragColor;
+" + SpriteLighting2D.GlslLighting + @"
 void main() {
     vec4 c = texture(tex, vUV) * vTint;
     if (c.a < 0.01) discard;
+    c.rgb = Apply2DLighting(c.rgb, vUV, vWorld);
     FragColor = c;
 }";
         unsafe

@@ -453,6 +453,9 @@ public static class Projectile2DSystem
         GL.ActiveTexture(Const.GL_TEXTURE0);
         GL.BindTexture(Const.GL_TEXTURE_2D, texId);
         GL.Uniform1i(EditorObject.Map2DLocTex, 0);
+        // Lit like every other 2D sprite; projectiles have no normal atlas of their own.
+        SpriteLighting2D.Apply(EditorObject.Map2DShaderProgram);
+        SpriteLighting2D.BindNormal(EditorObject.Map2DShaderProgram, 0);
         GL.Enable(Const.GL_BLEND);
         GL.BlendFunc(Const.GL_SRC_ALPHA, Const.GL_ONE_MINUS_SRC_ALPHA);
         GL.Disable(Const.GL_CULL_FACE);

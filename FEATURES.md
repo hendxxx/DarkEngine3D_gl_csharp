@@ -112,6 +112,27 @@ QSV's rule: **capsule + box collide → collision lands, DONE**. There is no uni
 
 `SceneArtifact` is auto-cleaned (WIP); it's a transient 2D pixel collision node, not stored.
 
+## 1.8 2D lighting (Direct / Point / Spotlight)
+
+The sidescroller passes are **lit by the existing Light editor objects** — no new object type, no extra serialization. `SpriteLighting2D.Capture(light)` runs once per frame in `EditorObjectManager.Draw` (right after the 3D light upload) and snapshots the sun + every collected Point/Spot marker; `Apply(program)` uploads that snapshot once per program per frame.
+
+- **Direct** = the scene sun (`Lights.SunDir` / `LightColor`, i.e. the Direct marker or the procedural day/night). Only its XY part drives the 2D shading, with a nominal +Z so flat quads stay lit.
+- **Point** = marker position, `LightPointRadius` falloff (`(1−d²)²`, same curve as the 3D local lights). **Spotlight** = the same falloff narrowed by `LightConeAngle` in XY, aimed along the marker's `WorldLightDirection`.
+- **Surfaces**: map tiles, parallax layers, Player2D/Sprite2D, portals, projectiles and world particles all share `SpriteLighting2D.GlslLighting` in their fragment shader (sprite + particle shaders draw it from one const, so they cannot drift apart). Editor aids (collision boxes, trigger volumes) and weather overlays (rain/snow tint, front fog) call `ApplyUnlit` and keep their authored colors.
+- **Normal maps**: sprites sample the baked `<sheet>Normal.png` atlas (`SpriteAtlasBaker` already wrote them) on texture unit 1; `SpriteLighting2D.TryGetNormalTexture` loads it lazily per sheet, caches by resolved image path and re-reads it after a re-bake (`IDEBridge.NotifySpriteTextureReloaded`) or a project switch. Sheets without a normal atlas (tilesets, parallax) shade with a flat (0,0,1) normal. The atlas is baked in image space, so the shader flips Y when converting to world space.
+
+## 1.9 2D sky: sun & moon on a visible arc (2D only)
+
+The procedural sky positions the sun/moon from the camera's real view direction, so a level camera (looking straight ahead, 60° FOV) keeps them outside the visible sky — a perspective view of the same scene showed them, the 2D view never did. `SkyRenderer` now draws its own sun/moon discs when the camera is **orthographic**, and nothing changes for perspective (3D):
+
+- **Position** comes from the scene's real sun direction (`Lights.RealSunDir`, so time-of-day AND the Sun pitch/yaw overrides apply): `x = −dir.x` — the sun crosses left → right between 06:00 and 18:00. The sun rides an upper arc (`SunArcBottom … SunArcTop`), the moon a lower arc (`MoonArcBottom … MoonArcTop`), so day and night read as separate bands. The sun shows above the horizon, the moon below it. The moon uses `RealSunDir` and NOT `SunDir` (that one is the active shading light and flips to the moon at night).
+- **Draw**: screen-space quads via `sky2d_celestial_vertex/fragment.glsl`, alpha-blended, depth test off — a warm core + soft halo from `SkySettings.Sun.Color/Size`, and the moon samples `SkySettings.Moon.TexturePath` (the grey moon texture) tinted by `Moon.TintColor` at `Moon.Size`.
+- **No duplicate sun**: the procedural sky's own sun/moon/rays/eclipses are suppressed in ortho through the `hideCelestial` uniform (`realtime_fragment.glsl`) — clouds and stars stay.
+
+## 1.10 2D object placement always lands on Z = 0
+
+In 2D (orthographic camera) every newly added object spawns on the Z = 0 world plane: `IDEBridge.GetGridSpawnPosition` forces `Z = 0` when the camera is orthographic (X/Y still follow the camera so the object appears where the user is looking). The ortho camera parks far on +Z looking back at the level, so "spawn at the camera position" used to put new objects at Z ≈ 60 — in front of the tilemap, off the 2D plane. This covers every creation path (Model menu, viewport +Box/+Sphere/… buttons, Hierarchy quick-add, GLB drop); perspective (3D) spawning is untouched. Sprite2D placement and Map2D creation already used Z = 0.
+
 ## 2. Project reference
 
 DarkEngine3D_gl_csharp/Engine. Prose references use relative paths from the repo root.

@@ -9,6 +9,9 @@ uniform vec3 sunDir;
 uniform vec3 time;
 uniform float weatherMode;
 uniform float u_aspectRatio;
+// 1 in orthographic (2D) views: the renderer draws its own sun/moon discs on a
+// 2D arc, so the 3D discs must not also appear in the sky background.
+uniform float hideCelestial;
 
 // ── Sun Settings ──
 uniform float sunSize;
@@ -602,6 +605,9 @@ void main()
             skyWithCelestial = mix(skyWithCelestial, litMoonColor, finalMoonAlpha * moonOcclusion);
         }
     }
+
+    // 2D views: drop the 3D sun/moon/rays (stars stay — they read as the night sky).
+    skyWithCelestial = mix(skyWithCelestial, skyBase, clamp(hideCelestial, 0.0, 1.0));
 
     // ──── STARS ────
     if (starsEnabled > 0.5)

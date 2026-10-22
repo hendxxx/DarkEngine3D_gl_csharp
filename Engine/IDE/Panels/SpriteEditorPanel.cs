@@ -2852,6 +2852,9 @@ public class SpriteEditorPanel
         _selectedFrameIdx = -1;
         _selectedClipIdx = -1;
         _previewTextures.Clear();
+        // Normal atlases belong to the previous project's sheet paths — drop them so
+        // the 2D lighting never samples a stale sheet's relief.
+        SpriteLighting2D.InvalidateNormalMaps();
         ClearUndoHistory();
 
         // Reset the async Auto Load pipeline + tree edit state (a project switch must

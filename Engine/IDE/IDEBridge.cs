@@ -182,7 +182,12 @@ public class IDEBridge
     /// <summary>Call after reloading a sprite texture under an existing path/atlas name
     /// (SpriteEditorPanel.ReloadPreviewTexture). Invalidates the signature gate and
     /// every registry consumer so the next sync rebuilds with the new texture.</summary>
-    public static void NotifySpriteTextureReloaded() => SpriteTextureGeneration++;
+    public static void NotifySpriteTextureReloaded()
+    {
+        SpriteTextureGeneration++;
+        // A re-bake rewrites `<sheet>Normal.png` too; the 2D lighting cache must re-read it.
+        Visual.SpriteLighting2D.InvalidateNormalMaps();
+    }
 
     /// <summary>Auto-clip-match cache: (overlay sheet, base animation name) → the clip
     /// on that sheet which follows the base animation (null = none). The equipment
@@ -808,7 +813,15 @@ public class IDEBridge
     {
         // Spawn at the camera's freefly position so new objects appear exactly
         // where the user is looking (except UI which has its own placement logic).
-        Vector3 spawn = cam != null ? cam.Position : new Vector3(0f, 1f, 0f);
+        if (cam == null) return new Vector3(0f, 1f, 0f);
+
+        // USER RULE: in 2D mode (orthographic camera) every newly added object lands on
+        // the Z = 0 world plane. The ortho camera parks far on +Z looking back at the
+        // level, so spawning "at the camera" would put new objects at Z ≈ 60 — in front
+        // of the tilemap and off the 2D plane. X/Y still follow the camera so the object
+        // appears where the user is looking.
+        Vector3 spawn = cam.Position;
+        if (cam.IsOrthographic) spawn.Z = 0f;
         return spawn;
     }
 
