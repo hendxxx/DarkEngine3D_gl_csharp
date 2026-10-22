@@ -9763,7 +9763,7 @@
           "terrainHeightTilingY": 1,
           "sculptDeltaPath": "",
           "terrainSculptAmp": 2,
-          "splatMapPath": "Artifacts\\Terrain\\GameScene\\plane_splat.tga",
+          "splatMapPath": "",
           "splatLayerAlbedo": [
             "Artifacts\\Textures\\cliff side\\cliff_side_diff_4k.jpg",
             "Artifacts\\Textures\\stylized-grass1-unity\\stylized-grass1_albedo.png",
@@ -9814,7 +9814,7 @@
             16,
             16
           ],
-          "splatHeightBandsEnabled": true,
+          "splatHeightBandsEnabled": false,
           "splatSlopeEnabled": false,
           "splatSlopeLayer": 1,
           "splatSlopeThreshold": 0.46,
