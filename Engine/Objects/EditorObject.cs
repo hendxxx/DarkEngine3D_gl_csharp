@@ -1246,15 +1246,36 @@ public unsafe class EditorObject
     /// by the paint bake; loadable from any 32-bit image. Empty = never painted.</summary>
     private string _splatMapPath = "";
 
-    /// <summary>Live owners per splat bake path (normalized). A DUPLICATED object
-    /// points at its original's file until it is painted itself — cleaning such a
-    /// shared file would wipe the duplicate's art too, so the revert only cleans a
-    /// file nobody else references.</summary>
-    private static readonly Dictionary<string, int> _splatPathOwners = new();
+    /// <summary>True when the bake-file claim was released by <see cref="Dispose"/>.
+    /// A delete undo brings the object back — it has to claim the file again, or
+    /// another object could clean a file this one still points at.</summary>
+    private bool _splatClaimReleased;
+
+    /// <summary>Live owners per splat bake path (canonical ABSOLUTE path). A
+    /// DUPLICATED object points at its original's file until it is painted itself —
+    /// cleaning such a shared file would wipe the duplicate's art too, so the revert
+    /// only cleans a file nobody else references.</summary>
+    private static readonly Dictionary<string, int> _splatPathOwners =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Canonical key of the owner registry: the RESOLVED absolute path of
+    /// the bake file. The scene loader stores an ABSOLUTE path while the paint bake
+    /// stores the portable RELATIVE one — the same file has to land on ONE key, or
+    /// the registry cannot see that two objects share it (a file would then be
+    /// cleaned while a duplicate still points at it).</summary>
+    private static string SplatOwnerKey(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return "";
+        string resolved = PathHelpers.Resolve(path);
+        if (string.IsNullOrEmpty(resolved)) return "";
+        try { resolved = Path.GetFullPath(resolved); }
+        catch { /* keep the resolved form */ }
+        return PathHelpers.Normalize(resolved);
+    }
 
     private static void RegisterSplatPathOwner(string? path, int delta)
     {
-        string key = PathHelpers.Normalize(path);
+        string key = SplatOwnerKey(path);
         if (string.IsNullOrEmpty(key)) return;
         _splatPathOwners.TryGetValue(key, out int c);
         c += delta;
@@ -1295,6 +1316,16 @@ public unsafe class EditorObject
 
     /// <summary>Live splat paint session settings — null = NOT painting.</summary>
     public SplatBrushSession? SplatBrush { get; set; }
+
+    /// <summary>Re-claim the bake file after the object was re-inserted (a delete
+    /// undo). <see cref="Dispose"/> released the claim; the object is alive again,
+    /// so the file must not look unowned — another object could clean it.</summary>
+    public void ReclaimSplatBakePath()
+    {
+        if (!_splatClaimReleased) return;
+        _splatClaimReleased = false;
+        RegisterSplatPathOwner(_splatMapPath, +1);
+    }
 
     /// <summary>True when this object carries a splat LAYER SET (any layer 1-3 map
     /// assigned) or a painted weight map — the splat-active gate half.</summary>
@@ -1801,11 +1832,36 @@ public unsafe class EditorObject
         BakeSplatField(f);
     }
 
+    /// <summary>The bake file THIS object owns — "Artifacts/Terrain/&lt;scene&gt;/&lt;object&gt;_splat.tga",
+    /// the exact file the paint bake writes. The scene may not reference it (an
+    /// unsaved paint, or a file left behind by an earlier session) while the
+    /// strokes are still in it — the revert has to reach that file too.</summary>
+    public string OwnSplatBakeRelPath =>
+        $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_splat.tga";
+
+    /// <summary>True when the object's own bake file exists on disk and still
+    /// carries paint. The scene never stored the path in that case, so the panel
+    /// would otherwise report "no paint" while the .tga stays dirty.</summary>
+    public bool OwnSplatBakeHasPaint()
+    {
+        try
+        {
+            string abs = PathHelpers.Resolve(OwnSplatBakeRelPath);
+            if (!File.Exists(abs)) return false;
+            var f = TerrainSplatField.FromFile(abs);
+            if (f == null) return false;
+            bool painted = f.PaintCoverage() > 0.0001f;
+            f.DisposeTexture();
+            return painted;
+        }
+        catch { return false; }
+    }
+
     /// <summary>Write the splat bake files (weights RGBA + painted mask R8) under
     /// Artifacts/Terrain/&lt;scene&gt;/&lt;object&gt;_splat.tga and store the path.</summary>
     private void BakeSplatField(TerrainSplatField f, string? targetPath = null)
     {
-        string baseRel = targetPath ?? $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_splat.tga";
+        string baseRel = targetPath ?? OwnSplatBakeRelPath;
         string baseAbs = PathHelpers.Resolve(baseRel);
         if (f.BakeToTga(baseAbs))
         {
@@ -1836,7 +1892,10 @@ public unsafe class EditorObject
                 + " — only the reference was detached.");
             return;
         }
-        if (_splatPathOwners.TryGetValue(rel, out int owners) && owners > 1)
+        // The registry is keyed by the RESOLVED path (the scene stores an absolute
+        // one, the bake a relative one — same file, one key).
+        string key = SplatOwnerKey(path);
+        if (_splatPathOwners.TryGetValue(key, out int owners) && owners > 1)
         {
             Console.WriteLine($"[TerrainSplat] '{Name}' bake file {rel} is shared with another object"
                 + " — left on disk (paint removed from this object only).");
@@ -1844,7 +1903,7 @@ public unsafe class EditorObject
         }
         var clean = TerrainSplatField.CreateDefault();
         clean.FillNeutralLayer0();
-        string abs = PathHelpers.Resolve(rel);
+        string abs = key;   // the canonical key IS the absolute file path
         // Nothing on disk to clean — never CREATE a bake file out of nowhere.
         if (!File.Exists(abs)) return;
         if (clean.BakeToTga(abs))
@@ -1944,7 +2003,31 @@ public unsafe class EditorObject
     /// it had done nothing.</param>
     public void RevertSplat(bool disableAutoLayers = false)
     {
-        bool hasPaintState = _splatField != null || _splatFieldForBands != null || _splatMapPath.Length > 0;
+        // The paint can live in a file the scene does NOT reference: the bake path
+        // is only stored when the scene is saved, so an unsaved paint (or a file
+        // left behind by an earlier session) sits in the object's OWN bake file
+        // while the object itself has no path. The revert has to reach that file,
+        // otherwise "clear all paint" leaves the .tga dirty on disk.
+        string effectivePath = _splatMapPath;
+        TerrainSplatField? orphanField = null;
+        if (string.IsNullOrEmpty(effectivePath) && _splatField == null)
+        {
+            string ownAbs = PathHelpers.Resolve(OwnSplatBakeRelPath);
+            if (File.Exists(ownAbs))
+            {
+                orphanField = TerrainSplatField.FromFile(ownAbs);
+                if (orphanField != null && orphanField.PaintCoverage() > 0.0001f)
+                    effectivePath = OwnSplatBakeRelPath;
+                else
+                {
+                    orphanField.DisposeTexture();
+                    orphanField = null;
+                }
+            }
+        }
+
+        bool hasPaintState = _splatField != null || _splatFieldForBands != null
+            || _splatMapPath.Length > 0 || orphanField != null;
         // Nothing to clear AND no auto layer to switch off → a stray click must not
         // consume the undo slot. With "auto layers off" asked for, the switch-off
         // IS the change: it must work on a terrain that was never painted.
@@ -1962,13 +2045,25 @@ public unsafe class EditorObject
             // No live field (the paint only existed on disk, not drawn since load) → decode
             // it NOW, CPU-only, so "Undo revert" restores the painted weights as well. GL is
             // untouched here: the draw builds the texture for a CPU-only field.
-            if (_splatRevertField == null && _splatRevertFieldBands == null && _splatMapPath.Length > 0)
+            if (_splatRevertField == null && _splatRevertFieldBands == null)
             {
-                string resolvedRevert = PathHelpers.Resolve(_splatMapPath);
-                if (File.Exists(resolvedRevert))
-                    _splatRevertField = TerrainSplatField.FromFile(resolvedRevert);
+                if (_splatMapPath.Length > 0)
+                {
+                    string resolvedRevert = PathHelpers.Resolve(_splatMapPath);
+                    if (File.Exists(resolvedRevert))
+                        _splatRevertField = TerrainSplatField.FromFile(resolvedRevert);
+                }
+                else if (orphanField != null)
+                {
+                    // The paint only lived in the object's OWN bake file (the scene
+                    // never stored the path) — park that decoded file so the one-level
+                    // undo can bring the paint back.
+                    _splatRevertField = orphanField;
+                    orphanField = null;
+                }
             }
-            _splatRevertPath = _splatMapPath;
+            orphanField?.DisposeTexture();   // not needed → drop it
+            _splatRevertPath = effectivePath;
             _splatRevertLoadedPath = _splatLoadedPath;
             // The auto-layer switches ride along — "undo revert" must bring back the
             // exact terrain state, and a revert that switches them off must be able
@@ -1991,6 +2086,9 @@ public unsafe class EditorObject
         _splatFieldForBands = null;
         _splatLoadedPath = null;
         string detached = _splatMapPath;
+        // The file the paint really lives in — the referenced bake, or the object's
+        // own bake when the scene never stored the path.
+        string bakeToClean = effectivePath;
         if (disableAutoLayers)
             SetSplatAutoLayersEnabled(false);
         // THE STORED BAKE *IS* THE PAINT. Dropping only the live field made the very
@@ -2001,12 +2099,21 @@ public unsafe class EditorObject
         // paint" has to mean the strokes are gone from the .tga too, not only from
         // the scene. The parked field still holds the painted weights, so the
         // one-level undo brings the paint back — on disk as well.
-        CleanSplatBakeFile(detached);
+        CleanSplatBakeFile(bakeToClean);
         SplatMapPath = "";
         _splatDecodeFailedPath = null;
         if (!string.IsNullOrEmpty(detached))
         {
             Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — detached {detached} (undo available)");
+        }
+        else if (!string.IsNullOrEmpty(bakeToClean))
+        {
+            // The scene never stored the path — the paint only lived in the object's
+            // own bake file. That file is clean now, the reference stays empty.
+            Console.WriteLine($"[TerrainSplat] '{Name}' revert paint — cleaned {bakeToClean} (undo available)");
+        }
+        if (!string.IsNullOrEmpty(detached) || !string.IsNullOrEmpty(bakeToClean))
+        {
             // The auto layers are folded in PER PIXEL by the shader: with them on,
             // the terrain keeps its auto texture and the revert LOOKS like a no-op.
             // Say it in the console so the cause is never a mystery.
@@ -7747,6 +7854,15 @@ void main() {
         DropSculptField();
         SculptBrush = null;
         DropSplatField();
+        // Release the claim on the bake file: a deleted / reloaded object must not
+        // keep the file looking "shared" forever — the revert would then refuse to
+        // clean it and the strokes would stay on disk. The PATH itself is kept: a
+        // delete undo re-inserts this very instance (see ReclaimSplatBakePath).
+        if (!string.IsNullOrEmpty(_splatMapPath))
+        {
+            RegisterSplatPathOwner(_splatMapPath, -1);
+            _splatClaimReleased = true;
+        }
         DisposeSplatTextures();
         SplatBrush = null;
         _object3D = null;

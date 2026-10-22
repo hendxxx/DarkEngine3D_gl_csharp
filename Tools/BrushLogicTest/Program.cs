@@ -1,3 +1,4 @@
+using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using System.Numerics;
 
@@ -32,6 +33,40 @@ float Avg(TerrainHeightfield f, int cx, int cz, int r = 6)
     for (int z = cz - r; z <= cz + r; z++)
         for (int x = cx - r; x <= cx + r; x++) { s += f.Sample(x, z); n++; }
     return s / n;
+}
+
+// Paint a splat bake file on disk (a few stamps of layer 2) — the fixture used
+// by the revert / owner-registry checks below.
+void PaintSplatFile(string absPath)
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(absPath)!);
+    var f = TerrainSplatField.CreateDefault();
+    f.FillNeutralLayer0();
+    var brush = new SplatBrushSession
+    {
+        Mode = SplatBrushMode.Paint,
+        Layer = 2,
+        Radius = 8f,
+        Strength = 6f,
+        Hardness = 0.8f,
+    };
+    f.BeginStroke();
+    for (int i = 0; i < 40; i++)
+        f.ApplyBrush(0f, 0f, 64f, 64f, brush, 1f / 60f, i);
+    f.BakeToTga(absPath);
+}
+
+// Repo root of the checkout (the test runs from Tools/BrushLogicTest/bin/...).
+string FindRepoRoot()
+{
+    var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+    while (dir != null)
+    {
+        if (File.Exists(Path.Combine(dir.FullName, "DarkEngine3D_gl_csharp.csproj")))
+            return dir.FullName;
+        dir = dir.Parent;
+    }
+    return "";
 }
 const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
 
@@ -522,6 +557,107 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
         afterUndo != null && afterUndo.PaintCoverage() > 0.01f,
         $"coverage {(afterUndo?.PaintCoverage() ?? -1f) * 100:F2}%");
     try { File.Delete(absBake); } catch { /* temp fixture only */ }
+}
+
+// ── REGRESSION: the "Revert paint?" modal must actually OPEN ──
+// ImGui 1.91 closes a BeginPopupModal whose p_open is FALSE. The panel used to
+// pass `ref` to the REQUEST flag — which the OpenPopup block had already reset
+// to false — so the dialog never opened and "Revert paint" did nothing at all
+// (no confirm, no console output, no cleanup). The fix binds a LOCAL bool.
+// This guard fails if the `ref` binding ever comes back.
+{
+    string root = FindRepoRoot();
+    string panelPath = Path.Combine(root, "Engine", "IDE", "Panels", "TerrainPanel.cs");
+    string src = File.Exists(panelPath) ? File.ReadAllText(panelPath) : "";
+    int at = src.IndexOf("BeginPopupModal(\"Revert paint?\"", StringComparison.Ordinal);
+    string call = at >= 0
+        ? src.Substring(at, Math.Min(140, src.Length - at)).Replace('\n', ' ').Replace('\r', ' ').Trim()
+        : "";
+    Check("Revert modal does not bind p_open to the request flag",
+        at >= 0 && !call.Contains("ref _confirmRevertSplat"),
+        at >= 0 ? call : "the 'Revert paint?' modal call was not found");
+}
+
+// ── REGRESSION: the bake-file OWNER registry ──
+// The registry decides whether a bake file may be cleaned. Two traps:
+//  (1) the SAME file stored in two forms — the scene loader keeps an ABSOLUTE
+//      path, the paint bake a RELATIVE one — must land on ONE key, or a file a
+//      duplicate still points at gets cleaned;
+//  (2) a deleted / reloaded object must RELEASE its claim, or the file looks
+//      "shared" forever and the revert silently skips the cleanup.
+{
+    string rel = "Artifacts\\Terrain\\shared_test\\shared_splat.tga";
+    string abs = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+        "Artifacts", "Terrain", "shared_test", "shared_splat.tga"));
+    if (File.Exists(abs)) File.Delete(abs);
+    PaintSplatFile(abs);
+
+    var a = new EditorObject(EditorPrimitiveType.Plane, "shared_a");
+    a.SplatMapPath = rel;      // the RELATIVE form (the bake)
+    var b = new EditorObject(EditorPrimitiveType.Plane, "shared_b");
+    b.SplatMapPath = abs;      // the ABSOLUTE form (the scene) — the SAME file
+    a.RevertSplat();
+    var stillPainted = TerrainSplatField.FromFile(abs);
+    Check("A shared bake file is NOT cleaned (relative + absolute form)",
+        stillPainted != null && stillPainted.PaintCoverage() > 0.01f,
+        $"coverage {(stillPainted?.PaintCoverage() ?? -1f) * 100:F2}% (want > 1%)");
+
+    // The claim of a disposed object must be released: a stale claim would keep
+    // the file looking "shared" and the cleanup would never run again.
+    a.Dispose();
+    b.Dispose();
+    var c = new EditorObject(EditorPrimitiveType.Plane, "shared_c");
+    c.SplatMapPath = abs;
+    c.RevertSplat();
+    var cleaned = TerrainSplatField.FromFile(abs);
+    Check("A released owner no longer blocks the cleanup",
+        cleaned != null && cleaned.PaintCoverage() <= 0.0001f,
+        $"coverage {(cleaned?.PaintCoverage() ?? -1f) * 100:F2}% (want 0%)");
+    if (File.Exists(abs)) File.Delete(abs);
+}
+
+// ── REGRESSION: the revert must clean the bake file even when the scene never
+// stored the path ──
+// The path is only persisted when the scene is saved, so an unsaved paint (or a
+// file left behind by an earlier session) sits in the object's OWN bake file
+// while the object itself carries no path. "Clear all paint" has to reach it,
+// otherwise the .tga on disk stays dirty and the revert looks like a no-op.
+{
+    var obj = new EditorObject(EditorPrimitiveType.Plane, "orphan_bake_probe");
+    string rel = obj.OwnSplatBakeRelPath;
+    string abs = PathHelpers.Resolve(rel);
+    if (File.Exists(abs)) File.Delete(abs);
+    PaintSplatFile(abs);
+    var fixture = TerrainSplatField.FromFile(abs);
+    Check("Orphan fixture: the own bake file carries paint",
+        fixture != null && fixture.PaintCoverage() > 0.01f,
+        $"coverage {(fixture?.PaintCoverage() ?? -1f) * 100:F2}%");
+    Check("Orphan fixture: the object stores no path",
+        obj.SplatMapPath.Length == 0, $"path '{obj.SplatMapPath}'");
+    obj.RevertSplat();
+    var after = TerrainSplatField.FromFile(abs);
+    Check("Revert cleans the own bake file without a stored path",
+        after != null && after.PaintCoverage() <= 0.0001f,
+        $"coverage {(after?.PaintCoverage() ?? -1f) * 100:F2}% (want 0%)");
+    obj.UndoSplatRevert();
+    var undone = TerrainSplatField.FromFile(abs);
+    Check("Undo re-bakes the paint into the own bake file",
+        undone != null && undone.PaintCoverage() > 0.01f,
+        $"coverage {(undone?.PaintCoverage() ?? -1f) * 100:F2}%");
+    if (File.Exists(abs)) File.Delete(abs);
+}
+
+// ── REGRESSION: the bake file an object owns ──
+// The editor bakes every terrain to "Artifacts/Terrain/<scene>/<object>_splat.tga"
+// and the editor scene name is the fixed "GameScene" — so the object named "plane"
+// owns exactly "Artifacts/Terrain/GameScene/plane_splat.tga". The revert has to
+// find THAT file, or the .tga on disk keeps its paint.
+{
+    _ = new DarkEngine3D_gl_csharp.Engine.IDE.IDEBridge();   // sets IDEBridge.Current
+    var plane = new EditorObject(EditorPrimitiveType.Plane, "plane");
+    Check("The 'plane' object owns the GameScene bake file",
+        plane.OwnSplatBakeRelPath == "Artifacts/Terrain/GameScene/plane_splat.tga",
+        plane.OwnSplatBakeRelPath);
 }
 
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");

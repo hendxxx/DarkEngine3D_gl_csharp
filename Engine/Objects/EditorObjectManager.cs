@@ -226,6 +226,9 @@ public unsafe class EditorObjectManager
         {
             index = Math.Clamp(index, 0, _objects.Count);
             _objects.Insert(index, obj);
+            // A delete undo brings the object back — it must claim its bake file again
+            // (Dispose released the claim when the delete disposed it).
+            obj.ReclaimSplatBakePath();
         }
 
         /// <summary>Index of an object in the manager list (-1 when absent) — captured

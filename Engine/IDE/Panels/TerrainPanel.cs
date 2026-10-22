@@ -35,6 +35,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private bool _confirmRevertSplat;            // "Revert paint?" confirm requested
         private EditorObject? _revertSplatTarget;    // object the confirm/revert applies to
         private bool _revertDisableAutoLayers;       // also switch the auto layers off
+        private bool _revertBakeFileDirty;           // the object's own .tga still holds paint
 
         public TerrainPanel(IDEBridge bridge) => _bridge = bridge;
 
@@ -55,7 +56,13 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.OpenPopup("Revert paint?");
                 _confirmRevertSplat = false;
             }
-            if (ImGui.BeginPopupModal("Revert paint?", ref _confirmRevertSplat, ImGuiWindowFlags.AlwaysAutoResize))
+            // NOTE: do NOT pass `ref _confirmRevertSplat` here. ImGui 1.91 closes a
+            // modal whose p_open is FALSE, and the flag is already false by the time
+            // this block runs (the OpenPopup above cleared it) — so the dialog never
+            // opened and "Revert paint?" did nothing at all. A LOCAL bool that stays
+            // true is the pattern the other panels use (see MapEditorPanel).
+            bool revertModalOpen = true;
+            if (ImGui.BeginPopupModal("Revert paint?", ref revertModalOpen, ImGuiWindowFlags.AlwaysAutoResize))
             {
                 var target = _revertSplatTarget;
                 if (target == null)
@@ -79,7 +86,18 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     else
                     {
                         ImGui.Text($"There is no paint to clear on '{target.Name}'.");
-                        ImGui.TextDisabled("Only the auto-layer switch below applies.");
+                        if (_revertBakeFileDirty)
+                        {
+                            // The scene never stored the path (an unsaved paint), but
+                            // the strokes are still in the object's own bake file.
+                            ImGui.TextColored(new Vector4(1f, 0.75f, 0.35f, 1f),
+                                $"The bake file '{target.OwnSplatBakeRelPath}' still carries paint on disk.");
+                            ImGui.TextDisabled("It is overwritten with a clean map, so the .tga really goes blank.");
+                        }
+                        else
+                        {
+                            ImGui.TextDisabled("Only the auto-layer switch below applies.");
+                        }
                     }
                     // The auto layers are folded in PER PIXEL by the shader, so they
                     // KEEP texturing the terrain after a paint revert — without this
@@ -105,6 +123,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                         target.RevertSplat(_revertDisableAutoLayers);
                         _revertDisableAutoLayers = false;
                         _revertSplatTarget = null;
+                        _revertBakeFileDirty = false;
                         ImGui.CloseCurrentPopup();
                     }
                     ImGui.SameLine();
@@ -112,6 +131,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     {
                         _revertDisableAutoLayers = false;
                         _revertSplatTarget = null;
+                        _revertBakeFileDirty = false;
                         ImGui.CloseCurrentPopup();
                     }
                 }
@@ -400,6 +420,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Button("Revert Paint##terrain_splat"))
                 {
                     _revertSplatTarget = obj;
+                    // Read the .tga ONCE here (not every frame) so the dialog can say
+                    // whether the bake file on disk still carries paint.
+                    _revertBakeFileDirty = obj.OwnSplatBakeHasPaint();
                     _confirmRevertSplat = true;
                 }
                 if (ImGui.IsItemHovered())
