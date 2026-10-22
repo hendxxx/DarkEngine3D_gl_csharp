@@ -74,7 +74,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                             + (covNow > 0.01f ? $" ({covNow:F1}% coverage)" : "") + ".");
                         if (strokes > 0)
                             ImGui.TextDisabled($"{strokes} stroke(s) of undo history are discarded.");
-                        ImGui.TextDisabled("The baked weight map is detached (the file stays on disk).");
+                        ImGui.TextDisabled("The baked weight map is detached AND the bake file is\noverwritten with a clean map — the strokes leave the .tga too.");
                     }
                     else
                     {
@@ -403,7 +403,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     _confirmRevertSplat = true;
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Clear ALL paint on this terrain: every painted weight goes and the\nterrain returns to layer 0 (the base PBR material).\nLayer textures, height bands and slope tiers are kept (the baked\nfile stays on disk, just unreferenced).\nAsks for confirmation and can be undone once (Undo revert / Ctrl+Z).");
+                    ImGui.SetTooltip("Clear ALL paint on this terrain: every painted weight goes and the\nterrain returns to layer 0 (the base PBR material).\nThe bake file is overwritten with a clean map — the strokes are gone\nfrom the .tga as well (undoable once).\nLayer textures, height bands and slope tiers are kept.\nAsks for confirmation and can be undone once (Undo revert / Ctrl+Z).");
                 if (obj.CanUndoSplatRevert)
                 {
                     ImGui.SameLine();

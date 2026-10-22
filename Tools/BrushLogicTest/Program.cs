@@ -482,6 +482,48 @@ const float Span = 64f;   // plane world size; 512 texels ⇒ 1 world = 8 texels
     try { File.Delete(bakePath); } catch { /* temp fixture only */ }
 }
 
+// ── REVERT MUST CLEAN THE BAKE FILE ITSELF ──
+// "Clear all paint" has to mean the strokes are gone from the .tga too, not only
+// from the scene: the revert overwrites the bake with a CLEAN weight map, and the
+// one-level undo re-bakes the painted weights into it again.
+{
+    const string relBake = "Artifacts\\Terrain\\revert_test\\clean_splat.tga";
+    string absBake = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+        "Artifacts", "Terrain", "revert_test", "clean_splat.tga");
+    Directory.CreateDirectory(Path.GetDirectoryName(absBake)!);
+
+    var painted = TerrainSplatField.CreateDefault();
+    painted.FillNeutralLayer0();
+    var brush = new SplatBrushSession
+    {
+        Mode = SplatBrushMode.Paint,
+        Layer = 2,
+        Radius = 8f,
+        Strength = 6f,
+        Hardness = 0.8f,
+    };
+    painted.BeginStroke();
+    for (int i = 0; i < 40; i++)
+        painted.ApplyBrush(0f, 0f, 64f, 64f, brush, 1f / 60f, i);
+    painted.BakeToTga(absBake);
+
+    var obj = new EditorObject(EditorPrimitiveType.Plane, "revert_clean_probe");
+    obj.SplatMapPath = relBake;
+    obj.RevertSplat();
+    var afterRevert = TerrainSplatField.FromFile(absBake);
+    Check("Revert cleans the bake file on disk",
+        afterRevert != null && afterRevert.PaintCoverage() <= 0.0001f,
+        $"coverage {(afterRevert?.PaintCoverage() ?? -1f) * 100:F2}%");
+    Check("Revert detaches the cleaned file", obj.SplatMapPath.Length == 0,
+        $"path '{obj.SplatMapPath}'");
+    obj.UndoSplatRevert();
+    var afterUndo = TerrainSplatField.FromFile(absBake);
+    Check("Undo re-bakes the paint into the file",
+        afterUndo != null && afterUndo.PaintCoverage() > 0.01f,
+        $"coverage {(afterUndo?.PaintCoverage() ?? -1f) * 100:F2}%");
+    try { File.Delete(absBake); } catch { /* temp fixture only */ }
+}
+
 Console.WriteLine(fails == 0 ? "\nALL BRUSH TESTS PASSED" : $"\n{fails} TEST(S) FAILED");
 BrushProbe.Run(fails);
 WeatherProbe.Run();

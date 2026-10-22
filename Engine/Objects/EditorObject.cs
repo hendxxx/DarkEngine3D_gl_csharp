@@ -1245,6 +1245,34 @@ public unsafe class EditorObject
     /// <summary>Stored splat weight map (RGBA TGA — R/G/B/A = layers 0-3). Written
     /// by the paint bake; loadable from any 32-bit image. Empty = never painted.</summary>
     private string _splatMapPath = "";
+
+    /// <summary>Live owners per splat bake path (normalized). A DUPLICATED object
+    /// points at its original's file until it is painted itself — cleaning such a
+    /// shared file would wipe the duplicate's art too, so the revert only cleans a
+    /// file nobody else references.</summary>
+    private static readonly Dictionary<string, int> _splatPathOwners = new();
+
+    private static void RegisterSplatPathOwner(string? path, int delta)
+    {
+        string key = PathHelpers.Normalize(path);
+        if (string.IsNullOrEmpty(key)) return;
+        _splatPathOwners.TryGetValue(key, out int c);
+        c += delta;
+        if (c <= 0) _splatPathOwners.Remove(key);
+        else _splatPathOwners[key] = c;
+    }
+
+    /// <summary>Set the stored bake path WITHOUT the public setter's side effects
+    /// (it would drop a non-painted live field) — but keep the path-owner registry
+    /// in sync so the revert knows when a file is shared with another object.</summary>
+    private void SetSplatMapPathRaw(string path)
+    {
+        if (_splatMapPath == path) return;
+        RegisterSplatPathOwner(_splatMapPath, -1);
+        _splatMapPath = path;
+        RegisterSplatPathOwner(path, +1);
+    }
+
     public string SplatMapPath
     {
         get => _splatMapPath;
@@ -1252,7 +1280,7 @@ public unsafe class EditorObject
         {
             value ??= "";
             if (_splatMapPath == value) return;
-            _splatMapPath = value;
+            SetSplatMapPathRaw(value);
             _splatDecodeFailedPath = null;
             // Drop a NON-painted live field (band buffer) so the new file loads
             // lazily; an active paint session keeps its in-memory strokes.
@@ -1775,18 +1803,52 @@ public unsafe class EditorObject
 
     /// <summary>Write the splat bake files (weights RGBA + painted mask R8) under
     /// Artifacts/Terrain/&lt;scene&gt;/&lt;object&gt;_splat.tga and store the path.</summary>
-    private void BakeSplatField(TerrainSplatField f)
+    private void BakeSplatField(TerrainSplatField f, string? targetPath = null)
     {
-        string baseRel = $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_splat.tga";
+        string baseRel = targetPath ?? $"Artifacts/Terrain/{PathHelpers.Normalize(SanitizedSceneName)}/{SanitizedObjectName}_splat.tga";
         string baseAbs = PathHelpers.Resolve(baseRel);
         if (f.BakeToTga(baseAbs))
         {
             // Point the stored path at the bake WITHOUT dropping the live field.
-            _splatMapPath = baseRel;
+            SetSplatMapPathRaw(baseRel);
             _splatLoadedPath = baseRel;
             f.MarkBaked();
             Console.WriteLine($"[TerrainSplat] '{Name}' baked → {baseRel}");
         }
+    }
+
+    /// <summary>Overwrite a splat bake file with a CLEAN weight map (every texel on
+    /// layer 0) so the file on disk really carries NO paint — that is what "clear
+    /// all paint" has to mean: the strokes must be gone from the .tga too, not only
+    /// from the scene. Only the engine's own bake folder is touched, and only when
+    /// NO other object shares the path (a duplicated plane points at its original's
+    /// file until it is painted itself). A LINKED file is a source the user may
+    /// want to keep — the brush never writes to it either, so it stays untouched.</summary>
+    private void CleanSplatBakeFile(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        string rel = PathHelpers.Normalize(path);
+        // The engine's own bake folder — relative ("Artifacts\Terrain\…") or an
+        // absolute path into a project folder. Anything else is a LINKED file.
+        if (rel.IndexOf("Artifacts\\Terrain\\", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            Console.WriteLine($"[TerrainSplat] '{Name}' linked splat file left untouched ({rel})"
+                + " — only the reference was detached.");
+            return;
+        }
+        if (_splatPathOwners.TryGetValue(rel, out int owners) && owners > 1)
+        {
+            Console.WriteLine($"[TerrainSplat] '{Name}' bake file {rel} is shared with another object"
+                + " — left on disk (paint removed from this object only).");
+            return;
+        }
+        var clean = TerrainSplatField.CreateDefault();
+        clean.FillNeutralLayer0();
+        string abs = PathHelpers.Resolve(rel);
+        // Nothing on disk to clean — never CREATE a bake file out of nowhere.
+        if (!File.Exists(abs)) return;
+        if (clean.BakeToTga(abs))
+            Console.WriteLine($"[TerrainSplat] '{Name}' bake file cleaned → {rel} (no paint left on disk)");
     }
 
     /// <summary>Undo the last splat stroke (Ctrl+Z while painting).</summary>
@@ -1934,9 +1996,12 @@ public unsafe class EditorObject
         // THE STORED BAKE *IS* THE PAINT. Dropping only the live field made the very
         // next draw re-decode the SAME TGA → every "reverted" stroke came straight
         // back, the coverage line kept reporting Painted and Ctrl+Z could not help
-        // (the history lived in the dropped field). The file itself stays on disk: a
-        // DUPLICATED object shares this path and must keep its own art — only this
-        // object's reference is detached.
+        // (the history lived in the dropped field). The reference is detached AND
+        // the bake file itself is overwritten with a CLEAN weight map: "clear all
+        // paint" has to mean the strokes are gone from the .tga too, not only from
+        // the scene. The parked field still holds the painted weights, so the
+        // one-level undo brings the paint back — on disk as well.
+        CleanSplatBakeFile(detached);
         SplatMapPath = "";
         _splatDecodeFailedPath = null;
         if (!string.IsNullOrEmpty(detached))
@@ -1979,7 +2044,7 @@ public unsafe class EditorObject
         _splatLoadedPath = _splatRevertLoadedPath;
         // Assign the backing field directly: the SplatMapPath SETTER drops a field
         // without edits and we are about to install a painted one.
-        _splatMapPath = _splatRevertPath;
+        SetSplatMapPathRaw(_splatRevertPath);
         _splatDecodeFailedPath = null;
         _splatRevertField = null;
         _splatRevertFieldBands = null;
@@ -1997,6 +2062,11 @@ public unsafe class EditorObject
         _splatRevertSlope2 = false;
         _splatRevertSlope3 = false;
         InvalidateSplatBands();
+        // The revert OVERWROTE the bake file with a clean map — re-bake the
+        // restored paint into it, so the file on disk matches the terrain again
+        // (otherwise the paint would survive in memory but vanish on reload).
+        if (_splatField != null && !string.IsNullOrEmpty(_splatMapPath))
+            BakeSplatField(_splatField, _splatMapPath);
         Console.WriteLine($"[TerrainSplat] '{Name}' undo revert paint — restored "
             + (!string.IsNullOrEmpty(_splatMapPath) ? _splatMapPath
                 : (_splatField != null ? "in-memory strokes" : "the auto layers")));
