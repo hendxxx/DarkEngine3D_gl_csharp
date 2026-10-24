@@ -39,6 +39,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Font size for the viewport toolbar buttons (px).</summary>
         public float ToolbarFontSize { get; set; } = 14f;
 
+        // ── 2D rendering (IDE Settings → Rendering) ──
+        /// <summary>2D sprite normal maps on/off. ON = sprites sample their baked
+        /// `&lt;sheet&gt;Normal.png` atlas (Point/Spot lights reveal the relief);
+        /// OFF = every 2D surface shades with a flat (0,0,1) normal — cheaper, flat look.
+        /// Applied to SpriteLighting2D.NormalMapsEnabled at boot / project open.</summary>
+        public bool SpriteNormalMaps2D { get; set; } = true;
+
         // ── Map Editor grid/palette UI prefs (2D sidescroller editor). Persisted so
         // the Map Editor comes back with the same Show Grid / grid colors / palette
         // columns+cell after restarting or reopening the project. ──

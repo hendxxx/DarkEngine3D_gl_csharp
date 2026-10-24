@@ -56,6 +56,18 @@ caches by the resolved image path and deletes on
 The atlas is baked in image space (+y down), so the shader flips Y before lighting.
 Sprites facing left mirror their UVs, which mirrors the normal's X with the art.
 
+## Normal maps on/off
+
+`SpriteLighting2D.NormalMapsEnabled` (default ON) is the single switch for the 2D normal
+textures. OFF = `TryGetNormalTexture` returns false and `BindNormal` forces the flat
+(0,0,1) normal, so every 2D pass (sprites, tiles, parallax, particles) shades flat and
+the per-sheet `<sheet>Normal.png` atlases are never loaded — one texture fetch less per
+fragment. Lighting, ambient and the Point/Spot falloff are unaffected.
+
+Exposed as **IDE Settings → Rendering → "2D Normal Maps (sprites)"**, persisted per
+project (`settings.json` → `SpriteNormalMaps2D`) and re-applied at boot, on project open
+and on project close.
+
 ## Verification
 
 - `dotnet build DarkEngine3D_gl_csharp.csproj` — 0 warnings, 0 errors.

@@ -175,13 +175,15 @@ public static class SceneAssetSerializer
     // ── Save ──
 
     /// <summary>Save a single scene (root UIElement + background objects) to a .ing file.</summary>
-    public static void SaveScene(UIElement root, string filePath, List<BackgroundObjectData>? bgObjects = null)
+    public static void SaveScene(UIElement root, string filePath, List<BackgroundObjectData>? bgObjects = null,
+        string? gameType = null)
     {
         var asset = new SceneAsset
         {
             SceneName = root.Name,
             Elements = [ToSceneData(root)],
-            BackgroundObjects = bgObjects ?? []
+            BackgroundObjects = bgObjects ?? [],
+            GameType = gameType ?? ""
         };
         ApplyTransitionSettings(asset);
 

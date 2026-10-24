@@ -29,6 +29,12 @@ public static class SpriteLighting2D
     /// <summary>Master switch for 2D lighting (the 2D passes still draw, just unlit).</summary>
     public static bool Enabled { get; set; } = true;
 
+    /// <summary>Enable/disable the baked NORMAL TEXTURES (&lt;sheet&gt;Normal.png) for the 2D
+    /// passes. Off = every 2D surface shades with a flat (0,0,1) normal — one less texture
+    /// fetch per fragment and no per-sheet normal atlas load. Lighting itself keeps
+    /// working. Persisted per project (settings.json → SpriteNormalMaps2D).</summary>
+    public static bool NormalMapsEnabled { get; set; } = true;
+
     /// <summary>Maximum number of Point/Spot lights uploaded (mirrors the 3D cap).</summary>
     public const int MaxLights = Lights.MaxLocalLights;
 
@@ -177,6 +183,7 @@ public static class SpriteLighting2D
     public static void BindNormal(uint program, uint normalTexId)
     {
         if (program == 0) return;
+        if (!NormalMapsEnabled) normalTexId = 0;
         var l = Locs.For(program);
         if (l.HasNormal >= 0) GL.Uniform1i(l.HasNormal, normalTexId != 0 ? 1 : 0);
         if (normalTexId == 0) return;
@@ -193,7 +200,7 @@ public static class SpriteLighting2D
     public static bool TryGetNormalTexture(SpriteSheet? sheet, out uint texId)
     {
         texId = 0;
-        if (!Enabled || sheet == null || string.IsNullOrEmpty(sheet.ImagePath)) return false;
+        if (!Enabled || !NormalMapsEnabled || sheet == null || string.IsNullOrEmpty(sheet.ImagePath)) return false;
 
         string resolved = PathHelpers.ResolveProjectAsset(sheet.ImagePath);
         if (!_normalTextures.TryGetValue(resolved, out texId))

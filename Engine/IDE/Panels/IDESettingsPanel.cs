@@ -20,6 +20,7 @@ public class IDESettingsPanel
     private bool _showCursorInGame;
     private bool _showDebugGrid;
     private bool _showShadows;
+    private bool _spriteNormalMaps;
     private float _ideFontSize;
     private float _viewportFontSize;
     private float _toolbarFontSize;
@@ -91,6 +92,20 @@ public class IDESettingsPanel
                     _showDebugGrid = grid;
                     SaveSetting(s => s.ShowDebugGrid = grid);
                 }
+
+                // 2D Normal Maps (sprite normal atlases)
+                bool normals = _spriteNormalMaps;
+                if (ImGui.Checkbox("2D Normal Maps (sprites)", ref normals))
+                {
+                    _spriteNormalMaps = normals;
+                    Visual.SpriteLighting2D.NormalMapsEnabled = normals;
+                    SaveSetting(s => s.SpriteNormalMaps2D = normals);
+                    Console.WriteLine($"[IDESettings] 2D sprite normal maps: {(normals ? "ON" : "OFF")}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Sprites sample their baked <sheet>Normal.png atlas, so Point/Spot\nlights reveal the relief of the art. OFF = every 2D surface (sprites, tiles,\nparticles) shades with a flat normal: flat lighting, one less texture fetch.\n2D lighting itself keeps working either way.\nPer project, saved in settings.json.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(normals ? "normal-mapped" : "flat normals");
             }
 
             ImGui.Separator();
@@ -313,17 +328,20 @@ public class IDESettingsPanel
                 _showCursorInGame = false;
                 _showDebugGrid = false;
                 _showShadows = true;
+                _spriteNormalMaps = true;
                 _ideFontSize = 20f;
                 _viewportFontSize = 16f;
                 _toolbarFontSize = 14f;
                 Glfw.SetSwapInterval(0);
                 QualitySettings.MsaaSamples = 1;
+                Visual.SpriteLighting2D.NormalMapsEnabled = true;
                 var s = Load();
                 s.VSync = false;
                 s.QualityPreset = 0;
                 s.ShowCursorInGame = false;
                 s.ShowDebugGrid = false;
                 s.ShowShadows = true;
+                s.SpriteNormalMaps2D = true;
                 s.IDEFontSize = 20f;
                 s.ViewportFontSize = 16f;
                 s.ToolbarFontSize = 14f;
@@ -344,6 +362,7 @@ public class IDESettingsPanel
         _showCursorInGame = s.ShowCursorInGame;
         _showDebugGrid = s.ShowDebugGrid;
         _showShadows = s.ShowShadows;
+        _spriteNormalMaps = s.SpriteNormalMaps2D;
         _ideFontSize = s.IDEFontSize;
         _viewportFontSize = s.ViewportFontSize;
         _toolbarFontSize = s.ToolbarFontSize;
