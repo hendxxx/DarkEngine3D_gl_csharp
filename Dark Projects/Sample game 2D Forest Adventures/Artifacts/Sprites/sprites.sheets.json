@@ -237356,8 +237356,8 @@
       "SpriteOffsetY": 0
     }
   ],
-  "PreviewStartFrame": -1,
-  "PreviewEndFrame": -1,
+  "PreviewStartFrame": 0,
+  "PreviewEndFrame": 69,
   "PreviewFps": 12,
   "PreviewLoop": true,
   "PatternActions": ""
