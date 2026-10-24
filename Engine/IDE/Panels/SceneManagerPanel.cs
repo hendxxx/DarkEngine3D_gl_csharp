@@ -55,6 +55,10 @@ public class SceneManagerPanel
     private bool _editTransitionBlock = false;
     private int _selectedNewSceneTypeIdx = 0;   // combo box index for Add popup
     private int _selectedEditSceneTypeIdx = 0;  // combo box index for Edit popup
+    //  Game Type (2D SideScroller / 2D Top Down / 2.5D / 3D) — GameScene entries only.
+    //  Default 3D keeps the engine's existing behavior for new scenes.
+    private int _selectedNewGameTypeIdx = (int)IDEBridge.GameType.ThreeD;
+    private int _selectedEditGameTypeIdx = (int)IDEBridge.GameType.ThreeD;
     private const int InputBufSize = 256;
 
     //  Colors 
@@ -203,6 +207,7 @@ public class SceneManagerPanel
                 _editNameBuffer = entry.Name;
                 _editDescBuffer = entry.Description;
                 _selectedEditSceneTypeIdx = (int)entry.Type;
+                _selectedEditGameTypeIdx = (int)entry.GameType;
                 _showEditPopup = true;
             }
             ImGui.EndDisabled();
@@ -228,11 +233,12 @@ public class SceneManagerPanel
         ImGui.Separator();
 
         //  Available scenes list 
-        if (ImGui.BeginTable("scene_table", 4,
+        if (ImGui.BeginTable("scene_table", 5,
                 ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
         {
             ImGui.TableSetupColumn("Scene",     ImGuiTableColumnFlags.WidthStretch, 1f);
             ImGui.TableSetupColumn("Type",      ImGuiTableColumnFlags.WidthFixed,   80f);
+            ImGui.TableSetupColumn("Game",      ImGuiTableColumnFlags.WidthFixed,   62f);
             ImGui.TableSetupColumn("State",     ImGuiTableColumnFlags.WidthFixed,   60f);
             ImGui.TableSetupColumn("Action",    ImGuiTableColumnFlags.WidthFixed,   70f);
             ImGui.TableHeadersRow();
@@ -294,7 +300,15 @@ public class SceneManagerPanel
                 };
                 ImGui.TextColored(typeCol, typeLabel);
 
-                //  Column 2: State badge 
+                //  Column 2: Game Type badge (2D SideScroller / 2D Top Down / 2.5D / 3D)
+                ImGui.TableNextColumn();
+                if (entry.Type == IDEBridge.SceneType.GameScene)
+                    ImGui.TextColored(IDEBridge.Is2DGameType(entry.GameType) ? ColTypeLoad : ColDim,
+                        IDEBridge.GameTypeShortLabel(entry.GameType));
+                else
+                    ImGui.TextDisabled("—");
+
+                //  Column 3: State badge 
                 ImGui.TableNextColumn();
                 string state = isActive ? "Active" : (entry.HasInitializedEntry ? "Loaded" : "");
                 var stateCol = isActive ? ColActive : (entry.HasInitializedEntry ? ColInactive : ColDim);
@@ -434,6 +448,21 @@ public class SceneManagerPanel
             int prevSceneTypeIdx = _selectedNewSceneTypeIdx;
             ImGui.Combo("##add_type", ref _selectedNewSceneTypeIdx,
                 IDEBridge.SceneTypeLabels, IDEBridge.SceneTypeLabels.Length);
+
+            // Game Type — how a Game Scene plays. New 2D scenes open with the ortho
+            // front view; 2.5D/3D open perspective. Menus/loading have no game type.
+            ImGui.Text("Game Type:");
+            ImGui.SetNextItemWidth(280);
+            bool gameTypeEnabled = _selectedNewSceneTypeIdx == (int)IDEBridge.SceneType.GameScene;
+            ImGui.BeginDisabled(!gameTypeEnabled);
+            ImGui.Combo("##add_game_type", ref _selectedNewGameTypeIdx,
+                IDEBridge.GameTypeLabels, IDEBridge.GameTypeLabels.Length);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Gameplay perspective of this Game Scene.\n2D SideScroller / 2D Top Down = orthographic front view.\n2.5D / 3D = perspective view.\nSaved per scene in the .ing file.");
+            ImGui.EndDisabled();
+            if (!gameTypeEnabled)
+                ImGui.TextDisabled("Only used by Game Scene entries");
+
             ImGui.Text("Default Transition (e.g. fade:0.6 or slide:left:0.5):");
             ImGui.SetNextItemWidth(280);
             // Transition fields
@@ -470,7 +499,8 @@ public class SceneManagerPanel
             {
                 string sceneName = _editNameBuffer.Trim();
 
-                // Add new scene entry with user-chosen type
+                // Add new scene entry with user-chosen type + game type
+                    var newGameType = (IDEBridge.GameType)_selectedNewGameTypeIdx;
                     _bridge.AvailableScenesInternal.Add(new IDEBridge.SceneEntry(
                     sceneName,
                     string.IsNullOrWhiteSpace(_editDescBuffer) ? "Custom scene" : _editDescBuffer.Trim(),
@@ -480,9 +510,10 @@ public class SceneManagerPanel
                     _editTransitionDuration,
                     new float[3] { _editTransitionColor.X, _editTransitionColor.Y, _editTransitionColor.Z },
                     _editTransitionEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" },
-                    _editTransitionBlock));
+                    _editTransitionBlock,
+                    newGameType));
                 _selectedIdx = _bridge.AvailableScenes.Count - 1;
-                Console.WriteLine($"[SceneManager] Added scene: {sceneName} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]})");
+                Console.WriteLine($"[SceneManager] Added scene: {sceneName} (type={IDEBridge.SceneTypeLabels[_selectedNewSceneTypeIdx]}, game={IDEBridge.GameTypeLabels[(int)newGameType]})");
 
                 // Persist transition settings for save
                 string tTypeStr = _editTransitionTypeIdx switch { 1 => "slideleft", 2 => "slideright", _ => "fade" };
@@ -498,10 +529,12 @@ public class SceneManagerPanel
                         Type = UIElementType.Scene,
                         IsVisible = false,
                     };
-                    _bridge.EditorScenes[sceneName] = new IDEBridge.EditorScene(
+                    var newEditorScene = new IDEBridge.EditorScene(
                         sceneName,
                         (IDEBridge.SceneType)_selectedNewSceneTypeIdx,
                         sceneRoot);
+                    ApplyGameTypeCamera(newEditorScene, newGameType);
+                    _bridge.EditorScenes[sceneName] = newEditorScene;
                     Console.WriteLine($"[SceneManager] Created EditorScene root for '{sceneName}'");
                 }
 
@@ -546,6 +579,20 @@ public class SceneManagerPanel
             ImGui.SetNextItemWidth(280);
             ImGui.Combo("##edit_type", ref _selectedEditSceneTypeIdx,
                 IDEBridge.SceneTypeLabels, IDEBridge.SceneTypeLabels.Length);
+
+            // Game Type (GameScene only) — editable so an existing scene can be
+            // reclassified without deleting/re-adding it.
+            ImGui.Text("Game Type:");
+            ImGui.SetNextItemWidth(280);
+            bool editGameTypeEnabled = _selectedEditSceneTypeIdx == (int)IDEBridge.SceneType.GameScene;
+            ImGui.BeginDisabled(!editGameTypeEnabled);
+            ImGui.Combo("##edit_game_type", ref _selectedEditGameTypeIdx,
+                IDEBridge.GameTypeLabels, IDEBridge.GameTypeLabels.Length);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Gameplay perspective of this Game Scene.\n2D SideScroller / 2D Top Down = orthographic front view.\n2.5D / 3D = perspective view.\nChanging it here does NOT move the current camera (the scene keeps its saved view).");
+            ImGui.EndDisabled();
+            if (!editGameTypeEnabled)
+                ImGui.TextDisabled("Only used by Game Scene entries");
         ImGui.Text("Default Transition (e.g. fade:0.6 or slide:left:0.5):");
         ImGui.SetNextItemWidth(280);
             // Transition fields (edit)
@@ -587,6 +634,7 @@ public class SceneManagerPanel
                         TransitionColor = new float[3] { _editTransitionColor.X, _editTransitionColor.Y, _editTransitionColor.Z },
                         TransitionEasing = _editTransitionEasingIdx switch { 0 => "linear", 1 => "easein", 2 => "easeout", 3 => "easeinout", _ => "linear" },
                         TransitionBlockInput = _editTransitionBlock,
+                        GameType = (IDEBridge.GameType)_selectedEditGameTypeIdx,
                     };
 
                     // If name changed, update EditorScenes dictionary key too
@@ -856,6 +904,12 @@ public class SceneManagerPanel
                 SceneType = editorScene.Type.ToString()
             };
             SceneAssetSerializer.ApplyTransitionSettings(asset);
+
+            // Game Type lives on the AvailableScenes entry — persist its stable key
+            // (menus/loading keep the neutral 3D default; the UI only edits GameScene).
+            var saveEntry = _bridge.AvailableScenes.FirstOrDefault(
+                s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            asset.GameType = IDEBridge.GameTypeToKey(saveEntry?.GameType ?? IDEBridge.GameType.ThreeD);
 
             //  Per-scene freefly camera: snapshot the LIVE camera for the currently
             // selected scene, and keep each other scene's saved camera as-is. 
@@ -1136,6 +1190,34 @@ public class SceneManagerPanel
     }
 
     /// <summary>Public wrapper so IDE can restore scene selection after in-game reload.</summary>
+    /// <summary>Give a NEWLY created scene the camera that matches its game type.
+    /// 2D types open on the ortho front view used by the level editor (camera on +Z at
+    /// yaw 180, ortho half-height 32 = default zoom); 2.5D/3D open in perspective from the
+    /// current view. Only creation goes through here — selecting an existing scene always
+    /// restores ITS OWN saved camera, so an authored view is never overwritten.</summary>
+    private void ApplyGameTypeCamera(IDEBridge.EditorScene scene, IDEBridge.GameType gameType)
+    {
+        if (IDEBridge.Is2DGameType(gameType))
+        {
+            scene.CameraPos = new System.Numerics.Vector3(0f, 0f, 300f);
+            scene.CameraYaw = 180f;
+            scene.CameraPitch = 0f;
+            scene.CameraOrtho = true;
+            scene.CameraOrthoSize = 32f;
+            return;
+        }
+
+        var cam = _bridge.Camera;
+        if (cam == null) return;
+        // Keep the current pose but force perspective, so creating a 3D scene while
+        // authoring in an ortho 2D view does not leave the new scene in ortho.
+        scene.CameraPos = cam.Position;
+        scene.CameraYaw = cam.Yaw;
+        scene.CameraPitch = cam.Pitch;
+        scene.CameraOrtho = false;
+        scene.CameraOrthoSize = cam.OrthoSize;
+    }
+
     public void SelectEditorScenePublic(string sceneName) => SelectEditorScene(sceneName);
 
     /// <summary>Select an editor scene to display in SceneDetail. Does NOT switch game scene.</summary>
@@ -1353,6 +1435,10 @@ public class SceneManagerPanel
                         ? IDEBridge.SceneType.GameScene
                         : IDEBridge.SceneType.MainMenu;
 
+                // Game Type: the saved key wins; a legacy scene (no key) is inferred from
+                // its saved camera — ortho = 2D SideScroller, otherwise 3D.
+                var gameType = IDEBridge.ParseGameType(asset.GameType, asset.EditorCameraOrtho);
+
                 // Build transition defaults from asset if present
                 var tType = TransitionType.Fade;
                 float tDur = 0.6f;
@@ -1385,7 +1471,8 @@ public class SceneManagerPanel
                     tDur,
                     tCol,
                     tEase,
-                    tBlock));
+                    tBlock,
+                    gameType));
 
                 // Populate TransitionSettings dictionary so save preserves transition config
                 string tTypeStr = tType switch { TransitionType.SlideLeft => "slideleft", TransitionType.SlideRight => "slideright", _ => "fade" };
@@ -1915,6 +2002,7 @@ public class SceneManagerPanel
                     asset.TransitionEasing = string.IsNullOrEmpty(matching.TransitionEasing) ? "linear" : matching.TransitionEasing;
                     asset.TransitionBlockInput = matching.TransitionBlockInput;
                 }
+                asset.GameType = IDEBridge.GameTypeToKey(matching?.GameType ?? IDEBridge.GameType.ThreeD);
 
                 //  Per-scene freefly camera: snapshot the LIVE camera for the currently
                 // selected scene, and keep each other scene's saved camera as-is. 

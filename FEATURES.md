@@ -119,7 +119,7 @@ The sidescroller passes are **lit by the existing Light editor objects** — no 
 - **Direct** = the scene sun (`Lights.SunDir` / `LightColor`, i.e. the Direct marker or the procedural day/night). Only its XY part drives the 2D shading, with a nominal +Z so flat quads stay lit.
 - **Point** = marker position, `LightPointRadius` falloff (`(1−d²)²`, same curve as the 3D local lights). **Spotlight** = the same falloff narrowed by `LightConeAngle` in XY, aimed along the marker's `WorldLightDirection`.
 - **Surfaces**: map tiles, parallax layers, Player2D/Sprite2D, portals, projectiles and world particles all share `SpriteLighting2D.GlslLighting` in their fragment shader (sprite + particle shaders draw it from one const, so they cannot drift apart). Editor aids (collision boxes, trigger volumes) and weather overlays (rain/snow tint, front fog) call `ApplyUnlit` and keep their authored colors.
-- **Normal maps**: sprites sample the baked `<sheet>Normal.png` atlas (`SpriteAtlasBaker` already wrote them) on texture unit 1; `SpriteLighting2D.TryGetNormalTexture` loads it lazily per sheet, caches by resolved image path and re-reads it after a re-bake (`IDEBridge.NotifySpriteTextureReloaded`) or a project switch. Sheets without a normal atlas (tilesets, parallax) shade with a flat (0,0,1) normal. The atlas is baked in image space, so the shader flips Y when converting to world space.
+- **Normal maps**: sprites sample the baked `<sheet>Normal.png` atlas (`SpriteAtlasBaker` already wrote them) on texture unit 1; `SpriteLighting2D.TryGetNormalTexture` loads it lazily per sheet, caches by resolved image path and re-reads it after a re-bake (`IDEBridge.NotifySpriteTextureReloaded`) or a project switch. Sheets without a normal atlas (tilesets, parallax) shade with a flat (0,0,1) normal. The atlas is baked in image space, so the shader flips Y when converting to world space. A single flag, `SpriteLighting2D.NormalMapsEnabled` (IDE Settings → Rendering → **"2D Normal Maps (sprites)"**, persisted per project as `SpriteNormalMaps2D`), turns the normal textures off: every 2D surface then shades with a flat (0,0,1) normal and no `<sheet>Normal.png` is loaded — lighting/falloff keep working. Re-applied at boot, project open and project close.
 
 ## 1.9 2D sky: sun & moon on a visible arc (2D only)
 
@@ -132,6 +132,14 @@ The procedural sky positions the sun/moon from the camera's real view direction,
 ## 1.10 2D object placement always lands on Z = 0
 
 In 2D (orthographic camera) every newly added object spawns on the Z = 0 world plane: `IDEBridge.GetGridSpawnPosition` forces `Z = 0` when the camera is orthographic (X/Y still follow the camera so the object appears where the user is looking). The ortho camera parks far on +Z looking back at the level, so "spawn at the camera position" used to put new objects at Z ≈ 60 — in front of the tilemap, off the 2D plane. This covers every creation path (Model menu, viewport +Box/+Sphere/… buttons, Hierarchy quick-add, GLB drop); perspective (3D) spawning is untouched. Sprite2D placement and Map2D creation already used Z = 0.
+
+## 1.11 Scene game type (2D SideScroller / 2D Top Down / 2.5D / 3D)
+
+The Add New Scene / Edit Scene dialogs carry a **Game Type** combo for Game Scene entries (`IDEBridge.GameType`, labels `2D SideScroller`, `2D Top Down`, `2.5D`, `3D`). Menus and loading screens have no game type (the combo is disabled for them). Scene Manager shows the short badge in its new **Game** column, and the choice persists per scene in `SceneAsset.GameType` using stable keys (`2d_sidescroller`, `2d_topdown`, `2.5d`, `3d`).
+
+- **New-scene camera**: a 2D type creates the scene with the ortho level-editor front view (position `(0,0,300)`, yaw `180`, pitch `0`, ortho half-height `32`); 2.5D/3D keep the current pose but force perspective. Only creation is configured — selecting an existing scene always restores its own saved camera, and editing the type of an existing scene never moves the camera.
+- **Legacy files**: a missing key is inferred from the saved editor camera (ortho → 2D SideScroller, otherwise 3D), so old `.ing` files keep their meaning without re-saving. Every save path (Save All / Save As, and the Hierarchy single-scene save) writes the key.
+- **Metadata today**: the type labels/persists the scene; it does not change gameplay systems yet — 2D Top Down still runs the existing sidescroller player physics.
 
 ## 2. Project reference
 

@@ -9755,8 +9755,8 @@
           "pbrVertexDisplaceEnabled": true,
           "pbrPrimTessellation": 1,
           "pbrVertexOffset": 0,
-          "terrainBaseHeight": 10,
-          "terrainHeightScale": 1,
+          "terrainBaseHeight": 5,
+          "terrainHeightScale": 2,
           "terrainHeightOffset": 0,
           "terrainHeightStrength": 3,
           "terrainHeightTilingX": 1,
@@ -9815,13 +9815,13 @@
             16
           ],
           "splatHeightBandsEnabled": false,
-          "splatSlopeEnabled": false,
+          "splatSlopeEnabled": true,
           "splatSlopeLayer": 1,
           "splatSlopeThreshold": 0.46,
           "splatSlopeFade": 0.005,
-          "splatSlopeUseDegrees": false,
-          "splatSlopeAngleMin": 35,
-          "splatSlopeAngleMax": 65,
+          "splatSlopeUseDegrees": true,
+          "splatSlopeAngleMin": 40,
+          "splatSlopeAngleMax": 41,
           "splatSlopeOverridePaint": false,
           "splatSlopePaintFloor": 0.25,
           "splatSlopeTiling": 16,
@@ -9847,7 +9847,7 @@
             18,
             100000
           ],
-          "pbrVertexSegments": 123,
+          "pbrVertexSegments": 128,
           "pbrVertexChunk": 4,
           "texSettings": {
             "filterPreset": 2,
@@ -9983,12 +9983,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        28.643314,
-        28.713318,
-        -4.265547
+        14.618767,
+        15.36861,
+        -9.661779
       ],
-      "editorCameraYaw": -112,
-      "editorCameraPitch": -43,
+      "editorCameraYaw": -115,
+      "editorCameraPitch": -32.5,
       "editorCameraOrtho": false,
       "editorCameraOrthoSize": 33.600002,
       "renderProperties": {

@@ -63,6 +63,10 @@ public unsafe class Program
         QualitySettings.Apply(settings);
         QualitySettings.Persist();
 
+        // 2D sprite normal maps (IDE Settings → Rendering). Persisted per project; the
+        // IDE re-applies it on project open/close because settings.json follows the project.
+        SpriteLighting2D.NormalMapsEnabled = settings.SpriteNormalMaps2D;
+
         // Apply Occlusion Mode to config immediately
         switch (settings.OcclusionMode)
         {

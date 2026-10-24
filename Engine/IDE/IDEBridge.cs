@@ -866,14 +866,80 @@ public class IDEBridge
         Loading,
     }
 
+    /// <summary>How a Game Scene plays — picked per scene entry in the Add/Edit Scene
+    /// dialog (Scene Type = Game Scene only). Persisted in the .ing as a stable key
+    /// (see <see cref="GameTypeToKey"/>) and shown in the Scene Manager "Game" column.
+    /// A NEW 2D scene is created with the ortho front view; 2.5D/3D start perspective.</summary>
+    public enum GameType
+    {
+        SideScroller2D,
+        TopDown2D,
+        Isometric25D,
+        ThreeD,
+    }
+
     /// <summary>Available scene descriptors for the SceneManagerPanel.
-    /// DefaultTransition is an optional editor-configured transition spec (e.g. "fade:0.6" or "slide:left:0.5").</summary>
+    /// DefaultTransition is an optional editor-configured transition spec (e.g. "fade:0.6" or "slide:left:0.5").
+    /// GameType only applies to GameScene entries (menus/loading keep the default).</summary>
     public record SceneEntry(string Name, string Description, bool HasInitializedEntry, SceneType Type,
-        TransitionType TransitionType, float TransitionDuration, float[] TransitionColor, string TransitionEasing, bool TransitionBlockInput);
+        TransitionType TransitionType, float TransitionDuration, float[] TransitionColor, string TransitionEasing, bool TransitionBlockInput,
+        GameType GameType = GameType.ThreeD);
 
     /// <summary>Human-readable labels for the SceneType enum (for combo box).</summary>
     public static readonly string[] SceneTypeLabels =
         ["Main Menu", "Game Scene", "Loading Screen"];
+
+    /// <summary>Human-readable labels for the GameType enum (Add/Edit Scene combo).</summary>
+    public static readonly string[] GameTypeLabels =
+        ["2D SideScroller", "2D Top Down", "2.5D", "3D"];
+
+    /// <summary>Short badge for the Scene Manager "Game" column.</summary>
+    public static string GameTypeShortLabel(GameType type) => type switch
+    {
+        GameType.SideScroller2D => "2D Side",
+        GameType.TopDown2D => "2D Top",
+        GameType.Isometric25D => "2.5D",
+        _ => "3D",
+    };
+
+    /// <summary>True for the two flat/orthographic game types (2D SideScroller + 2D Top Down).</summary>
+    public static bool Is2DGameType(GameType type)
+        => type is GameType.SideScroller2D or GameType.TopDown2D;
+
+    /// <summary>Stable key written to the .ing — do NOT localize or rename these.</summary>
+    public static string GameTypeToKey(GameType type) => type switch
+    {
+        GameType.SideScroller2D => "2d_sidescroller",
+        GameType.TopDown2D => "2d_topdown",
+        GameType.Isometric25D => "2.5d",
+        _ => "3d",
+    };
+
+    /// <summary>Parse a saved key. A missing/unknown key (old .ing files) falls back to the
+    /// scene's saved camera: orthographic = 2D SideScroller, otherwise 3D — so legacy
+    /// files keep their meaning without being re-saved.</summary>
+    public static GameType ParseGameType(string? key, bool? editorCameraOrtho = null)
+    {
+        switch ((key ?? "").Trim().ToLowerInvariant()
+                    .Replace("_", "").Replace("-", "").Replace(" ", ""))
+        {
+            case "2dsidescroller":
+            case "2dside":
+            case "sidescroller":
+                return GameType.SideScroller2D;
+            case "2dtopdown":
+            case "topdown":
+                return GameType.TopDown2D;
+            case "2.5d":
+            case "25d":
+            case "isometric":
+                return GameType.Isometric25D;
+            case "3d":
+                return GameType.ThreeD;
+            default:
+                return editorCameraOrtho == true ? GameType.SideScroller2D : GameType.ThreeD;
+        }
+    }
 
     /// <summary>List of all registered scenes and whether they have been initialized (current or next).
     /// Starts empty — user adds scenes via the Scene Manager panel.</summary>

@@ -506,6 +506,10 @@ public class SceneAsset
     public string Description { get; set; } = "";
     /// <summary>Scene type: "MainMenu", "GameScene", "Loading" (persists editor type choice).</summary>
     public string SceneType { get; set; } = "MainMenu";
+    /// <summary>Game type key for GameScene entries: "2d_sidescroller", "2d_topdown",
+    /// "2.5d", "3d". Empty/absent = legacy file → inferred from the saved editor camera
+    /// (ortho = 2D SideScroller, otherwise 3D). See IDEBridge.ParseGameType.</summary>
+    public string GameType { get; set; } = "";
     /// <summary>Top-level UI elements (usually one Scene-type root per definition).</summary>
     public List<SceneElementData> Elements { get; set; } = [];
     /// <summary>3D background objects to render behind the UI (models, position, scale).</summary>

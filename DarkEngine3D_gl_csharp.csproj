@@ -33,6 +33,196 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\bake_gbuffer_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\bake_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\blur_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\blur_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\depth_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\depth_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\dof_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\dof_sprite_mask_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\dome_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\dome_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\fragment_shader.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\gltf_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\gltf_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\hudFragment_shader.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\hudVertex_shader.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\impostor_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\impostor_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\invertPass_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\invertPass_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\lineFragment_shader.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\lineVertex_shader.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\objectPbr_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\outline_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\outline_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\pbrDisplace_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\postFxBloomDownsample_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\postFxBloomUpsample_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\postFxBlur_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\postFxBright_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\postFxComposite_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\post_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\realtime_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\realtime_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\shadow_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\shadow_skinned_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\shadow_static_alpha_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\shadow_static_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\shadow_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\sky2d_celestial_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\sky2d_celestial_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\skybox_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\skybox_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\sky_fragment.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\sky_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\static_vertex.glsl" />
+    <None Remove="Dark Projects\Sample 3D\Artifacts\shaders\vertex_shader.glsl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\bake_gbuffer_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\bake_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\blur_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\blur_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\depth_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\depth_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\dof_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\dof_sprite_mask_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\dome_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\dome_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\fragment_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\gltf_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\gltf_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\hudFragment_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\hudVertex_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\impostor_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\impostor_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\invertPass_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\invertPass_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\lineFragment_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\lineVertex_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\objectPbr_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\outline_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\outline_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\pbrDisplace_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\postFxBloomDownsample_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\postFxBloomUpsample_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\postFxBlur_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\postFxBright_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\postFxComposite_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\post_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\realtime_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\realtime_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\shadow_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\shadow_skinned_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\shadow_static_alpha_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\shadow_static_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\shadow_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\sky2d_celestial_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\sky2d_celestial_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\skybox_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\skybox_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\sky_fragment.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\sky_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\static_vertex.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dark Projects\Sample 3D\Artifacts\shaders\vertex_shader.glsl">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Root-level runtime config files are loaded from the exe directory.
          Copy them so their paths stay exe-relative instead of project-root/etc. -->
     <None Include=".github\copilot-instructions.md" />
@@ -46,6 +236,9 @@
 
   <ItemGroup>
     <None Update="Artifacts\shaders\realtime_fragment.glsl.bak">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Dark Projects\Sample 3D\Artifacts\shaders\realtime_fragment.glsl.bak">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

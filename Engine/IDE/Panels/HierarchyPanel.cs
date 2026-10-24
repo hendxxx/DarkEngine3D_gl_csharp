@@ -2900,7 +2900,12 @@ public class HierarchyPanel
             // Save individual scene file first
             SceneAssetSerializer.EnsureScenesDirectory();
             string scenePath = SceneAssetSerializer.GetScenePath(sceneName);
-            SceneAssetSerializer.SaveScene(sceneRoot, scenePath);
+            // Carry the scene's Game Type (2D SideScroller / 2D Top Down / 2.5D / 3D) into
+            // the single-scene file too, so loading it does not fall back to camera inference.
+            var gameTypeEntry = _bridge.AvailableScenes.FirstOrDefault(
+                s => string.Equals(s.Name, sceneName, StringComparison.OrdinalIgnoreCase));
+            SceneAssetSerializer.SaveScene(sceneRoot, scenePath,
+                gameType: gameTypeEntry != null ? IDEBridge.GameTypeToKey(gameTypeEntry.GameType) : null);
 
             // Then let SceneManager save ALL scenes to game.ing (creates file if not exists)
             _bridge.SaveAllScenes?.Invoke();

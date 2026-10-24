@@ -366,6 +366,8 @@ public class IDE : IDisposable
             Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
             Bridge.ShowInGameStats = projSettings.ShowInGameStats;
+            // 2D sprite normal maps are per project too (settings.json follows the project).
+            Visual.SpriteLighting2D.NormalMapsEnabled = projSettings.SpriteNormalMaps2D;
             if (Bridge.Camera != null)
                 Bridge.Camera.OrthoSize = Math.Clamp(Bridge.Camera.OrthoSize, Visual.Camera.OrthoZoomMin, Visual.Camera.OrthoZoomMax);
             // Re-apply post-FX (bloom/auto-exposure/DoF) from the PROJECT's settings.
@@ -405,6 +407,7 @@ public class IDE : IDisposable
             var fallbackSettings = SettingsSave.Load();
             Visual.Camera.OrthoZoomDisabled = fallbackSettings.OrthoZoomDisabled;
             Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
+            Visual.SpriteLighting2D.NormalMapsEnabled = fallbackSettings.SpriteNormalMaps2D;
             // Follow the active settings file back to the exe fallback after close.
             Config.PostFxSettings.Apply(fallbackSettings);
             _postFxPanel?.OnProjectChanged();
@@ -937,6 +940,7 @@ public class IDE : IDisposable
             Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
             Bridge.ShowInGameStats = bootSettings.ShowInGameStats;
+            Visual.SpriteLighting2D.NormalMapsEnabled = bootSettings.SpriteNormalMaps2D;
 
             // Assign shared gizmo to bridge
             Bridge.EditorGizmo = _gizmo;
