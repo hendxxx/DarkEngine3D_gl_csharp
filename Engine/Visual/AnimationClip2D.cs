@@ -25,6 +25,95 @@ public class AnimationClip2D
     /// <summary>Play in reverse.</summary>
     public bool Reverse;
 
+    // ── Authoring (Phase 0/1 — ignored by renderers) ──
+    /// <summary>Animation Library group path ("Player/Hero/Locomotion"; empty = ungrouped).</summary>
+    public string GroupPath = "";
+    /// <summary>Sprite (frame strip) or Skeleton (rig/timeline, baked). Metadata only at runtime.</summary>
+    public AnimationClipMode Mode = AnimationClipMode.Sprite;
+    /// <summary>Source sheet this clip was authored from. Empty on legacy baked clips.
+    /// Kept so the clip can be re-edited and REBAKED after its atlas frames were written.</summary>
+    public string SourceSheetName = "";
+    /// <summary>Frame indices INTO <see cref="SourceSheetName"/>, in playback order. This is
+    /// the authored frame strip; <see cref="FrameIndices"/> is the BAKED atlas result.
+    /// Empty on legacy clips (timing edits only, no rebake).</summary>
+    public List<int> SourceFrameIndices = new();
+    /// <summary>Per-frame duration MULTIPLIER (1 = normal). Lets one frame hold longer in
+    /// the timeline without changing FPS. Empty/short list → 1. Authoring + runtime timing.</summary>
+    public List<float> FrameHolds = new();
+    /// <summary>True when the authored strip differs from the last bake (timeline edits,
+    /// holds, source change). The editor shows a dirty badge; rebake clears it.</summary>
+    public bool BakeDirty;
+    /// <summary>Stable clip id (guid). Generated when a clip is created or when an old
+    /// file without ids loads. Editor-side linking only — gameplay still keys off Name.</summary>
+    public string Id = Guid.NewGuid().ToString("N");
+    /// <summary>Skeleton mode only: id of the <see cref="AnimationRig"/> this clip animates.
+    /// Empty on sprite clips and on every legacy clip.</summary>
+    public string RigId = "";
+    /// <summary>Timeline tracks (Phase 0/2 authoring). Null/empty on legacy clips — the
+    /// timeline then synthesizes a frame track from <see cref="EditFrameIndices"/> + FPS.</summary>
+    public List<AnimationTrack>? Tracks;
+    /// <summary>Bake settings + last-bake hash (Phase 0 field; the Phase 2 baker reads it,
+    /// falling back to the clip's own FPS when null).</summary>
+    public BakeSettings? Bake;
+
+    /// <summary>Authored frames the editor should show/edit: source strip when known,
+    /// else the baked atlas frames.</summary>
+    public List<int> EditFrameIndices => SourceFrameIndices.Count > 0 ? SourceFrameIndices : FrameIndices;
+
+    /// <summary>True when this clip can be rebaked from its source sheet.</summary>
+    public bool CanRebake => !string.IsNullOrEmpty(SourceSheetName) && SourceFrameIndices.Count > 0;
+
+    /// <summary>Frame hold multiplier (1 = normal).</summary>
+    public float GetHold(int frameIndex)
+        => frameIndex >= 0 && frameIndex < FrameHolds.Count
+            ? MathF.Max(0.05f, FrameHolds[frameIndex]) : 1f;
+
+    /// <summary>Duration in seconds including per-frame holds.</summary>
+    public float DurationAt(float fps, float speed)
+    {
+        int n = FrameIndices.Count;
+        if (n == 0) return 0f;
+        float frame = 1f / MathF.Max(0.0001f, fps * MathF.Max(0.0001f, speed));
+        float total = 0f;
+        for (int i = 0; i < n; i++) total += frame * GetHold(i);
+        return total;
+    }
+
+    /// <summary>Local frame index at <paramref name="time"/> honoring holds. Fast path when
+    /// no holds are authored (identical to the old integer math).</summary>
+    public int GetFrameAtTimeWithHolds(float time, bool loop)
+    {
+        int n = FrameIndices.Count;
+        if (n == 0) return 0;
+        float frameDur = 1f / MathF.Max(0.0001f, FPS * MathF.Max(0.0001f, SpeedMultiplier));
+
+        if (FrameHolds.Count == 0)
+        {
+            int f = (int)(time / frameDur);
+            return loop ? ((f % n) + n) % n : Math.Clamp(f, 0, n - 1);
+        }
+
+        float total = DurationAt(FPS, SpeedMultiplier);
+        if (loop)
+        {
+            if (total <= 0f) return 0;
+            time %= total;
+            if (time < 0f) time += total;
+        }
+        else
+        {
+            time = Math.Clamp(time, 0f, MathF.Max(0f, total - 0.00001f));
+        }
+
+        float acc = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            acc += frameDur * GetHold(i);
+            if (time < acc) return i;
+        }
+        return n - 1;
+    }
+
     /// <summary>Speed multiplier (applied on top of FPS).</summary>
     public float SpeedMultiplier = 1f;
 
@@ -42,42 +131,18 @@ public class AnimationClip2D
     public float SpriteOffsetY = 0f;
 
     // ── Runtime ──
-    public float Duration => FrameIndices.Count > 0 ? FrameIndices.Count / (FPS * SpeedMultiplier) : 0f;
+    public float Duration => DurationAt(FPS, SpeedMultiplier);
 
     /// <summary>
     /// Get the frame index at a given time (0-based into FrameIndices list).
     /// </summary>
     public int GetFrameAtTime(float time)
-    {
-        if (FrameIndices.Count == 0) return 0;
-
-        float frameDuration = 1f / (FPS * SpeedMultiplier);
-        int frame = (int)(time / frameDuration);
-
-        if (Loop)
-            frame = ((frame % FrameIndices.Count) + FrameIndices.Count) % FrameIndices.Count;
-        else
-            frame = Math.Clamp(frame, 0, FrameIndices.Count - 1);
-
-        return frame;
-    }
+        => GetFrameAtTimeWithHolds(time, Loop);
 
     /// <summary>Loop-override variant (Change Sprite "Loop Animasi"): the caller's
     /// loop flag wins over the clip's own — Off = play once and hold the last frame.</summary>
     public int GetFrameAtTime(float time, bool loopOverride)
-    {
-        if (FrameIndices.Count == 0) return 0;
-
-        float frameDuration = 1f / (FPS * SpeedMultiplier);
-        int frame = (int)(time / frameDuration);
-
-        if (loopOverride)
-            frame = ((frame % FrameIndices.Count) + FrameIndices.Count) % FrameIndices.Count;
-        else
-            frame = Math.Clamp(frame, 0, FrameIndices.Count - 1);
-
-        return frame;
-    }
+        => GetFrameAtTimeWithHolds(time, loopOverride);
 
     /// <summary>
     /// Get the sprite sheet frame index at a given time.
@@ -176,7 +241,17 @@ public class AnimationClip2D
         MasterWidth = MasterWidth,
         MasterHeight = MasterHeight,
         SpriteOffsetX = SpriteOffsetX,
-        SpriteOffsetY = SpriteOffsetY
+        SpriteOffsetY = SpriteOffsetY,
+        GroupPath = GroupPath,
+        Mode = Mode,
+        SourceSheetName = SourceSheetName,
+        SourceFrameIndices = SourceFrameIndices.ToList(),
+        FrameHolds = FrameHolds.ToList(),
+        BakeDirty = BakeDirty,
+        Id = Id,
+        RigId = RigId,
+        Tracks = Tracks?.Select(t => t.Clone()).ToList(),
+        Bake = Bake?.Clone()
     };
 
     public static AnimationClip2D FromData(AnimationClip2DData data) => new()
@@ -192,7 +267,18 @@ public class AnimationClip2D
         MasterWidth = data.MasterWidth,
         MasterHeight = data.MasterHeight,
         SpriteOffsetX = data.SpriteOffsetX,
-        SpriteOffsetY = data.SpriteOffsetY
+        SpriteOffsetY = data.SpriteOffsetY,
+        GroupPath = data.GroupPath ?? "",
+        Mode = data.Mode,
+        SourceSheetName = data.SourceSheetName ?? "",
+        SourceFrameIndices = data.SourceFrameIndices?.ToList() ?? new(),
+        FrameHolds = data.FrameHolds?.ToList() ?? new(),
+        BakeDirty = data.BakeDirty,
+        // Pre-Phase-0 files carry no id: mint one so every clip has a stable handle.
+        Id = string.IsNullOrEmpty(data.Id) ? Guid.NewGuid().ToString("N") : data.Id,
+        RigId = data.RigId ?? "",
+        Tracks = data.Tracks?.Select(t => t.Clone()).ToList(),
+        Bake = data.Bake?.Clone()
     };
 }
 
@@ -327,4 +413,16 @@ public class AnimationClip2DData
     public float MasterHeight { get; set; } = 0f;
     public float SpriteOffsetX { get; set; } = 0f;
     public float SpriteOffsetY { get; set; } = 0f;
+
+    // ── Authoring (Phase 0/1) ──
+    public string GroupPath { get; set; } = "";
+    public AnimationClipMode Mode { get; set; } = AnimationClipMode.Sprite;
+    public string SourceSheetName { get; set; } = "";
+    public List<int>? SourceFrameIndices { get; set; }
+    public List<float>? FrameHolds { get; set; }
+    public bool BakeDirty { get; set; }
+    public string Id { get; set; } = "";
+    public string? RigId { get; set; }
+    public List<AnimationTrack>? Tracks { get; set; }
+    public BakeSettings? Bake { get; set; }
 }

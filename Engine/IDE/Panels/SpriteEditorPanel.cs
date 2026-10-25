@@ -143,6 +143,15 @@ public class SpriteEditorPanel
 
     // ── Animation clips ──
     public List<AnimationClip2D> AnimationClips = new();
+    /// <summary>Animation Library groups (display/organisation only). Clips reference a
+    /// group by <see cref="AnimationClip2D.GroupPath"/>; persisted with the clips.</summary>
+    public List<AnimationGroup> AnimationGroups = new();
+    /// <summary>Skeleton rigs (Phase 0 data model, authored in Phase 2). Stored with the
+    /// clips in sprites.sheets.json; no runtime class ever loads them.</summary>
+    public List<AnimationRig> AnimationRigs = new();
+    /// <summary>Data-driven presets that seed the New Animation Set dialog (project-level,
+    /// so a game can grow its own action list without a rebuild). Empty → built-in defaults.</summary>
+    public List<AnimationSetPreset> AnimationTemplates = new();
     private int _selectedClipIdx = -1;
     private AnimationClip2D? SelectedClip => _selectedClipIdx >= 0 && _selectedClipIdx < AnimationClips.Count
         ? AnimationClips[_selectedClipIdx] : null;
@@ -210,6 +219,93 @@ public class SpriteEditorPanel
     private int _lastClipCount = -1;
     private int _lastTextureCount = -1;
     private const int SyncEveryNFrames = 8;
+
+    // ── Animation Editor bridge API (separate Animation Editor panel, Phase 1) ──
+    /// <summary>Baked atlases the runtime registry uses.</summary>
+    public IReadOnlyList<SpriteSheet> BakedAtlasSheetsPublic => _bakedAtlasSheets;
+
+    /// <summary>The IDE bridge (scene objects, items) — the Animation Editor uses it to
+    /// scan clip references when a clip is renamed.</summary>
+    public IDEBridge? BridgePublic => _bridge;
+
+    /// <summary>Source sheet currently selected in the Sprite Editor (quick-create source).</summary>
+    public SpriteSheet? SelectedSourceSheetPublic => SelectedSheet;
+
+    /// <summary>Current Animation Preview range (Start/End frame of the selected source sheet).</summary>
+    public (int Start, int End) PreviewRangePublic => (_animStartFrame, _animEndFrame);
+
+    public SpriteSheet? FindSourceSheetPublic(string name)
+        => SpriteSheets.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    public SpriteSheet? FindBakedAtlasPublic(string name)
+        => _bakedAtlasSheets.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The sheet a clip is currently drawn from (baked atlas preferred).</summary>
+    public SpriteSheet? FindSheetForClipPublic(AnimationClip2D clip)
+        => FindBakedAtlasPublic(clip.SpriteSheetName) ?? FindSourceSheetPublic(clip.SpriteSheetName);
+
+    public bool BakeClipForEditor(SpriteSheet source, AnimationClip2D clip, out AnimationClip2D baked)
+        => TryBakeClip(source, clip, out baked);
+
+    public int AddOrReplaceClipForEditor(AnimationClip2D clip) => AddOrReplaceClip(clip);
+
+    public void RequestAtlasRepackForEditor(string reason) => RequestFullAtlasRepack(reason);
+
+    /// <summary>Ensure the preview texture for <paramref name="imagePath"/> is loaded and
+    /// return its GL id (0 = missing). Used by the Animation Editor preview.</summary>
+    public uint EnsureImageTextureForEditor(string imagePath)
+    {
+        if (string.IsNullOrEmpty(imagePath)) return 0;
+        LoadPreviewTexture(imagePath);
+        string key = Engine.Helpers.PathHelpers.ResolveProjectAsset(imagePath);
+        return _previewTextures.TryGetValue(key, out uint id) ? id : 0;
+    }
+
+    /// <summary>Selected clip index in the shared clip list (Animation Editor selection).</summary>
+    public int SelectedClipIndexPublic
+    {
+        get => _selectedClipIdx;
+        set => _selectedClipIdx = value;
+    }
+
+    /// <summary>Expose the snapshot undo capture to other editor panels (Animation Editor)
+    /// so edits made while the Sprite Editor is hidden still create undo steps.</summary>
+    public bool UndoCaptureActive => _captureActive;
+    public void BeginUndoCapturePublic() => BeginUndoCapture();
+    public void EndUndoCapturePublic() => EndUndoCapture();
+    public void UndoPublic() => Undo();
+    public void RedoPublic() => Redo();
+
+    /// <summary>Force a registry sync NOW (counts reset so the throttle cannot skip it).</summary>
+    public void ForceSynchronizeRegistry()
+    {
+        _lastSheetCount = -1;
+        _lastClipCount = -1;
+        _lastTextureCount = -1;
+        SyncRegistry();
+    }
+
+    /// <summary>Add a group if missing (path may be nested: "Player/Hero").</summary>
+    public void EnsureAnimationGroup(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        if (AnimationGroups.Any(g => string.Equals(g.Path, path, StringComparison.OrdinalIgnoreCase))) return;
+        AnimationGroups.Add(new AnimationGroup(path, AnimationGroups.Count));
+    }
+
+    /// <summary>Set by the IDE: opens the Animation Editor panel. The Sprite Editor's clip
+    /// section stays for quick creation from the preview range, but managing many clips
+    /// (groups, sets, timeline, bulk bake) happens in the Animation Editor.</summary>
+    public Action? OpenAnimationEditorRequested;
+
+    /// <summary>Drop groups no clip uses (called after deletes/renames) and create groups
+    /// for any clip GroupPath that has none (old files / hand-edited JSON).</summary>
+    public void NormalizeAnimationGroups()
+    {
+        AnimationGroups.RemoveAll(g => string.IsNullOrWhiteSpace(g.Path));
+        foreach (var clip in AnimationClips)
+            if (!string.IsNullOrWhiteSpace(clip.GroupPath)) EnsureAnimationGroup(clip.GroupPath);
+    }
 
     public void SyncRegistry()
     {
@@ -823,7 +919,16 @@ public class SpriteEditorPanel
         Loop = clip.Loop, Reverse = clip.Reverse, SpeedMultiplier = clip.SpeedMultiplier,
         Events = clip.Events.ToDictionary(kv => kv.Key, kv => kv.Value),
         MasterWidth = clip.MasterWidth, MasterHeight = clip.MasterHeight,
-        SpriteOffsetX = clip.SpriteOffsetX, SpriteOffsetY = clip.SpriteOffsetY
+        SpriteOffsetX = clip.SpriteOffsetX, SpriteOffsetY = clip.SpriteOffsetY,
+        GroupPath = clip.GroupPath, Mode = clip.Mode,
+        SourceSheetName = clip.SourceSheetName,
+        SourceFrameIndices = clip.SourceFrameIndices.ToList(),
+        FrameHolds = clip.FrameHolds.ToList(), BakeDirty = clip.BakeDirty,
+        // Identity + Phase 0 authoring fields must survive a clone (repack/undo keeps
+        // working on the SAME clip — a fresh id would break the link).
+        Id = clip.Id, RigId = clip.RigId,
+        Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
+        Bake = clip.Bake?.Clone()
     };
 
     private void ReloadRepackedAtlasTextures(IEnumerable<SpriteSheet> atlases)
@@ -932,6 +1037,16 @@ public class SpriteEditorPanel
             if (data.AnimationClips != null)
                 foreach (var cd in data.AnimationClips)
                     AnimationClips.Add(AnimationClip2D.FromData(cd));
+            AnimationGroups.Clear();
+            if (data.AnimationGroups != null)
+                AnimationGroups.AddRange(data.AnimationGroups.Select(g => g.Clone()));
+            NormalizeAnimationGroups();
+            AnimationRigs.Clear();
+            if (data.Rigs != null)
+                AnimationRigs.AddRange(data.Rigs.Select(r => r.Clone()));
+            AnimationTemplates.Clear();
+            if (data.AnimationTemplates != null)
+                AnimationTemplates.AddRange(data.AnimationTemplates.Select(t => t.Clone()));
 
             _selectedSheetIdx = SpriteSheets.Count > 0
                 ? Math.Clamp(_selectedSheetIdx, 0, SpriteSheets.Count - 1) : -1;
@@ -1489,6 +1604,14 @@ public class SpriteEditorPanel
 
     private void RenderAnimationClips()
     {
+        if (OpenAnimationEditorRequested != null)
+        {
+            if (ImGui.Button("Open Animation Editor →"))
+                OpenAnimationEditorRequested();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Groups, standard action sets (Idle/Walk/Run/Attack/Dead), timeline,\npreview and bulk bake live in the Animation Editor.\nThis list stays for quick clip creation from the preview range.");
+            ImGui.Separator();
+        }
         if (_autoLoadedPatternClips.Count > 0)
             ImGui.TextDisabled($"({_autoLoadedPatternClips.Count} clips baked from *-sprite-anim.json)");
         if (SelectedSheet == null)
@@ -1854,6 +1977,9 @@ public class SpriteEditorPanel
         {
             Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
             AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
+            AnimationGroups = AnimationGroups.Select(g => g.Clone()).ToList(),
+            Rigs = AnimationRigs.Select(r => r.Clone()).ToList(),
+            AnimationTemplates = AnimationTemplates.Select(t => t.Clone()).ToList(),
             PatternActions = _patternActions
         };
         // Persist the Animation Preview range (Start/End), FPS and Loop so they come
@@ -1874,6 +2000,9 @@ public class SpriteEditorPanel
         {
             Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
             AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
+            AnimationGroups = AnimationGroups.Select(g => g.Clone()).ToList(),
+            Rigs = AnimationRigs.Select(r => r.Clone()).ToList(),
+            AnimationTemplates = AnimationTemplates.Select(t => t.Clone()).ToList(),
             PreviewStartFrame = _animStartFrame,
             PreviewEndFrame = _animEndFrame,
             PreviewFps = _animFPS,
@@ -1968,7 +2097,13 @@ public class SpriteEditorPanel
         }
         try
         {
-            var frames = ExtractBakedFrames(source, clip.FrameIndices);
+            // The authored strip is SourceFrameIndices when the clip was rebaked before;
+            // legacy clips only know their FrameIndices. The baked result goes into
+            // FrameIndices, so keep the authored list intact for the next rebake.
+            var sourceIndices = clip.SourceFrameIndices.Count > 0
+                ? clip.SourceFrameIndices.ToList()
+                : clip.FrameIndices.ToList();
+            var frames = ExtractBakedFrames(source, sourceIndices);
             if (frames == null || frames.Count == 0) return false;
             var keep = AnimationClips.Where(c => !string.Equals(c.Name, clip.Name,
                 StringComparison.OrdinalIgnoreCase)).ToList();
@@ -1995,7 +2130,20 @@ public class SpriteEditorPanel
                 MasterWidth = clip.MasterWidth > 0f ? clip.MasterWidth : source.MasterWidth,
                 MasterHeight = clip.MasterHeight > 0f ? clip.MasterHeight : source.MasterHeight,
                 SpriteOffsetX = clip.MasterHeight > 0f ? clip.SpriteOffsetX : source.SpriteOffsetX,
-                SpriteOffsetY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : source.SpriteOffsetY
+                SpriteOffsetY = clip.MasterHeight > 0f ? clip.SpriteOffsetY : source.SpriteOffsetY,
+                // Authoring metadata must survive a bake so the clip stays editable:
+                // the source strip, group, mode, holds and the dirty flag (cleared here).
+                GroupPath = clip.GroupPath,
+                Mode = clip.Mode,
+                SourceSheetName = source.Name,
+                SourceFrameIndices = sourceIndices,
+                FrameHolds = clip.FrameHolds.Take(sourceIndices.Count).ToList(),
+                BakeDirty = false,
+                // Same identity across a rebake (id, rig, tracks) + bake settings stay.
+                Id = clip.Id,
+                RigId = clip.RigId,
+                Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
+                Bake = clip.Bake?.Clone()
             };
             ReloadPreviewTexture(result.Atlas.ImagePath);
             // The rebake rewrote atlas PNGs IN PLACE — consumers that cache by path
@@ -2427,6 +2575,9 @@ public class SpriteEditorPanel
                 Name = $"{name}-{clipName}",
                 SpriteSheetName = name,
                 FrameIndices = indices,
+                SourceSheetName = name,
+                SourceFrameIndices = indices.ToList(),
+                GroupPath = name,
                 FPS = indices.Count,     // FPS = jumlah frame (clip = 1 detik)
                 Loop = !PatternOnceActions.Contains(clipName, StringComparer.OrdinalIgnoreCase),
                 // Snapshot like Create Clip: master box + offsets frozen with the clip.
@@ -2705,6 +2856,17 @@ public class SpriteEditorPanel
                     }
                 }
             }
+            AnimationGroups.Clear();
+            if (data.AnimationGroups != null)
+                AnimationGroups.AddRange(data.AnimationGroups.Select(g => g.Clone()));
+            NormalizeAnimationGroups();
+            AnimationRigs.Clear();
+            if (data.Rigs != null)
+                AnimationRigs.AddRange(data.Rigs.Select(r => r.Clone()));
+            AnimationTemplates.Clear();
+            if (data.AnimationTemplates != null)
+                AnimationTemplates.AddRange(data.AnimationTemplates.Select(t => t.Clone()));
+
             ClearUndoHistory();
             _selectedSheetIdx = SpriteSheets.Count > 0 ? 0 : -1;
             _multiSelectedSheets.Clear(); // a loaded file = a fresh list — no stale extras
@@ -2843,6 +3005,9 @@ public class SpriteEditorPanel
         SpriteSheets.Clear();
         _bakedAtlasSheets.Clear();
         AnimationClips.Clear();
+        AnimationGroups.Clear();
+        AnimationRigs.Clear();
+        AnimationTemplates.Clear();
         _autoLoadedPatternClips.Clear();
         // Project switch: pattern starts EMPTY (no clips written until the user
         // fills the field or clicks 'Default Pattern').
@@ -3419,6 +3584,17 @@ public class SpriteSheetsSaveData
 {
     public List<SpriteSheetData> Sheets { get; set; } = new();
     public List<AnimationClip2DData> AnimationClips { get; set; } = new();
+
+    /// <summary>Animation Library groups (display-only tree). Missing/empty on old files →
+    /// the editor derives groups from each clip's GroupPath.</summary>
+    public List<AnimationGroup> AnimationGroups { get; set; } = new();
+
+    /// <summary>Skeleton rigs (authoring source; Phase 2). Missing on old files.</summary>
+    public List<AnimationRig> Rigs { get; set; } = new();
+
+    /// <summary>Data-driven presets for the New Animation Set dialog. Missing/empty on old
+    /// files → the editor falls back to <see cref="AnimationSetPreset.Defaults"/>.</summary>
+    public List<AnimationSetPreset> AnimationTemplates { get; set; } = new();
 
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public List<SpriteSheetData>? UndoSourceSheets { get; set; }

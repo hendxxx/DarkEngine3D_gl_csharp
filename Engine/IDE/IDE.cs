@@ -39,6 +39,7 @@ public class IDE : IDisposable
     private readonly PlayerInfoPanel _playerInfo = null!;
     // ── 2D Sidescroller Panels ──
     private readonly SpriteEditorPanel _spriteEditor = null!;
+    private readonly AnimationEditorPanel _animationEditor = null!;
     private readonly MapEditorPanel _mapEditor = null!;
     private readonly DialogueEditorPanel _dialogueEditor = null!;
     private readonly ItemEditorPanel _itemEditor = null!;
@@ -99,7 +100,8 @@ public class IDE : IDisposable
     {
         "Viewport", "Scene View", "Inspector", "SceneDetail", "Console",
         "Scene Manager", "Asset Browser", "Render Time", "Shadow Settings",
-        "PBR Material", "Transition", "Sprite Editor", "Map Editor", "IDE Settings"
+        "PBR Material", "Transition", "Sprite Editor", "Animation Editor", "Map Editor",
+        "IDE Settings"
     };
     private bool _showNewProjectDialog = false;
     private bool _showSaveProjectAsDialog = false;
@@ -274,7 +276,7 @@ public class IDE : IDisposable
         string focused = PanelFocus.LastFocused ?? "";
         if (undo)
         {
-            if (focused == "Sprite Editor") { if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; } }
+            if (focused is "Sprite Editor" or "Animation Editor") { if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; } }
             else if (focused == "Map Editor") { if (_mapEditor.CanUndoTiles) { _mapEditor.UndoTilePaint(); return; } }
             if (_hierarchy.CanUndo) { _hierarchy.Undo(); return; }
             if (_spriteEditor.CanUndo) { _spriteEditor.Undo(); return; }
@@ -282,7 +284,7 @@ public class IDE : IDisposable
         }
         else
         {
-            if (focused == "Sprite Editor") { if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; } }
+            if (focused is "Sprite Editor" or "Animation Editor") { if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; } }
             else if (focused == "Map Editor") { if (_mapEditor.CanRedoTiles) { _mapEditor.RedoTilePaint(); return; } }
             if (_hierarchy.CanRedo) { _hierarchy.Redo(); return; }
             if (_spriteEditor.CanRedo) { _spriteEditor.Redo(); return; }
@@ -850,6 +852,11 @@ public class IDE : IDisposable
             _effectsPanel = new EffectsPanel(Bridge);
             _playerInfo = new PlayerInfoPanel(Bridge);
             _spriteEditor = new SpriteEditorPanel(Bridge);
+            _animationEditor = new AnimationEditorPanel(_spriteEditor);
+            _spriteEditor.OpenAnimationEditorRequested = _animationEditor.Show;
+            // One navigation entry point: Asset Browser clip boxes, the Inspector's clip
+            // combo and the Player2D action rows all open the Animation Editor AT a clip.
+            IDEBridge.RequestOpenAnimationClip = _animationEditor.OpenAtClip;
             _mapEditor = new MapEditorPanel(Bridge);
             _dialogueEditor = new DialogueEditorPanel(Bridge);
             _itemEditor = new ItemEditorPanel(Bridge);
@@ -1476,6 +1483,7 @@ public class IDE : IDisposable
                 ImGui.Separator();
                 // ── 2D Sidescroller Panels ──
                 _spriteEditor.ShowInMenu();
+                _animationEditor.ShowInMenu();
                 _mapEditor.ShowInMenu();
                 _effectsPanel.ShowInMenu();
                 _dialogueEditor.ShowInMenu();
@@ -1574,6 +1582,7 @@ public class IDE : IDisposable
             _transitionPanel.Render();
             // ── 2D Sidescroller Panels ──
             _spriteEditor.Render();
+            _animationEditor.Render();
             _mapEditor.Render();
             _effectsPanel.Render();
             _dialogueEditor.Render();

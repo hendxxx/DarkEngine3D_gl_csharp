@@ -359,6 +359,21 @@ public class IDEBridge
     /// when the caller has no world position, e.g. a plain click → spawn at camera).</summary>
     public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
 
+    /// <summary>Request the Animation Editor to open AT a clip (sheetName, clipName) —
+    /// the Asset Browser's clip boxes, the Inspector's clip combo and action rows call
+    /// this instead of knowing the panel. The handler lives in IDE; <paramref name="sheetName"/>
+    /// may be "" when the caller only knows the clip name. One navigation entry point
+    /// ends the "edit a clip = hunt across panels" loop.</summary>
+    public static Action<string, string>? RequestOpenAnimationClip { get; set; }
+
+    /// <summary>Safe wrapper for <see cref="RequestOpenAnimationClip"/>: no-op before the
+    /// IDE wires the handler, and an empty clip name never opens an arbitrary clip.</summary>
+    public static void OpenClipInAnimationEditor(string? sheetName, string? clipName)
+    {
+        if (string.IsNullOrWhiteSpace(clipName)) return;
+        RequestOpenAnimationClip?.Invoke(sheetName ?? "", clipName);
+    }
+
     /// <summary>Per-sheet clip-name list cache. GetClipNames is called from UI code
     /// and from the per-frame sprite/equipment resolve paths; with many animations the
     /// old per-call LINQ + OrderBy + ToList turned into per-frame GC churn. Cached per

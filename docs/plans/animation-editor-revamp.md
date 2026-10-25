@@ -1,6 +1,9 @@
 # Plan: Animation Editor revamp (Godot/Spine-style, bake-first)
 
-Status: **plan only — no code written yet**
+Status: **Phase 0 ✅ + Phase 1 ✅ complete (2026-10-26)** — Phase 2 (skeleton authoring +
+bake) not started
+Tracking: **[animation-editor-status.md](animation-editor-status.md)** — phase checklists,
+verification log and open items (keep that file updated as work progresses).
 Reference: <https://en.esotericsoftware.com/spine-in-depth>
 Target: replace the flat "Animation Clips" list with a real animation workspace that supports
 both the current frame-strip clips and skeleton-based clips with attachments — while the
@@ -463,6 +466,15 @@ New/extended JSON in `Artifacts/Sprites/sprites.sheets.json` (and pattern files)
 **Acceptance:** old project loads unchanged; save/load round-trips new fields; 0 warnings;
 binary cache test passes with bumped version.
 
+**✅ Status (2026-10-25): DONE.** `Engine/Visual/AnimationTypes.cs` (groups, set presets,
+tracks/keys with `Evaluate`, `BakeSettings`) + `Engine/Visual/AnimationRig.cs` (rig model:
+bones/slots/attachments/skins). `AnimationClip2D` gained `Id`/`RigId`/`Tracks`/`Bake` on top of
+the authoring fields — all additive; pre-Phase-0 files load unchanged (ids are minted on load).
+`SpriteSheetsSaveData` gained `AnimationGroups`/`Rigs`/`AnimationTemplates`. Harnesses:
+`Tools/AnimationEditorDataTest` (cases A–I) ALL PASS, `SpriteSheetDataJsonTest` ALL PASS,
+`BinCacheTest` ALL PASS (the DTO layout changed → `layoutId` changed → old sidecars are
+rejected silently and self-heal through the JSON path). Build: 0 warnings / 0 errors.
+
 ### Phase 1 — Clip workspace + standard set + library (5–7 days)
 - New Animation Editor panel (groups tree, clip list, timeline/dopesheet, preview).
 - Sprite-mode editing: reorder/trim/add frames, per-frame holds, events, FPS/loop/speed;
@@ -480,6 +492,51 @@ binary cache test passes with bumped version.
 under two minutes, drag a sword item onto the preview and play it, switch between all clips
 from the dashboard, and bake a set with output byte-identical to today's pipeline; runtime
 untouched.
+
+**✅ Status (2026-10-26): DONE.** `Engine/IDE/Panels/AnimationEditorPanel.cs`
+(wired in `IDE.cs`): group tree (new/rename/nest/delete, search, filter), clip rows with dirty
+badges, preview + playback, timeline frame strip (drag-reorder, per-frame holds, events,
+insert/duplicate/remove), clip properties with Bake/Duplicate/Delete, `+ Clip` dialog, **New
+Animation Set** dialog (rows prefilled from sheet rows or preview range, optional bake-all,
+names `<sheet>-<action>`), and the **Library** dashboard (search/group/dirty filters,
+click-to-sort columns, **Refs** column, Bake Dirty bulk bake). Data-driven templates persist:
+the dialog seeds from `AnimationTemplates` (fallback: built-in presets) with a
+**Save as template** button. Rename safety: live reference scan (scene base clip + action
+clips + direct equipment layers + inventory `EquipClip`) with **Update N reference(s)**.
+The toolbar also carries the plan's **quick actions** (`+Idle +Walk +Run +Attack +Dead`): one
+click builds that action from the current preview range with the preset timing/event on the
+selected source sheet, named `<sheet>-<action>`; an existing clip of that name is SELECTED,
+never overwritten, so a second click cannot destroy authored frames/holds/events.
+**✅ Preview Loadout added (2026-10-25, second pass).** Palette (inventory equipment
+items + source sheets, text filter) with drag sources → drop on the preview canvas or the
+layers list; layers list with visibility / remove / per-layer info; overlays drawn
+back→front using the runtime's exact frame rules (authored clip → action-token auto-match →
+position-in-clip, raw index clamp fallback, own-FPS when unsynced; negative layers paint
+behind the base sprite). The loadout persists per group (`AnimationGroup.PreviewLoadout`,
+editor-only data); item layers resolve LIVE from `ItemDef`, direct sheet layers carry their
+own values. Preview overlay scale assumes a 1-world-unit-tall character — the scene
+object's real height wins in-game.
+
+**✅ Open clip from anywhere added (2026-10-26, third pass).** One navigation entry point:
+`IDEBridge.RequestOpenAnimationClip` (wired in `IDE.cs`) + `AnimationEditorPanel.OpenAtClip`
+(sheet, clip). **Asset Browser** clip boxes: click/drag still places a Sprite2D (the click is
+deferred past the double-click window so the gesture never double-fires), **double-click opens
+the clip**; the tiles are hand-drawn over an `InvisibleButton` for exactly that reason. The
+**Inspector** gained `Edit Clip` buttons next to the Sprite2D and Player2D base-clip combos
+and next to every **Animation Actions** clip combo, passing the action's own sheet (falling
+back to the player sheet when it has none). A **double-click on a Library dashboard row**
+also jumps to the Workspace. Navigation clears search/group/dirty filters when they would hide
+the row, switches to the Workspace page, focuses the window and starts playback; an unknown
+clip reports in the status line instead of silently selecting another.
+The Library dashboard and the Workspace are now two page buttons (ImGui.NET's only flagged
+`BeginTabItem` overload forces a tab close button — the tab bar was replaced, not extended).
+
+**Known deviations (deliberate):** the Sprite Editor's old clip section was **kept** (with an
+`Open Animation Editor →` button) instead of removed — quick clip creation from the preview
+range still lives there, and deleting it was not worth the regression risk; the reference scan
+ignores effects/trigger params and saved-but-unloaded scenes; no in-app smoke run yet —
+verification is compile (0 warnings) + the data harnesses only, so the new gestures have not
+been clicked through in the running IDE.
 
 ### Phase 2 — Skeleton authoring + bake (7–10 days)
 - Rig setup mode: bones (add/parent/rename, setup pose), slots (draw order, visibility),

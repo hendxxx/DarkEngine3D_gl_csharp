@@ -2692,6 +2692,14 @@ public class InspectorPanel
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Artifacts/Sprites onto this Inspector");
 
+        // Jump straight into the animation workspace for the selected clip — the same
+        // navigation the Asset Browser exposes via double-click.
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Edit Clip##sprite2d"))
+            IDEBridge.OpenClipInAnimationEditor(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open this clip in the Animation Editor (timeline, holds, events, bake).");
+
         // Drag-drop target: clip box → assign (same as dropping on the viewport with
         // this object selected).
         if (ImGui.BeginDragDropTarget())
@@ -3209,6 +3217,12 @@ public class InspectorPanel
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings).\nIdle/Walk/Run actions still pointing at the old clip follow this change.");
 
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Edit Clip##player2d"))
+            IDEBridge.OpenClipInAnimationEditor(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Open this clip in the Animation Editor (timeline, holds, events, bake).");
+
         ImGui.TextDisabled("Walk/Run/Jump clips → Animation Actions below (expand to select Sprite Editor clips)");
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("The clip above is the default/base clip. Expand Animation Actions to assign the matching Walk/Run/Jump clips created in Sprite Editor.");
 
@@ -3524,6 +3538,13 @@ public class InspectorPanel
                     }
                     ImGui.EndCombo();
                 }
+                ImGui.SameLine();
+                if (ImGui.SmallButton("Edit##actclip"))
+                    IDEBridge.OpenClipInAnimationEditor(
+                        string.IsNullOrEmpty(act.SpriteSheet) ? editorObj.Player2DSpriteSheet : act.SpriteSheet,
+                        act.Clip);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Open this action's clip in the Animation Editor (timeline, holds, events, bake).");
 
                 bool loop = act.Loop;
                 if (ImGui.Checkbox("Loop", ref loop))

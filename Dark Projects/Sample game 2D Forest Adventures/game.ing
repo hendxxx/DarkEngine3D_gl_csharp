@@ -3718,8 +3718,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 16,
-          "posY": 7,
+          "posX": 64.415085,
+          "posY": 6.4,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -5700,7 +5700,7 @@
       "editorCameraPosition": [
         60.636566,
         32,
-        307.0999
+        299.3034
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,

@@ -18,7 +18,7 @@
   "SnapEnabled": true,
   "SnapGridSize": 20,
   "ToolbarFontSize": 14,
-  "SpriteNormalMaps2D": false,
+  "SpriteNormalMaps2D": true,
   "MapEditorShowGrid": true,
   "MapEditorShowCollision": true,
   "MapEditorGridColorR": 0.4,
