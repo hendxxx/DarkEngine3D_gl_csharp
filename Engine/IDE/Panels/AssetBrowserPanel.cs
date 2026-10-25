@@ -147,6 +147,11 @@ public unsafe class AssetBrowserPanel
 
     public void Render()
     {
+        // A single click on a clip box is delayed past the double-click window (so a
+        // double-click opens the editor instead of ALSO spawning a Sprite2D); flush it
+        // even when the panel is closed so a queued placement is never lost.
+        FlushPendingPlacement();
+
         if (!_visible) return;
 
         ImGui.Begin("Asset Browser", ref _visible);
@@ -230,14 +235,30 @@ public unsafe class AssetBrowserPanel
     public const string SpriteClipPayload = "SPRITE_CLIP_REF";
     public static string? _dragSpriteClip = null;
 
+    /// <summary>Deferred single-click placement on a clip box: (sheet, clip, click time).
+    /// ImGui reports a double click as press1 → release1 → press2, and a plain Button
+    /// fires on release1, so placing immediately would spawn a Sprite2D on the first half
+    /// of an edit gesture. The click is therefore held until the double-click window
+    /// expires (press2 cancels it).</summary>
+    private static (string Sheet, string Clip, double At)? _pendingPlace;
+
+    private static void FlushPendingPlacement()
+    {
+        if (_pendingPlace is not { } pending) return;
+        double window = ImGui.GetIO().MouseDoubleClickTime;
+        if (ImGui.GetTime() - pending.At < window) return;
+        _pendingPlace = null;
+        IDEBridge.RequestSprite2DPlacement?.Invoke(pending.Sheet, pending.Clip, null);
+    }
+
     /// <summary>Render the Sprite Editor's animation clips as draggable boxes (shown in
     /// the Artifacts/Sprites folder). One box per clip: colored tile + sheet/clip label.</summary>
     private void RenderSpriteClipBoxes()
     {
         ImGui.Separator();
-        ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Animation Clips (drag to viewport)");
+        ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Animation Clips (click = place, double-click = edit)");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Drop on empty viewport = place a Sprite2D (animated, no controller).\nDrop on a selected Player2D/Sprite2D = assign this clip to it.");
+            ImGui.SetTooltip("Click or drag into the viewport = place a Sprite2D (animated, no controller) / assign to the selected Player2D or Sprite2D.\nDouble-click = open the clip in the Animation Editor (timeline, holds, events, bake).");
 
         var clips = IDEBridge.GetSpriteClipPairs().ToList();
         float boxW = 132f;
@@ -260,21 +281,41 @@ public unsafe class AssetBrowserPanel
                 var boxCol = ImGui.ColorConvertU32ToFloat4(ImGui.ColorConvertFloat4ToU32(
                     new Vector4(System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.5f + hue, 0.45f, 0.75f - hue)), 0.45f)));
 
-                ImGui.PushStyleColor(ImGuiCol.Button, boxCol);
-                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.7f));
-                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.9f));
-                if (ImGui.Button($"{clipName}##clip{n}", new Vector2(boxW, boxH)))
+                var boxMin = ImGui.GetCursorScreenPos();
+                ImGui.InvisibleButton($"clipbox{n}", new Vector2(boxW, boxH));
+                bool boxHovered = ImGui.IsItemHovered();
+                // Hand-drawn tile: a Button fires on the first release of a double click,
+                // which would place a sprite while opening the editor.
+                var boxDraw = ImGui.GetWindowDrawList();
+                var boxMax = boxMin + new Vector2(boxW, boxH);
+                boxDraw.AddRectFilled(boxMin, boxMax,
+                    ImGui.ColorConvertFloat4ToU32(boxHovered
+                        ? new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.7f) : boxCol), 3f);
+                boxDraw.AddRect(boxMin, boxMax,
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 0.25f)), 3f);
+                var labelSize = ImGui.CalcTextSize(clipName);
+                boxDraw.PushClipRect(boxMin + new Vector2(5, 0), boxMax - new Vector2(5, 0), true);
+                boxDraw.AddText(new Vector2(boxMin.X + 6, boxMin.Y + (boxH - labelSize.Y) * 0.5f),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.95f, 0.95f, 1f, 1f)), clipName);
+                boxDraw.PopClipRect();
+
+                if (boxHovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                 {
-                    // Click = same as drop at the camera spawn: create a Sprite2D now.
-                    IDEBridge.RequestSprite2DPlacement?.Invoke(sheetName, clipName, null);
+                    _pendingPlace = null;   // the first click must not spawn a sprite
+                    IDEBridge.OpenClipInAnimationEditor(sheetName, clipName);
                 }
-                ImGui.PopStyleColor(3);
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip($"{sheetName} / {clipName}\nClick or drag into the viewport to place.");
+                else if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+                {
+                    // Click = same as drop at the camera spawn, deferred (see above).
+                    _pendingPlace = (sheetName, clipName, ImGui.GetTime());
+                }
+                if (boxHovered)
+                    ImGui.SetTooltip($"{sheetName} / {clipName}\nClick or drag into the viewport to place.\nDouble-click = edit in the Animation Editor.");
 
                 // ── Drag source ──
                 if (ImGui.BeginDragDropSource())
                 {
+                    _pendingPlace = null;   // a drag is not a click
                     ImGui.SetDragDropPayload(SpriteClipPayload, nint.Zero, 0);
                     _dragSpriteClip = $"{sheetName}|{clipName}";
                     ImGui.Text($"{clipName}");
