@@ -960,6 +960,17 @@ public class InspectorPanel
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Keyboard key that toggles this container in in-game mode (e.g. Escape = ESC key)");
+
+                // ── Input capture (modal menu focus) ──
+                ImGui.Spacing();
+                bool captureInput = elem.CaptureInputWhenVisible;
+                if (ImGui.Checkbox("Capture Input While Visible", ref captureInput))
+                {
+                    elem.CaptureInputWhenVisible = captureInput;
+                    Console.WriteLine($"[Inspector] Container '{elem.Name}' capture input while visible: {captureInput}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("While this container is visible the game world ignores ALL keyboard/mouse actions (2D movement, action keys, camera look) — focus stays in the menu.");
             }
 
             ImGui.Spacing();

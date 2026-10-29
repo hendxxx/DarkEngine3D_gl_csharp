@@ -54,6 +54,31 @@ public unsafe class MainMenuScene : IScene
     // ── UI Button Data (rebuilt from loaded hierarchy each frame) ──
     private readonly List<UIButtonData> _uiButtons = [];
 
+    // ── Keyboard navigation (the menu owns ALL keyboard input while it is visible) ──
+    // _menuEntries walks the UI hierarchy in visual order and covers BOTH HUD text
+    // buttons (HudIndex >= 0) and clickable image/atlas elements (HudIndex -1), so an
+    // image-only menu is keyboard-navigable too.
+    private readonly List<MenuNavEntry> _menuEntries = [];
+    private int _menuSelection = 0;
+    private bool _menuKeyboardNav = true;   // arrow/Enter drive the highlight until the mouse moves
+    private bool _menuHidden = false;       // Esc toggles the menu on/off
+    private bool _menuUpWasDown;
+    private bool _menuDownWasDown;
+    private bool _menuEnterWasDown;
+    private bool _menuEscapeWasDown;
+    private bool _menuMouseWasDown;
+    private double _menuLastMouseX = double.NaN;
+    private double _menuLastMouseY = double.NaN;
+    private float _menuMouseX;
+    private float _menuMouseY;
+    private bool _menuMouseDown;
+    private UIElement? _menuSelectedImage;  // selected entry when it is an image element
+
+    /// <summary>One keyboard-navigable menu entry. HudIndex is the index in the HUD button
+    /// list for text buttons, or -1 for an image element this scene draws itself.</summary>
+    private readonly record struct MenuNavEntry(
+        UIElement Element, int HudIndex, float X, float Y, float W, float H, Action? OnClick);
+
     // ── Image texture cache (path → OpenGL texture ID + dimensions) ──
     private readonly Dictionary<string, uint> _imageTextureCache = [];
     private readonly Dictionary<string, (int w, int h)> _imageTextureDims = [];
@@ -469,15 +494,43 @@ public unsafe class MainMenuScene : IScene
                 () => uiBtn.OnClick?.Invoke(), fontSlotIndex: fontSlot);
         }
 
+        // ── Keyboard navigation list: every clickable element, text buttons AND images ──
+        // Built in hierarchy order and reproducing the HUD button indices exactly, so the
+        // selection highlight lands on the right entry for both kinds.
+        RebuildMenuNav();
+
+        // Keep the keyboard selection valid when the hierarchy changes
+        if (_menuSelection >= _menuEntries.Count)
+            _menuSelection = _menuEntries.Count > 0 ? _menuEntries.Count - 1 : 0;
+        if (_menuSelection < 0)
+            _menuSelection = 0;
+
         nint window = Glfw.GetWindow();
 
         // ── Mouse tracking ──
         Mouse.GetCursorPosition(out double mouseX, out double mouseY);
         bool mousePressed = Mouse.IsButtonPressed(Const.GLFW_MOUSE_BUTTON_LEFT);
 
+        // Moving/clicking the mouse hands the highlight back to hover; any arrow/Enter
+        // press hands it back to the keyboard selection.
+        bool mouseMoved = !double.IsNaN(_menuLastMouseX)
+            && (Math.Abs(mouseX - _menuLastMouseX) > 0.5 || Math.Abs(mouseY - _menuLastMouseY) > 0.5);
+        _menuLastMouseX = mouseX;
+        _menuLastMouseY = mouseY;
+        _menuMouseX = (float)mouseX;
+        _menuMouseY = (float)mouseY;
+        _menuMouseDown = mousePressed;
+        if (mouseMoved || mousePressed)
+            _menuKeyboardNav = false;
+
         // ── Update HUD buttons & handle click-through to OnClick delegates ──
         // This runs BEFORE the input gate so button clicks work even in IDE preview mode.
-        _hud.UpdateButtons();
+        // Skipped while Esc has the menu hidden so invisible buttons can't be clicked.
+        if (!_menuHidden)
+        {
+            _hud.UpdateButtons();
+            HandleImageMenuMouse();
+        }
 
         // ── Input gate: block keyboard/mouse but keep UI rendering alive ──
         bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
@@ -553,6 +606,141 @@ public unsafe class MainMenuScene : IScene
                 CycleSetting(_settingsSelection, -1);
             if (rightDown)
                 CycleSetting(_settingsSelection, 1);
+            return;
+        }
+
+        // ── Main menu keyboard navigation (no overlay owns the keyboard here) ──
+        HandleMenuKeyboard(window);
+    }
+
+    /// <summary>
+    /// Builds the keyboard navigation list in visual (hierarchy) order. The HUD index is
+    /// reproduced with the SAME conditions the HUD registration loop uses: visible, text
+    /// non-empty, no ImagePath. Image elements instead keep HudIndex = -1 and are drawn +
+    /// highlighted by this scene.
+    /// </summary>
+    private void RebuildMenuNav()
+    {
+        _menuEntries.Clear();
+        float canvasW = Glfw.WindowWidth;
+        float canvasH = Glfw.WindowHeight;
+        int hudIndex = 0;
+        CollectMenuNav(_sceneRoot.Children, canvasW, canvasH, ref hudIndex);
+
+        _menuSelectedImage = _menuKeyboardNav && _menuSelection >= 0 && _menuSelection < _menuEntries.Count
+            ? (_menuEntries[_menuSelection].HudIndex < 0 ? _menuEntries[_menuSelection].Element : null)
+            : null;
+    }
+
+    private void CollectMenuNav(List<UIElement> elements, float canvasW, float canvasH, ref int hudIndex)
+    {
+        foreach (var elem in elements)
+        {
+            // NOTE: an invisible element is skipped for SELECTION but its children are still
+            // walked — the HUD registration only checks each element's own IsVisible flag, so
+            // skipping the subtree here would desync the HUD index mapping.
+            if (elem.IsVisible)
+            {
+                var (ex, ey, ew, eh) = elem.GetLayoutBounds(canvasW, canvasH);
+                bool isHudButton = (elem.Type == UIElementType.Button || elem.Type == UIElementType.Label)
+                                   && !string.IsNullOrEmpty(elem.Text)
+                                   && string.IsNullOrEmpty(elem.ImagePath);
+
+                if (isHudButton)
+                {
+                    _menuEntries.Add(new MenuNavEntry(elem, hudIndex, ex, ey, ew, eh, elem.OnClick));
+                    hudIndex++;
+                }
+                else if (elem.OnClick != null && !string.IsNullOrEmpty(elem.GetEffectiveImagePath()))
+                {
+                    // Clickable image / atlas element — no HUD button, selected + highlighted here.
+                    _menuEntries.Add(new MenuNavEntry(elem, -1, ex, ey, ew, eh, elem.OnClick));
+                }
+            }
+
+            if (elem.Children.Count > 0)
+                CollectMenuNav(elem.Children, canvasW, canvasH, ref hudIndex);
+        }
+    }
+
+    /// <summary>Mouse press on a clickable image element (text buttons are handled by the HUD).</summary>
+    private void HandleImageMenuMouse()
+    {
+        if (_menuEntries.Count == 0)
+        {
+            _menuMouseWasDown = _menuMouseDown;
+            return;
+        }
+
+        bool pressedEdge = _menuMouseDown && !_menuMouseWasDown;
+        if (pressedEdge)
+        {
+            // Topmost entry wins, so walk backwards through hierarchy order.
+            for (int i = _menuEntries.Count - 1; i >= 0; i--)
+            {
+                var e = _menuEntries[i];
+                if (e.HudIndex >= 0) continue;
+                if (_menuMouseX < e.X || _menuMouseX > e.X + e.W || _menuMouseY < e.Y || _menuMouseY > e.Y + e.H)
+                    continue;
+                _menuSelection = i;
+                e.OnClick?.Invoke();
+                break;
+            }
+        }
+        _menuMouseWasDown = _menuMouseDown;
+    }
+
+    /// <summary>
+    /// Drives the main menu with the keyboard only: Up/Down (also W/S and Left/Right)
+    /// walk the selection with wrap-around, Enter/Space invokes the selected element's
+    /// click behavior, and Esc toggles the menu itself on/off. Runs only while the menu
+    /// is visible and no overlay (settings / load game / confirm) is open.
+    /// </summary>
+    private void HandleMenuKeyboard(nint window)
+    {
+        bool upDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_UP) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_W)
+                   || Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_A);
+        bool downDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_DOWN) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_S)
+                     || Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_D);
+        bool enterDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ENTER) || Keyboard.IsKeyDown(window, Const.GLFW_KEY_SPACE);
+        bool escapeDown = Keyboard.IsKeyDown(window, Const.GLFW_KEY_ESCAPE);
+
+        // Edge-detect: keep the menu from scrolling/toggling every frame while a key is held.
+        bool upPressed = upDown && !_menuUpWasDown;
+        bool downPressed = downDown && !_menuDownWasDown;
+        bool enterPressed = enterDown && !_menuEnterWasDown;
+        bool escapePressed = escapeDown && !_menuEscapeWasDown;
+        _menuUpWasDown = upDown;
+        _menuDownWasDown = downDown;
+        _menuEnterWasDown = enterDown;
+        _menuEscapeWasDown = escapeDown;
+
+        // Esc toggles the menu itself (overlays already consumed Esc above).
+        if (escapePressed)
+        {
+            _menuHidden = !_menuHidden;
+            _menuKeyboardNav = true;
+            return;
+        }
+        if (_menuHidden || _menuEntries.Count == 0)
+            return;
+
+        if (upPressed || downPressed)
+        {
+            _menuKeyboardNav = true;
+            int step = downPressed ? 1 : -1;
+            int count = _menuEntries.Count;
+            _menuSelection = ((_menuSelection + step) % count + count) % count;
+            _menuSelectedImage = _menuEntries[_menuSelection].HudIndex < 0
+                ? _menuEntries[_menuSelection].Element
+                : null;
+            return;
+        }
+
+        if (enterPressed && _menuSelection >= 0 && _menuSelection < _menuEntries.Count)
+        {
+            _menuKeyboardNav = true;
+            _menuEntries[_menuSelection].OnClick?.Invoke();
         }
     }
 
@@ -1338,6 +1526,12 @@ public unsafe class MainMenuScene : IScene
         {
             if (!string.IsNullOrEmpty(elem.ImagePath))
                 LoadImageTexture(elem.ImagePath);
+            // Hover / clicked state art + atlas sheets (any of these can be a different file)
+            if (!string.IsNullOrEmpty(elem.HoverImagePath)) LoadImageTexture(elem.HoverImagePath);
+            if (!string.IsNullOrEmpty(elem.ClickedImagePath)) LoadImageTexture(elem.ClickedImagePath);
+            if (!string.IsNullOrEmpty(elem.AtlasImagePath)) LoadImageTexture(elem.AtlasImagePath);
+            if (!string.IsNullOrEmpty(elem.HoverAtlasImagePath)) LoadImageTexture(elem.HoverAtlasImagePath);
+            if (!string.IsNullOrEmpty(elem.ClickedAtlasImagePath)) LoadImageTexture(elem.ClickedAtlasImagePath);
             // Bar: pre-load all three layer images
             if (!string.IsNullOrEmpty(elem.BarBackgroundPath)) LoadImageTexture(elem.BarBackgroundPath);
             if (!string.IsNullOrEmpty(elem.BarEmptyPath)) LoadImageTexture(elem.BarEmptyPath);
@@ -1464,19 +1658,53 @@ public unsafe class MainMenuScene : IScene
             }
             else if (!string.IsNullOrEmpty(effectiveImg))
             {
-                if (_imageTextureCache.TryGetValue(effectiveImg, out uint texID) && texID != 0)
+                // ── Interaction state ── Clickable image elements use the same hover / clicked
+                // art the editor preview shows, and the keyboard selection counts as hovered so
+                // an image menu reacts to arrow navigation exactly like a mouse hover.
+                bool interactive = elem.OnClick != null && !_menuHidden;
+                bool hovered = interactive
+                    && _menuMouseX >= ex && _menuMouseX <= ex + ew
+                    && _menuMouseY >= ey && _menuMouseY <= ey + eh;
+                bool pressed = hovered && _menuMouseDown;
+                bool keyboardSelected = interactive && ReferenceEquals(elem, _menuSelectedImage);
+
+                var (statePath, stateAtlas, sax, say, saw, sah) =
+                    elem.GetStateImage(pressed, hovered || keyboardSelected);
+
+                if (!string.IsNullOrEmpty(statePath) &&
+                    _imageTextureCache.TryGetValue(statePath, out uint texID) && texID != 0)
                 {
                     int imgW = 1, imgH = 1;
-                    if (_imageTextureDims.TryGetValue(effectiveImg, out var d))
+                    if (_imageTextureDims.TryGetValue(statePath, out var d))
                     {
                         imgW = d.w;
                         imgH = d.h;
                     }
+
+                    // Atlas crop (clamped to the bitmap, like the editor preview).
+                    bool crop = stateAtlas && saw > 0 && sah > 0;
+                    int cropX = crop ? Math.Clamp(sax, 0, imgW - 1) : 0;
+                    int cropY = crop ? Math.Clamp(say, 0, imgH - 1) : 0;
+                    int srcW = crop ? Math.Min(saw, imgW - cropX) : imgW;
+                    int srcH = crop ? Math.Min(sah, imgH - cropY) : imgH;
+
                     var (drawX, drawY, drawW, drawH) = CalcImageRect(
                         ex, ey, ew, eh,
-                        imgW, imgH, elem.ImageMode);
+                        Math.Max(1, srcW), Math.Max(1, srcH), elem.ImageMode);
 
-                    _hud.DrawImage(drawX, drawY, drawW, drawH, texID);
+                    if (crop)
+                    {
+                        _hud.DrawImageUV(drawX, drawY, drawW, drawH, texID,
+                            cropX / (float)imgW, cropY / (float)imgH,
+                            (cropX + srcW) / (float)imgW, (cropY + srcH) / (float)imgH);
+                    }
+                    else
+                    {
+                        _hud.DrawImage(drawX, drawY, drawW, drawH, texID);
+                    }
+
+                    if (keyboardSelected)
+                        DrawMenuSelectionFrame(drawX, drawY, drawW, drawH);
                 }
                 else
                 {
@@ -1557,11 +1785,48 @@ public unsafe class MainMenuScene : IScene
     {
         if (_hud == null) return;
 
+        // Esc toggled the menu off — leave the animated background only.
+        if (_menuHidden) return;
+
+        // Keyboard selection (-1 = none → the HUD falls back to mouse hover). Only in
+        // game mode: the IDE editor viewport preview keeps pure hover highlighting.
+        bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
+        bool selectionActive = ingameActive && _menuKeyboardNav
+            && _menuSelection >= 0 && _menuSelection < _menuEntries.Count;
+
+        // Image entries are drawn + highlighted by this scene; text buttons by the HUD.
+        _menuSelectedImage = selectionActive && _menuEntries[_menuSelection].HudIndex < 0
+            ? _menuEntries[_menuSelection].Element
+            : null;
+
         // Render image elements first (with ImagePath set)
         RenderImageElements(_sceneRoot.Children);
 
+        int keyboardSelected = selectionActive && _menuEntries[_menuSelection].HudIndex >= 0
+            ? _menuEntries[_menuSelection].HudIndex
+            : -1;
+
         // Render all registered buttons from the loaded hierarchy
-        _hud.DrawButtons(_totalTime, -1);
+        _hud.DrawButtons(_totalTime, keyboardSelected);
+    }
+
+    /// <summary>
+    /// Thin accent frame drawn just OUTSIDE an image element's rect. It must sit outside:
+    /// HUD.Flush draws every image AFTER all boxes, so a frame inside the image bounds would
+    /// be hidden behind the art.
+    /// </summary>
+    private void DrawMenuSelectionFrame(float x, float y, float w, float h)
+    {
+        if (_hud == null) return;
+        float pulse = 0.65f + 0.35f * MathF.Sin(_totalTime * 4f);
+        var col = new Vector3(0.55f, 1f, 0.7f) * pulse;
+        const float thickness = 2f;
+        const float pad = 3f;
+
+        _hud.DrawBox(x - pad, y - pad, w + pad * 2f, thickness, col);
+        _hud.DrawBox(x - pad, y + h + pad - thickness, w + pad * 2f, thickness, col);
+        _hud.DrawBox(x - pad, y - pad, thickness, h + pad * 2f, col);
+        _hud.DrawBox(x + w + pad - thickness, y - pad, thickness, h + pad * 2f, col);
     }
 
     // ══════════════════════════════════════════════

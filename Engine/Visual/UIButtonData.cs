@@ -274,6 +274,7 @@ public class UIElement
         SliceBorderRight = other.SliceBorderRight;
         SliceBorderTop = other.SliceBorderTop;
         SliceBorderBottom = other.SliceBorderBottom;
+        CaptureInputWhenVisible = other.CaptureInputWhenVisible;
         UseAtlasCoordinates = other.UseAtlasCoordinates;
         AtlasImagePath = other.AtlasImagePath;
         HoverImagePath = other.HoverImagePath;
@@ -352,6 +353,27 @@ public class UIElement
     /// <summary>Keyboard key that toggles this container visible/hidden in in-game mode
     /// (e.g. "Escape", "F1"). When pressed, the container shows/hides.</summary>
     public string TriggeredByKeyboardButton { get; set; } = "";
+
+    // ── Container input capture ──
+    /// <summary>While this container is visible it takes the input focus: all gameplay
+    /// keyboard/mouse actions are disabled (2D player movement, bound action keys, camera
+    /// look, interact). Menu elements inside it keep accepting input.</summary>
+    public bool CaptureInputWhenVisible { get; set; } = false;
+
+    /// <summary>True when this element is visible and has <see cref="CaptureInputWhenVisible"/>
+    /// set, or contains a visible descendant that does. A hidden element never captures
+    /// (its children are ignored too, so a closed menu cannot keep gameplay frozen).
+    /// EXCEPTION: a Scene-root element is a hierarchy holder, not drawable UI — its own
+    /// IsVisible flag is conventionally false (MainMenuScene sets root.IsVisible = false),
+    /// so gating on it would hide every menu underneath and the capture would never fire.</summary>
+    public bool HasVisibleInputCapture()
+    {
+        if (!IsVisible && Type != UIElementType.Scene) return false;
+        if (CaptureInputWhenVisible) return true;
+        foreach (var child in Children)
+            if (child.HasVisibleInputCapture()) return true;
+        return false;
+    }
 
     public Action? OnClick { get; set; }
     public Action? OnHoverEnter { get; set; }
@@ -736,9 +758,10 @@ public class UIElement
             Alignment = Alignment, IsVisible = IsVisible, Opacity = Opacity,
             AutoFillWindow = AutoFillWindow, AutoCenterX = AutoCenterX, AutoCenterY = AutoCenterY,
             Anchor = Anchor, UseHover = UseHover,
-            ClickBehaviorLabel = ClickBehaviorLabel, HoverEnterLabel = HoverEnterLabel, HoverExitLabel = HoverExitLabel,
+            ClickBehaviorLabel = ClickBehaviorLabel, HoverEnterLabel = HoverEnterLabel,            HoverExitLabel = HoverExitLabel,
             FallbackText = FallbackText, WordWrap = WordWrap,
             TriggeredByKeyboardButton = TriggeredByKeyboardButton,
+            CaptureInputWhenVisible = CaptureInputWhenVisible,
             // Slider properties
             MinValue = MinValue, MaxValue = MaxValue, Step = Step, CurrentValue = CurrentValue,
             TextOptions = [.. TextOptions], SelectedTextIndex = SelectedTextIndex,

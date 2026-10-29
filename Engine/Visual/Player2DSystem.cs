@@ -259,9 +259,14 @@ public static class Player2DSystem
             // the single source of truth; no ortho check needed here.)
             bool conversationActive = DialogueSystem.IsConversationActive || ShopHud.IsOpen;
             bool rmbLookOwnsInput = Camera.RmbFreeflyActive;
-            float walkSpeed = conversationActive ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
-            float runSpeed = conversationActive ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);
-            bool inputFrozen = conversationActive || rmbLookOwnsInput;
+            // ── A MENU owns the screen (main menu / loading scene — SceneManager refreshes
+            // Bridge.MenuOwnsInput from the active scene) ── gameplay keys must be dead,
+            // exactly like 3D where no player exists to react. Same as dialogue: freeze
+            // INPUT only, physics/animation keep running so the character stays planted.
+            bool menuOwnsInput = bridge?.MenuOwnsInput == true;
+            float walkSpeed = (conversationActive || menuOwnsInput) ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
+            float runSpeed = (conversationActive || menuOwnsInput) ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);
+            bool inputFrozen = conversationActive || rmbLookOwnsInput || menuOwnsInput;
             bool left = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
             bool right = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
             bool runHeld = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));
@@ -399,7 +404,7 @@ public static class Player2DSystem
                 {
                 // Trigger mode: KeyDown fires on press; KeyUp fires on RELEASE —
                 // a press-impulse action (charge up, release to swing/spin).
-                if (act.KeyTriggered(k))
+                if (!inputFrozen && act.KeyTriggered(k))
                 {
                     bool started = player.TryStartAction(act.Name);
                     // Action-bound projectile (opt-in via the Inspector "Projectile →
@@ -792,11 +797,12 @@ public static class Player2DSystem
             // Portal button mode: edge-detect the interact key so holding it doesn't
             // re-fire every frame. Default edge = E; the probe lets each portal use its
             // OWN configured key (PortalEnterKey, ImGuiKey name).
-            bool portalKeyE = ImGui.IsKeyPressed(ImGuiKey.E, false);
+            // A menu owns the screen → the interact key is dead too (same as dialogue).
+            bool portalKeyE = !inputFrozen && ImGui.IsKeyPressed(ImGuiKey.E, false);
             // PERF: the probe lambda + Enum.TryParse per frame → ONE cached delegate
             // (stateless static) assigned once per player loop instead of a fresh
             // closure built 60×/s. Semantics identical.
-            TriggerEventSystem.PortalKeyProbe = PortalKeyProbeCached;
+            TriggerEventSystem.PortalKeyProbe = inputFrozen ? null : PortalKeyProbeCached;
             // Trigger areas are map-local pixel rects mapped through each map's own
             // cell — evaluate EVERY visible scene map so portals/doors on other map
             // levels fire too (active map first). Then re-pin the checkpoint/snapping
