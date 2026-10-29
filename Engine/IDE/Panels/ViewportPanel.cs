@@ -336,7 +336,10 @@ public unsafe class ViewportPanel
             // Hover / pressed art overrides the normal bitmap for this frame. Each state can
             // carry its own atlas crop, so hover frames may live in the same atlas.
             bool pressState = isHovered && isMouseDown && !blockedByOverlay;
-            var stateImg = elem.GetStateImage(pressState, useHover);
+            // Keyboard focus (Tab / arrow navigation) drives the Selected state art, so an
+            // image-only menu reacts to the keyboard exactly like Hover reacts to the mouse.
+            bool selectedState = !blockedByOverlay && ReferenceEquals(focusedElement, elem);
+            var stateImg = elem.GetStateImage(pressState, useHover, selectedState);
             string effectiveImagePath = stateImg.path;
             bool hasImage = elem.Type != UIElementType.Bar && !string.IsNullOrEmpty(effectiveImagePath);
             if (hasImage)

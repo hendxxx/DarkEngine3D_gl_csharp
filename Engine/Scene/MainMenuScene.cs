@@ -1532,6 +1532,8 @@ public unsafe class MainMenuScene : IScene
             if (!string.IsNullOrEmpty(elem.AtlasImagePath)) LoadImageTexture(elem.AtlasImagePath);
             if (!string.IsNullOrEmpty(elem.HoverAtlasImagePath)) LoadImageTexture(elem.HoverAtlasImagePath);
             if (!string.IsNullOrEmpty(elem.ClickedAtlasImagePath)) LoadImageTexture(elem.ClickedAtlasImagePath);
+            if (!string.IsNullOrEmpty(elem.SelectedImagePath)) LoadImageTexture(elem.SelectedImagePath);
+            if (!string.IsNullOrEmpty(elem.SelectedAtlasImagePath)) LoadImageTexture(elem.SelectedAtlasImagePath);
             // Bar: pre-load all three layer images
             if (!string.IsNullOrEmpty(elem.BarBackgroundPath)) LoadImageTexture(elem.BarBackgroundPath);
             if (!string.IsNullOrEmpty(elem.BarEmptyPath)) LoadImageTexture(elem.BarEmptyPath);
@@ -1668,8 +1670,9 @@ public unsafe class MainMenuScene : IScene
                 bool pressed = hovered && _menuMouseDown;
                 bool keyboardSelected = interactive && ReferenceEquals(elem, _menuSelectedImage);
 
+                // Priority: pressed → keyboard selected → hovered (same order as the HUD).
                 var (statePath, stateAtlas, sax, say, saw, sah) =
-                    elem.GetStateImage(pressed, hovered || keyboardSelected);
+                    elem.GetStateImage(pressed, hovered, keyboardSelected);
 
                 if (!string.IsNullOrEmpty(statePath) &&
                     _imageTextureCache.TryGetValue(statePath, out uint texID) && texID != 0)

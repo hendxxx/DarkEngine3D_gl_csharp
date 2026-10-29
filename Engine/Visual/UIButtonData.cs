@@ -153,6 +153,18 @@ public class UIElement
     public int ClickedAtlasWidth { get; set; }
     public int ClickedAtlasHeight { get; set; }
 
+    // ── Selected state art (keyboard focus / arrow-key navigation) ──
+    // Same authoring shape as Hover/Clicked: optional bitmap, optional atlas image and
+    // optional atlas crop. A blank state falls back to the normal image, so it is fully
+    // optional; arrow-key navigation and the in-game keyboard focus both drive it.
+    public string SelectedImagePath { get; set; } = "";
+    public bool SelectedUseAtlasCoordinates { get; set; }
+    public string SelectedAtlasImagePath { get; set; } = "";
+    public int SelectedAtlasX { get; set; }
+    public int SelectedAtlasY { get; set; }
+    public int SelectedAtlasWidth { get; set; }
+    public int SelectedAtlasHeight { get; set; }
+
     /// <summary>
     /// Resolve the effective image path for this element.
     /// If UseAtlasCoordinates is true:
@@ -182,13 +194,18 @@ public class UIElement
     }
 
     /// <summary>Bitmap + atlas crop for a visual state. A state with no image path falls
-    /// back to the normal image, so hover/clicked art is fully optional. A state in atlas
-    /// mode with blank paths draws from the element's default atlas image.</summary>
-    public (string path, bool useAtlas, int ax, int ay, int aw, int ah) GetStateImage(bool pressed, bool hovered)
+    /// back to the normal image, so hover/clicked/selected art is fully optional. A state in
+    /// atlas mode with blank paths draws from the element's default atlas image.
+    /// Priority: pressed (clicked) → selected (keyboard focus / arrow navigation) → hovered.</summary>
+    public (string path, bool useAtlas, int ax, int ay, int aw, int ah) GetStateImage(
+        bool pressed, bool hovered, bool selected = false)
     {
         if (pressed && HasStateArt(ClickedUseAtlasCoordinates, ClickedImagePath, ClickedAtlasImagePath))
             return ResolveStateArt(ClickedUseAtlasCoordinates, ClickedImagePath, ClickedAtlasImagePath,
                                    ClickedAtlasX, ClickedAtlasY, ClickedAtlasWidth, ClickedAtlasHeight);
+        if (selected && HasStateArt(SelectedUseAtlasCoordinates, SelectedImagePath, SelectedAtlasImagePath))
+            return ResolveStateArt(SelectedUseAtlasCoordinates, SelectedImagePath, SelectedAtlasImagePath,
+                                   SelectedAtlasX, SelectedAtlasY, SelectedAtlasWidth, SelectedAtlasHeight);
         if (hovered && HasStateArt(HoverUseAtlasCoordinates, HoverImagePath, HoverAtlasImagePath))
             return ResolveStateArt(HoverUseAtlasCoordinates, HoverImagePath, HoverAtlasImagePath,
                                    HoverAtlasX, HoverAtlasY, HoverAtlasWidth, HoverAtlasHeight);
@@ -291,6 +308,13 @@ public class UIElement
         ClickedAtlasY = other.ClickedAtlasY;
         ClickedAtlasWidth = other.ClickedAtlasWidth;
         ClickedAtlasHeight = other.ClickedAtlasHeight;
+        SelectedImagePath = other.SelectedImagePath;
+        SelectedUseAtlasCoordinates = other.SelectedUseAtlasCoordinates;
+        SelectedAtlasImagePath = other.SelectedAtlasImagePath;
+        SelectedAtlasX = other.SelectedAtlasX;
+        SelectedAtlasY = other.SelectedAtlasY;
+        SelectedAtlasWidth = other.SelectedAtlasWidth;
+        SelectedAtlasHeight = other.SelectedAtlasHeight;
     }
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
@@ -752,6 +776,10 @@ public class UIElement
             ClickedAtlasImagePath = ClickedAtlasImagePath,
             ClickedAtlasX = ClickedAtlasX, ClickedAtlasY = ClickedAtlasY,
             ClickedAtlasWidth = ClickedAtlasWidth, ClickedAtlasHeight = ClickedAtlasHeight,
+            SelectedImagePath = SelectedImagePath, SelectedUseAtlasCoordinates = SelectedUseAtlasCoordinates,
+            SelectedAtlasImagePath = SelectedAtlasImagePath,
+            SelectedAtlasX = SelectedAtlasX, SelectedAtlasY = SelectedAtlasY,
+            SelectedAtlasWidth = SelectedAtlasWidth, SelectedAtlasHeight = SelectedAtlasHeight,
             FontSize = FontSize, FontPath = FontPath,
             TextColor = TextColor, BgColor = BgColor, BorderColor = BorderColor,
             HoverTextColor = HoverTextColor, HoverBgColor = HoverBgColor, HoverBorderColor = HoverBorderColor,

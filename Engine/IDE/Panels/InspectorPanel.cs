@@ -599,6 +599,22 @@ public class InspectorPanel
                 },
                 elem.GetEffectiveImagePath());
 
+            // Selected = keyboard focus (arrow/Tab navigation) — same authoring shape as
+            // Hover/Clicked, so a menu built with plain images gets a real focused state.
+            DrawStateImageSettings("Selected", "simg",
+                elem.SelectedImagePath, v => elem.SelectedImagePath = v,
+                elem.SelectedUseAtlasCoordinates, v => elem.SelectedUseAtlasCoordinates = v,
+                elem.SelectedAtlasImagePath, v => elem.SelectedAtlasImagePath = v,
+                elem.SelectedAtlasX, elem.SelectedAtlasY, elem.SelectedAtlasWidth, elem.SelectedAtlasHeight,
+                (x, y, w, h) =>
+                {
+                    elem.SelectedAtlasX = x;
+                    elem.SelectedAtlasY = y;
+                    elem.SelectedAtlasWidth = w;
+                    elem.SelectedAtlasHeight = h;
+                },
+                elem.GetEffectiveImagePath());
+
             ImGui.Separator();
 
             //  Fit to Window button 

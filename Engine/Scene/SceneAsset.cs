@@ -63,6 +63,15 @@ public class SceneElementData
     public int ClickedAtlasWidth { get; set; }
     public int ClickedAtlasHeight { get; set; }
 
+    // ── Selected state art (keyboard focus / arrow-key navigation) ──
+    public string SelectedImagePath { get; set; } = "";
+    public bool SelectedUseAtlasCoordinates { get; set; } = false;
+    public string SelectedAtlasImagePath { get; set; } = "";
+    public int SelectedAtlasX { get; set; }
+    public int SelectedAtlasY { get; set; }
+    public int SelectedAtlasWidth { get; set; }
+    public int SelectedAtlasHeight { get; set; }
+
     public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
 
