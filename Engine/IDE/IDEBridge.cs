@@ -476,6 +476,10 @@ public class IDEBridge
     // ── Editor debug grid toggle (shown in the viewport while editing) ──
     public bool ShowDebugGrid { get; set; } = true;
 
+    // ── Editor selection outline for UI elements (cyan wireframe + brackets). Global
+    // editor preference (IDE Settings → Interface); resize handles are unaffected. ──
+    public bool ShowSelectionBorder { get; set; } = true;
+
     // ── In-game stats overlay toggle (FPS/TRIS/Objects panel while playing) ──
     public bool ShowInGameStats { get; set; } = true;
 

@@ -47,6 +47,22 @@ public class SceneElementData
     public int AtlasWidth { get; set; }
     public int AtlasHeight { get; set; }
 
+    // ── Hover / Clicked state art ──
+    public string HoverImagePath { get; set; } = "";
+    public bool HoverUseAtlasCoordinates { get; set; } = false;
+    public string HoverAtlasImagePath { get; set; } = "";
+    public int HoverAtlasX { get; set; }
+    public int HoverAtlasY { get; set; }
+    public int HoverAtlasWidth { get; set; }
+    public int HoverAtlasHeight { get; set; }
+    public string ClickedImagePath { get; set; } = "";
+    public bool ClickedUseAtlasCoordinates { get; set; } = false;
+    public string ClickedAtlasImagePath { get; set; } = "";
+    public int ClickedAtlasX { get; set; }
+    public int ClickedAtlasY { get; set; }
+    public int ClickedAtlasWidth { get; set; }
+    public int ClickedAtlasHeight { get; set; }
+
     public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
 

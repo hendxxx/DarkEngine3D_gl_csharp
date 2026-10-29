@@ -30,6 +30,10 @@ public class InspectorPanel
     private bool _atlasPickerDragging = false;
     private Vector2 _atlasPickerDragStart;
     private float _atlasPickerZoom = 1.0f;
+
+    // 9-slice preview drag state: which cut line is being dragged, on which element.
+    private UIElement? _sliceDragElem;
+    private int _sliceDragEdge = -1; // 0 = Left, 1 = Right, 2 = Top, 3 = Bottom
     private readonly Dictionary<string, (uint id, int w, int h)> _inspectorTexCache = [];
 
     private unsafe (uint id, int w, int h) LoadOrGetInspectorTexture(string rawPath)
@@ -438,6 +442,8 @@ public class InspectorPanel
             if (elem.SliceEnabled)
             {
                 ImGui.Indent(12f);
+                DrawSlicePreview(elem);
+                ImGui.Spacing();
                 ImGui.TextColored(new Vector4(0.6f, 0.9f, 1f, 1f), "Source Window (px in texture):");
                 int slx = elem.SliceX, sly = elem.SliceY, slw = elem.SliceWidth, slh = elem.SliceHeight;
                 if (ImGui.InputInt("X##slx", ref slx)) elem.SliceX = Math.Max(0, slx);
@@ -452,6 +458,11 @@ public class InspectorPanel
                 if (ImGui.InputInt("Right##slbr",  ref slbr)) elem.SliceBorderRight  = Math.Max(0, slbr);
                 if (ImGui.InputInt("Top##slbt",    ref slbt)) elem.SliceBorderTop    = Math.Max(0, slbt);
                 if (ImGui.InputInt("Bottom##slbb", ref slbb)) elem.SliceBorderBottom = Math.Max(0, slbb);
+                ImGui.Spacing();
+                if (ImGui.Button("Auto-Detect Borders", new Vector2(-1, 24)))
+                    AutoDetectSliceBorders(elem);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Read the image pixels and guess the corner insets: the last visible colour\nstep on each side whose inner region is flat fill. Check the preview above\nand fine-tune when the art is unusual.");
                 ImGui.Unindent(12f);
             }
 
@@ -556,6 +567,37 @@ public class InspectorPanel
 
                 ImGui.Unindent(12f);
             }
+
+            ImGui.Separator();
+
+            //  Hover / Clicked state art (optional) 
+            DrawStateImageSettings("Hover", "himg",
+                elem.HoverImagePath, v => elem.HoverImagePath = v,
+                elem.HoverUseAtlasCoordinates, v => elem.HoverUseAtlasCoordinates = v,
+                elem.HoverAtlasImagePath, v => elem.HoverAtlasImagePath = v,
+                elem.HoverAtlasX, elem.HoverAtlasY, elem.HoverAtlasWidth, elem.HoverAtlasHeight,
+                (x, y, w, h) =>
+                {
+                    elem.HoverAtlasX = x;
+                    elem.HoverAtlasY = y;
+                    elem.HoverAtlasWidth = w;
+                    elem.HoverAtlasHeight = h;
+                },
+                elem.GetEffectiveImagePath());
+
+            DrawStateImageSettings("Clicked", "cimg",
+                elem.ClickedImagePath, v => elem.ClickedImagePath = v,
+                elem.ClickedUseAtlasCoordinates, v => elem.ClickedUseAtlasCoordinates = v,
+                elem.ClickedAtlasImagePath, v => elem.ClickedAtlasImagePath = v,
+                elem.ClickedAtlasX, elem.ClickedAtlasY, elem.ClickedAtlasWidth, elem.ClickedAtlasHeight,
+                (x, y, w, h) =>
+                {
+                    elem.ClickedAtlasX = x;
+                    elem.ClickedAtlasY = y;
+                    elem.ClickedAtlasWidth = w;
+                    elem.ClickedAtlasHeight = h;
+                },
+                elem.GetEffectiveImagePath());
 
             ImGui.Separator();
 
@@ -1966,6 +2008,429 @@ public class InspectorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Reset this layer's position to (0, 0)");
         ImGui.Unindent();
+    }
+
+    /// <summary>Load an image's RGBA pixels for analysis (one-shot; not cached because
+    /// detection only runs on a button click).</summary>
+    private static (byte[] data, int w, int h) LoadInspectorPixels(string rawPath)
+    {
+        if (string.IsNullOrEmpty(rawPath))
+            return (Array.Empty<byte>(), 0, 0);
+        string path = Helpers.PathHelpers.Resolve(rawPath);
+        if (!File.Exists(path))
+            return (Array.Empty<byte>(), 0, 0);
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            return (image.Data, image.Width, image.Height);
+        }
+        catch
+        {
+            return (Array.Empty<byte>(), 0, 0);
+        }
+    }
+
+    /// <summary>Which cut line (0=left 1=right 2=top 3=bottom) is within
+    /// <paramref name="tol"/> pixels of the mouse, or -1 when none is close.</summary>
+    private static int SliceEdgeHitTest(Vector2 mouse, float[] cx, float[] cy, float tol)
+    {
+        float best = tol;
+        int edge = -1;
+        float d = Math.Abs(mouse.X - cx[1]);
+        if (d <= best) { best = d; edge = 0; }
+        d = Math.Abs(mouse.X - cx[2]);
+        if (d <= best) { best = d; edge = 1; }
+        d = Math.Abs(mouse.Y - cy[1]);
+        if (d <= best) { best = d; edge = 2; }
+        d = Math.Abs(mouse.Y - cy[2]);
+        if (d <= best) { best = d; edge = 3; }
+        return edge;
+    }
+
+    /// <summary>Border insets as the preview draws them: clamped so opposite insets always
+    /// leave at least a 1px stretchable strip between them.</summary>
+    private static (float bL, float bR, float bT, float bB) ClampSliceBordersForPreview(
+        UIElement elem, float srcW, float srcH)
+    {
+        float bL = Math.Clamp(elem.SliceBorderLeft, 0, Math.Max(0, (int)srcW - 1));
+        float bR = Math.Clamp(elem.SliceBorderRight, 0, Math.Max(0, (int)srcW - 1));
+        if (bL + bR > srcW - 1f)
+        {
+            float over = bL + bR - Math.Max(0f, srcW - 1f);
+            float take = Math.Min(over, bR);
+            bR -= take;
+            bL -= over - take;
+        }
+        float bT = Math.Clamp(elem.SliceBorderTop, 0, Math.Max(0, (int)srcH - 1));
+        float bB = Math.Clamp(elem.SliceBorderBottom, 0, Math.Max(0, (int)srcH - 1));
+        if (bT + bB > srcH - 1f)
+        {
+            float over = bT + bB - Math.Max(0f, srcH - 1f);
+            float take = Math.Min(over, bB);
+            bB -= take;
+            bT -= over - take;
+        }
+        return (bL, bR, bT, bB);
+    }
+
+    /// <summary>Guess the four border insets from the image's pixels and write them onto
+    /// the element. The source window is filled in (whole image / atlas crop) when it is
+    /// still empty, since a window with zero size never renders a slice.</summary>
+    private void AutoDetectSliceBorders(UIElement elem)
+    {
+        string imgPath = elem.GetEffectiveImagePath();
+        var (px, imgW, imgH) = LoadInspectorPixels(imgPath);
+        if (px.Length == 0 || imgW <= 0 || imgH <= 0)
+        {
+            Console.WriteLine($"[Inspector] Auto-detect borders: no readable image for '{elem.Name}'");
+            return;
+        }
+
+        bool atlas = elem.UseAtlasCoordinates && elem.AtlasWidth > 0 && elem.AtlasHeight > 0;
+        int baseX = atlas ? elem.AtlasX : 0;
+        int baseY = atlas ? elem.AtlasY : 0;
+        int baseW = atlas ? elem.AtlasWidth : imgW;
+        int baseH = atlas ? elem.AtlasHeight : imgH;
+
+        int x0 = Math.Clamp(baseX + elem.SliceX, 0, Math.Max(0, imgW - 1));
+        int y0 = Math.Clamp(baseY + elem.SliceY, 0, Math.Max(0, imgH - 1));
+        int w = Math.Clamp(elem.SliceWidth > 0 ? elem.SliceWidth : baseW, 1, imgW - x0);
+        int h = Math.Clamp(elem.SliceHeight > 0 ? elem.SliceHeight : baseH, 1, imgH - y0);
+
+        // ≈15/255: big enough to ignore AA noise, small enough for a subtle inner highlight.
+        // The detector also keeps a 1px stretchable strip between each opposite pair.
+        var (left, right, top, bottom) = NineSliceDetector.Detect(px, imgW, x0, y0, w, h, 0.06f);
+
+        if (elem.SliceWidth <= 0) elem.SliceWidth = w;
+        if (elem.SliceHeight <= 0) elem.SliceHeight = h;
+        elem.SliceBorderLeft = left;
+        elem.SliceBorderRight = right;
+        elem.SliceBorderTop = top;
+        elem.SliceBorderBottom = bottom;
+
+        Console.WriteLine(
+            $"[Inspector] Auto-detected 9-slice borders on '{elem.Name}': " +
+            $"L={left} R={right} T={top} B={bottom} (source window {w}x{h} at {x0},{y0})");
+    }
+
+    /// <summary>Visual 9-slice preview — the source window drawn with the 3x3 grid over it.
+    /// Same layout as the classic 9-slice diagram: A/C/G/I corners never scale, B/H edges
+    /// stretch along X, D/F edges stretch along Y, E center stretches on both axes. Green lines are the border
+    /// insets — drag one to set that border in source pixels; hovering a cell names its
+    /// rule and reports its source size.</summary>
+    private void DrawSlicePreview(UIElement elem)
+    {
+        string imgPath = elem.GetEffectiveImagePath();
+        if (string.IsNullOrEmpty(imgPath))
+        {
+            ImGui.TextDisabled("Set an image to preview the 9-slice grid.");
+            return;
+        }
+
+        var (texId, texW, texH) = LoadOrGetInspectorTexture(imgPath);
+        if (texId == 0 || texW <= 0 || texH <= 0)
+        {
+            ImGui.TextDisabled("Image could not be loaded for preview.");
+            return;
+        }
+
+        // Source window in texture pixels — the same geometry ViewportPanel slices with.
+        bool atlas = elem.UseAtlasCoordinates && elem.AtlasWidth > 0 && elem.AtlasHeight > 0;
+        float baseX = atlas ? elem.AtlasX : 0f;
+        float baseY = atlas ? elem.AtlasY : 0f;
+        float baseW = atlas ? elem.AtlasWidth : texW;
+        float baseH = atlas ? elem.AtlasHeight : texH;
+
+        float srcX = Math.Clamp(baseX + elem.SliceX, 0f, Math.Max(0f, texW - 1f));
+        float srcY = Math.Clamp(baseY + elem.SliceY, 0f, Math.Max(0f, texH - 1f));
+        float srcW = elem.SliceWidth  > 0 ? elem.SliceWidth  : baseW;
+        float srcH = elem.SliceHeight > 0 ? elem.SliceHeight : baseH;
+        srcW = Math.Clamp(srcW, 1f, texW - srcX);
+        srcH = Math.Clamp(srcH, 1f, texH - srcY);
+
+        // Border insets, clamped so an opposite pair always leaves a stretchable strip.
+        var (bL, bR, bT, bB) = ClampSliceBordersForPreview(elem, srcW, srcH);
+
+        // Preview box: keep the source window's aspect ratio, fit the panel width.
+        float availW = Math.Max(80f, ImGui.GetContentRegionAvail().X - 4f);
+        float previewH = Math.Min(240f, availW * srcH / srcW);
+        float previewW = Math.Min(availW, previewH * srcW / srcH);
+        if (previewH < 48f)
+        {
+            previewH = 48f;
+            previewW = previewH * srcW / srcH;
+        }
+
+        ImGui.InvisibleButton("##slice_preview", new Vector2(previewW, previewH));
+        bool hovered = ImGui.IsItemHovered();
+        var p0 = ImGui.GetItemRectMin();
+        var p1 = new Vector2(p0.X + previewW, p0.Y + previewH);
+        var draw = ImGui.GetWindowDrawList();
+
+        // Source window pixels → texture UVs.
+        draw.AddRectFilled(p0, p1, ImGui.ColorConvertFloat4ToU32(new Vector4(0.06f, 0.07f, 0.09f, 1f)));
+        draw.AddImage((nint)texId, p0, p1,
+            new Vector2(srcX / texW, srcY / texH),
+            new Vector2((srcX + srcW) / texW, (srcY + srcH) / texH),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f)));
+
+        // Column / row boundaries in screen space.
+        float sx = previewW / srcW;
+        float sy = previewH / srcH;
+        float[] cx = [p0.X, p0.X + bL * sx, p1.X - bR * sx, p1.X];
+        float[] cy = [p0.Y, p0.Y + bT * sy, p1.Y - bB * sy, p1.Y];
+
+        // ── Draggable cut lines ──
+        // The preview is a single InvisibleButton, so the drag starts near a green line and
+        // keeps tracking while the pointer is down even after it leaves the box.
+        int hoverEdge = -1;
+        if (hovered)
+        {
+            hoverEdge = SliceEdgeHitTest(ImGui.GetIO().MousePos, cx, cy, 6f);
+            if (hoverEdge >= 0)
+            {
+                if (_sliceDragEdge < 0)
+                    ImGui.SetMouseCursor(hoverEdge <= 1 ? ImGuiMouseCursor.ResizeEW : ImGuiMouseCursor.ResizeNS);
+                if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    _sliceDragElem = elem;
+                    _sliceDragEdge = hoverEdge;
+                }
+            }
+        }
+
+        if (_sliceDragElem == elem && _sliceDragEdge >= 0)
+        {
+            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                _sliceDragElem = null;
+                _sliceDragEdge = -1;
+            }
+            else
+            {
+                var mouse = ImGui.GetIO().MousePos;
+                int maxW = Math.Max(0, (int)srcW - 1);
+                int maxH = Math.Max(0, (int)srcH - 1);
+                int px = _sliceDragEdge switch
+                {
+                    0 => (int)MathF.Round((mouse.X - p0.X) / sx),
+                    1 => (int)MathF.Round((p1.X - mouse.X) / sx),
+                    2 => (int)MathF.Round((mouse.Y - p0.Y) / sy),
+                    _ => (int)MathF.Round((p1.Y - mouse.Y) / sy),
+                };
+                switch (_sliceDragEdge)
+                {
+                    case 0:
+                        elem.SliceBorderLeft = Math.Clamp(px, 0, Math.Max(0, maxW - elem.SliceBorderRight));
+                        break;
+                    case 1:
+                        elem.SliceBorderRight = Math.Clamp(px, 0, Math.Max(0, maxW - elem.SliceBorderLeft));
+                        break;
+                    case 2:
+                        elem.SliceBorderTop = Math.Clamp(px, 0, Math.Max(0, maxH - elem.SliceBorderBottom));
+                        break;
+                    case 3:
+                        elem.SliceBorderBottom = Math.Clamp(px, 0, Math.Max(0, maxH - elem.SliceBorderTop));
+                        break;
+                }
+
+                // Redraw this frame with the new insets (deconstruction is mutable).
+                (bL, bR, bT, bB) = ClampSliceBordersForPreview(elem, srcW, srcH);
+                cx = [p0.X, p0.X + bL * sx, p1.X - bR * sx, p1.X];
+                cy = [p0.Y, p0.Y + bT * sy, p1.Y - bB * sy, p1.Y];
+                hoverEdge = _sliceDragEdge;
+            }
+        }
+
+        // The art stays fully visible, like the reference 9-slice diagram: no region fills,
+        // only the green cut lines, the frame, the handles and the A-I labels on top.
+        // Cut lines + outer frame (green, like the reference diagram).
+        uint lineCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 1f, 0.35f, 0.95f));
+        uint hotLineCol = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f));
+        for (int i = 1; i < 3; i++)
+        {
+            bool vHot = hoverEdge == (i == 1 ? 0 : 1);
+            bool hHot = hoverEdge == (i == 1 ? 2 : 3);
+            draw.AddLine(new Vector2(cx[i], p0.Y), new Vector2(cx[i], p1.Y),
+                vHot ? hotLineCol : lineCol, vHot ? 2.5f : 1.5f);
+            draw.AddLine(new Vector2(p0.X, cy[i]), new Vector2(p1.X, cy[i]),
+                hHot ? hotLineCol : lineCol, hHot ? 2.5f : 1.5f);
+        }
+        draw.AddRect(p0, p1, lineCol, 0f, ImDrawFlags.None, 2f);
+
+        // Square handles where the cut lines meet the frame.
+        uint handleCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.10f, 1f, 0.35f, 1f));
+        for (int i = 1; i < 3; i++)
+        {
+            uint c = hoverEdge == (i == 1 ? 0 : 1) ? hotLineCol : handleCol;
+            draw.AddRectFilled(new Vector2(cx[i] - 3f, p0.Y - 3f), new Vector2(cx[i] + 3f, p0.Y + 3f), c);
+            draw.AddRectFilled(new Vector2(cx[i] - 3f, p1.Y - 3f), new Vector2(cx[i] + 3f, p1.Y + 3f), c);
+        }
+        for (int i = 1; i < 3; i++)
+        {
+            uint c = hoverEdge == (i == 1 ? 2 : 3) ? hotLineCol : handleCol;
+            draw.AddRectFilled(new Vector2(p0.X - 3f, cy[i] - 3f), new Vector2(p0.X + 3f, cy[i] + 3f), c);
+            draw.AddRectFilled(new Vector2(p1.X - 3f, cy[i] - 3f), new Vector2(p1.X + 3f, cy[i] + 3f), c);
+        }
+
+        // Which cell is under the mouse (A..I) — used for the outline + tooltip.
+        string[] letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+        int hc = 1, hr = 1;
+        if (hovered && hoverEdge < 0)
+        {
+            var m = ImGui.GetIO().MousePos;
+            hc = m.X < cx[1] ? 0 : (m.X < cx[2] ? 1 : 2);
+            hr = m.Y < cy[1] ? 0 : (m.Y < cy[2] ? 1 : 2);
+            draw.AddRectFilled(new Vector2(cx[hc], cy[hr]), new Vector2(cx[hc + 1], cy[hr + 1]),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.10f)));
+            draw.AddRect(new Vector2(cx[hc], cy[hr]), new Vector2(cx[hc + 1], cy[hr + 1]),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.9f)), 0f, ImDrawFlags.None, 1.5f);
+        }
+
+        // Labels A..I in the cell centers.
+        var font = ImGui.GetFont();
+        float fontSize = ImGui.GetFontSize();
+        uint labelShadow = ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.85f));
+        uint labelCol = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.95f));
+        for (int row = 0; row < 3; row++)
+        for (int col = 0; col < 3; col++)
+        {
+            string letter = letters[row * 3 + col];
+            var size = ImGui.CalcTextSize(letter);
+            var center = new Vector2((cx[col] + cx[col + 1]) * 0.5f, (cy[row] + cy[row + 1]) * 0.5f);
+            var pos = new Vector2(center.X - size.X * 0.5f, center.Y - size.Y * 0.5f);
+            // Dark chip keeps each letter readable over light/patterned art.
+            draw.AddRectFilled(new Vector2(pos.X - 3f, pos.Y - 1f),
+                new Vector2(pos.X + size.X + 3f, pos.Y + size.Y + 1f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.45f)), 2f);
+            draw.AddText(font, fontSize, new Vector2(pos.X + 1f, pos.Y + 1f), labelShadow, letter);
+            draw.AddText(font, fontSize, pos, labelCol, letter);
+        }
+
+        if (hoverEdge >= 0)
+        {
+            string edgeName = hoverEdge switch { 0 => "left", 1 => "right", 2 => "top", _ => "bottom" };
+            int edgeVal = hoverEdge switch
+            {
+                0 => elem.SliceBorderLeft,
+                1 => elem.SliceBorderRight,
+                2 => elem.SliceBorderTop,
+                _ => elem.SliceBorderBottom,
+            };
+            ImGui.SetTooltip($"Drag to set the {edgeName} border inset\nCurrently {edgeVal} px of the {(int)srcW}x{(int)srcH} source window");
+        }
+        else if (hovered)
+        {
+            bool isCorner = hr != 1 && hc != 1;
+            bool isCenter = hr == 1 && hc == 1;
+            string rule = isCorner
+                ? "Fixed corner — never scales, keeps its radius and trim"
+                : isCenter
+                    ? "Center — stretches both axes to fill the remaining space"
+                    : (hc == 1
+                        ? "Edge — stretches vertically (along Y) only"
+                        : "Edge — stretches horizontally (along X) only");
+            float cellW = hc == 0 ? bL : hc == 1 ? srcW - bL - bR : bR;
+            float cellH = hr == 0 ? bT : hr == 1 ? srcH - bT - bB : bB;
+            ImGui.SetTooltip($"{letters[hr * 3 + hc]} — {rule}\nSource cell: {cellW:0}x{cellH:0} px");
+        }
+
+        ImGui.TextColored(new Vector4(0.35f, 1f, 0.5f, 1f), "A C G I fixed");
+        ImGui.SameLine();
+        ImGui.TextColored(new Vector4(0.45f, 0.7f, 1f, 1f), "| B H stretch X, D F stretch Y");
+        ImGui.SameLine();
+        ImGui.TextColored(new Vector4(1f, 0.65f, 0.2f, 1f), "| E stretches both");
+        ImGui.TextDisabled($"Source window: {(int)srcW}x{(int)srcH} px of {texW}x{texH}  |  Borders L{(int)bL} R{(int)bR} T{(int)bT} B{(int)bB}");
+        if (elem.SliceWidth > (int)srcW || elem.SliceHeight > (int)srcH)
+        {
+            ImGui.TextColored(new Vector4(1f, 0.72f, 0.25f, 1f),
+                "Source window is larger than the image — it is clamped to the bitmap.");
+        }
+    }
+
+    /// <summary>Optional bitmap for one visual state (Hover / Clicked). An empty path means
+    /// "keep using the normal image". With atlas coordinates the state crops a region from
+    /// an atlas image; leaving the atlas path blank uses the element's default atlas image.</summary>
+    private static unsafe void DrawStateImageSettings(
+        string title, string id,
+        string path, Action<string> setPath,
+        bool useAtlas, Action<bool> setUseAtlas,
+        string atlasPath, Action<string> setAtlasPath,
+        int ax, int ay, int aw, int ah,
+        Action<int, int, int, int> setRect,
+        string defaultAtlasPath)
+    {
+        ImGui.Spacing();
+        ImGui.TextColored(new Vector4(0.75f, 0.85f, 1f, 1f), $"{title} Image");
+        ImGui.Indent(10f);
+
+        ImGui.Text(useAtlas ? "Image Path (blank = default atlas image):" : "Image Path (blank = normal image):");
+        ImGui.SetNextItemWidth(-30f);
+        string p = path;
+        if (ImGui.InputText($"##{id}_path", ref p, 512))
+            setPath(p);
+        if (ImGui.BeginDragDropTarget())
+        {
+            var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+            if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+            {
+                setPath(AssetBrowserPanel._dragImagePath);
+                AssetBrowserPanel._dragImagePath = null;
+            }
+            ImGui.EndDragDropTarget();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button($"X##{id}_clr") && !string.IsNullOrEmpty(path))
+            setPath("");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Clear the {title.ToLowerInvariant()} image (normal art shows again)");
+
+        bool ua = useAtlas;
+        if (ImGui.Checkbox($"Use Atlas Coordinates##{id}_ua", ref ua))
+            setUseAtlas(ua);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Sample a sub-region of an atlas texture (or of this state's own image)\ninstead of drawing the whole bitmap. Blank paths fall back to the default atlas image.");
+
+        if (ua)
+        {
+            ImGui.Indent(10f);
+            ImGui.Text("Atlas Image (blank = default atlas image):");
+            ImGui.SetNextItemWidth(-1);
+            string ap = atlasPath;
+            if (ImGui.InputText($"##{id}_atlas", ref ap, 512))
+                setAtlasPath(ap);
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                if (payload.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                {
+                    setAtlasPath(AssetBrowserPanel._dragImagePath);
+                    AssetBrowserPanel._dragImagePath = null;
+                }
+                ImGui.EndDragDropTarget();
+            }
+
+            if (string.IsNullOrEmpty(atlasPath))
+            {
+                if (!string.IsNullOrEmpty(defaultAtlasPath))
+                    ImGui.TextDisabled($"Default: {Path.GetFileName(defaultAtlasPath)}");
+                else
+                    ImGui.TextDisabled("No default atlas — this state's image is used.");
+            }
+
+            int x = ax, y = ay, w = aw, h = ah;
+            ImGui.SetNextItemWidth(-40f);
+            if (ImGui.InputInt($"X##{id}_ax", ref x)) x = Math.Max(0, x);
+            if (ImGui.InputInt($"Y##{id}_ay", ref y)) y = Math.Max(0, y);
+            if (ImGui.InputInt($"W##{id}_aw", ref w)) w = Math.Max(1, w);
+            if (ImGui.InputInt($"H##{id}_ah", ref h)) h = Math.Max(1, h);
+            if (x != ax || y != ay || w != aw || h != ah)
+                setRect(x, y, w, h);
+            ImGui.Unindent(10f);
+        }
+
+        ImGui.Unindent(10f);
     }
 
     /// <summary>Image path input + Asset Browser drag-drop target for one Bar image

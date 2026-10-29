@@ -137,6 +137,22 @@ public class UIElement
     public int AtlasWidth { get; set; }
     public int AtlasHeight { get; set; }
 
+    // ── Hover / Clicked state art (optional; each falls back to ImagePath) ──
+    public string HoverImagePath { get; set; } = "";
+    public bool HoverUseAtlasCoordinates { get; set; }
+    public string HoverAtlasImagePath { get; set; } = "";
+    public int HoverAtlasX { get; set; }
+    public int HoverAtlasY { get; set; }
+    public int HoverAtlasWidth { get; set; }
+    public int HoverAtlasHeight { get; set; }
+    public string ClickedImagePath { get; set; } = "";
+    public bool ClickedUseAtlasCoordinates { get; set; }
+    public string ClickedAtlasImagePath { get; set; } = "";
+    public int ClickedAtlasX { get; set; }
+    public int ClickedAtlasY { get; set; }
+    public int ClickedAtlasWidth { get; set; }
+    public int ClickedAtlasHeight { get; set; }
+
     /// <summary>
     /// Resolve the effective image path for this element.
     /// If UseAtlasCoordinates is true:
@@ -163,6 +179,49 @@ public class UIElement
             }
         }
         return ImagePath;
+    }
+
+    /// <summary>Bitmap + atlas crop for a visual state. A state with no image path falls
+    /// back to the normal image, so hover/clicked art is fully optional. A state in atlas
+    /// mode with blank paths draws from the element's default atlas image.</summary>
+    public (string path, bool useAtlas, int ax, int ay, int aw, int ah) GetStateImage(bool pressed, bool hovered)
+    {
+        if (pressed && HasStateArt(ClickedUseAtlasCoordinates, ClickedImagePath, ClickedAtlasImagePath))
+            return ResolveStateArt(ClickedUseAtlasCoordinates, ClickedImagePath, ClickedAtlasImagePath,
+                                   ClickedAtlasX, ClickedAtlasY, ClickedAtlasWidth, ClickedAtlasHeight);
+        if (hovered && HasStateArt(HoverUseAtlasCoordinates, HoverImagePath, HoverAtlasImagePath))
+            return ResolveStateArt(HoverUseAtlasCoordinates, HoverImagePath, HoverAtlasImagePath,
+                                   HoverAtlasX, HoverAtlasY, HoverAtlasWidth, HoverAtlasHeight);
+        return (GetEffectiveImagePath(), UseAtlasCoordinates, AtlasX, AtlasY, AtlasWidth, AtlasHeight);
+    }
+
+    /// <summary>A state overrides the normal art when it has its own bitmap, its own atlas
+    /// image, or atlas sampling switched on (which can reuse the default atlas).</summary>
+    private static bool HasStateArt(bool useAtlas, string ownPath, string atlasPath)
+        => useAtlas || !string.IsNullOrEmpty(ownPath) || !string.IsNullOrEmpty(atlasPath);
+
+    /// <summary>Builds one state's draw info. A blank state crop inherits the element's crop,
+    /// and a blank atlas image inherits the element's default atlas image.</summary>
+    private (string path, bool useAtlas, int ax, int ay, int aw, int ah) ResolveStateArt(
+        bool useAtlas, string ownPath, string atlasPath, int ax, int ay, int aw, int ah)
+    {
+        string path = StateImagePath(useAtlas, ownPath, atlasPath);
+        if (useAtlas && (aw <= 0 || ah <= 0))
+            return (path, true, AtlasX, AtlasY, AtlasWidth, AtlasHeight);
+        return (path, useAtlas, ax, ay, aw, ah);
+    }
+
+    /// <summary>Atlas crop source for a state: an explicit atlas path wins; in atlas mode with
+    /// no path the element's default atlas image (own or inherited from a parent) is used;
+    /// otherwise the state crops from its own bitmap.</summary>
+    private string StateImagePath(bool useAtlas, string ownPath, string atlasPath)
+    {
+        if (!useAtlas)
+            return string.IsNullOrEmpty(atlasPath) ? ownPath : atlasPath;
+        if (!string.IsNullOrEmpty(atlasPath))
+            return atlasPath;
+        string defaultAtlas = GetEffectiveImagePath();
+        return string.IsNullOrEmpty(defaultAtlas) ? ownPath : defaultAtlas;
     }
 
     // ── Helper quads (computed lazily from Slice geometry) ──
@@ -217,6 +276,20 @@ public class UIElement
         SliceBorderBottom = other.SliceBorderBottom;
         UseAtlasCoordinates = other.UseAtlasCoordinates;
         AtlasImagePath = other.AtlasImagePath;
+        HoverImagePath = other.HoverImagePath;
+        HoverUseAtlasCoordinates = other.HoverUseAtlasCoordinates;
+        HoverAtlasImagePath = other.HoverAtlasImagePath;
+        HoverAtlasX = other.HoverAtlasX;
+        HoverAtlasY = other.HoverAtlasY;
+        HoverAtlasWidth = other.HoverAtlasWidth;
+        HoverAtlasHeight = other.HoverAtlasHeight;
+        ClickedImagePath = other.ClickedImagePath;
+        ClickedUseAtlasCoordinates = other.ClickedUseAtlasCoordinates;
+        ClickedAtlasImagePath = other.ClickedAtlasImagePath;
+        ClickedAtlasX = other.ClickedAtlasX;
+        ClickedAtlasY = other.ClickedAtlasY;
+        ClickedAtlasWidth = other.ClickedAtlasWidth;
+        ClickedAtlasHeight = other.ClickedAtlasHeight;
     }
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
@@ -649,6 +722,14 @@ public class UIElement
             SliceBorderTop = SliceBorderTop, SliceBorderBottom = SliceBorderBottom,
             UseAtlasCoordinates = UseAtlasCoordinates, AtlasImagePath = AtlasImagePath,
             AtlasX = AtlasX, AtlasY = AtlasY, AtlasWidth = AtlasWidth, AtlasHeight = AtlasHeight,
+            HoverImagePath = HoverImagePath, HoverUseAtlasCoordinates = HoverUseAtlasCoordinates,
+            HoverAtlasImagePath = HoverAtlasImagePath,
+            HoverAtlasX = HoverAtlasX, HoverAtlasY = HoverAtlasY,
+            HoverAtlasWidth = HoverAtlasWidth, HoverAtlasHeight = HoverAtlasHeight,
+            ClickedImagePath = ClickedImagePath, ClickedUseAtlasCoordinates = ClickedUseAtlasCoordinates,
+            ClickedAtlasImagePath = ClickedAtlasImagePath,
+            ClickedAtlasX = ClickedAtlasX, ClickedAtlasY = ClickedAtlasY,
+            ClickedAtlasWidth = ClickedAtlasWidth, ClickedAtlasHeight = ClickedAtlasHeight,
             FontSize = FontSize, FontPath = FontPath,
             TextColor = TextColor, BgColor = BgColor, BorderColor = BorderColor,
             HoverTextColor = HoverTextColor, HoverBgColor = HoverBgColor, HoverBorderColor = HoverBorderColor,

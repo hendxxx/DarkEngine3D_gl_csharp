@@ -67,6 +67,9 @@ public class IDE : IDisposable
     private float _savedIDEFontSize = 20f;
     // ── Keyboard navigation in in-game mode ──
     private UIElement? _focusedInGameElement = null;
+    /// <summary>True when the focused element was reached with Tab / arrow keys. Mouse use
+    /// clears it, so the cyan focus ring only appears for keyboard navigation.</summary>
+    private bool _keyboardFocusVisible;
     private int _focusedInGameIndex = -1;
     /// <summary>Overlay name already logged to the console (once per activation —
     /// the overlay block runs every frame; without this the "navigable elements"
@@ -368,6 +371,7 @@ public class IDE : IDisposable
             Visual.Camera.MouseCameraControl = projSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
             Bridge.ShowInGameStats = projSettings.ShowInGameStats;
+            Bridge.ShowSelectionBorder = projSettings.ShowSelectionBorder;
             // 2D sprite normal maps are per project too (settings.json follows the project).
             Visual.SpriteLighting2D.NormalMapsEnabled = projSettings.SpriteNormalMaps2D;
             if (Bridge.Camera != null)
@@ -410,6 +414,7 @@ public class IDE : IDisposable
             Visual.Camera.OrthoZoomDisabled = fallbackSettings.OrthoZoomDisabled;
             Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
             Visual.SpriteLighting2D.NormalMapsEnabled = fallbackSettings.SpriteNormalMaps2D;
+            Bridge.ShowSelectionBorder = fallbackSettings.ShowSelectionBorder;
             // Follow the active settings file back to the exe fallback after close.
             Config.PostFxSettings.Apply(fallbackSettings);
             _postFxPanel?.OnProjectChanged();
@@ -947,6 +952,7 @@ public class IDE : IDisposable
             Visual.Camera.MouseCameraControl = bootSettings.MouseCameraControl;
             Visual.Camera.InGameMouseCameraControl = bootSettings.InGameMouseCameraControl;
             Bridge.ShowInGameStats = bootSettings.ShowInGameStats;
+            Bridge.ShowSelectionBorder = bootSettings.ShowSelectionBorder;
             Visual.SpriteLighting2D.NormalMapsEnabled = bootSettings.SpriteNormalMaps2D;
 
             // Assign shared gizmo to bridge
@@ -2351,6 +2357,7 @@ public class IDE : IDisposable
             bool shiftTab = tabPressed && io.KeyShift;
             if (tabPressed)
             {
+                _keyboardFocusVisible = true;
                 if (navElements.Count > 0)
                 {
                     if (shiftTab)
@@ -2416,11 +2423,13 @@ public class IDE : IDisposable
 
                     if (arrowNext)
                     {
+                        _keyboardFocusVisible = true;
                         _focusedInGameIndex = (_focusedInGameIndex + 1) % navElements.Count;
                         _focusedInGameElement = navElements[_focusedInGameIndex];
                     }
                     else if (arrowPrev)
                     {
+                        _keyboardFocusVisible = true;
                         _focusedInGameIndex--;
                         if (_focusedInGameIndex < 0)
                             _focusedInGameIndex = navElements.Count - 1;
@@ -2473,6 +2482,7 @@ public class IDE : IDisposable
                 renderElements = ordered;
             }
 
+            _viewport.ShowKeyboardFocusRing = _keyboardFocusVisible;
             _viewport.RenderUIElements(
                 drawList,
                 new Vector2(ox, oy), new Vector2(ox + canvasW, oy + canvasH),
@@ -2495,6 +2505,7 @@ public class IDE : IDisposable
                 int clickIdx = navElements.IndexOf(clicked);
                 if (clickIdx >= 0)
                 {
+                    _keyboardFocusVisible = false; // mouse focus → no keyboard ring
                     _focusedInGameIndex = clickIdx;
                     _focusedInGameElement = clicked;
                     Console.WriteLine($"[IDE] Mouse click synced keyboard focus to '{clicked.Name}'");

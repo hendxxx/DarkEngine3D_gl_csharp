@@ -333,7 +333,11 @@ public unsafe class ViewportPanel
             //  Draw image element on top of background (supports Atlas crop, Nine-Slice, and Image Filter)
             // Atlas mode: render a sub-region of a parent atlas texture.
             // When UseAtlasCoordinates is true, AtlasImagePath + crop rect override ImagePath.
-            string effectiveImagePath = elem.GetEffectiveImagePath();
+            // Hover / pressed art overrides the normal bitmap for this frame. Each state can
+            // carry its own atlas crop, so hover frames may live in the same atlas.
+            bool pressState = isHovered && isMouseDown && !blockedByOverlay;
+            var stateImg = elem.GetStateImage(pressState, useHover);
+            string effectiveImagePath = stateImg.path;
             bool hasImage = elem.Type != UIElementType.Bar && !string.IsNullOrEmpty(effectiveImagePath);
             if (hasImage)
             {
@@ -350,19 +354,19 @@ public unsafe class ViewportPanel
                     // u0/v0 = top-left corner of the crop in UV space; u1/v1 = bottom-right
                     float uvX0 = 0f, uvY0 = 0f, uvX1 = 1f, uvY1 = 1f;
                     float srcW = imgW, srcH = imgH; // effective source size for aspect ratio
-                    if (elem.UseAtlasCoordinates && elem.AtlasWidth > 0 && elem.AtlasHeight > 0)
+                    if (stateImg.useAtlas && stateImg.aw > 0 && stateImg.ah > 0)
                     {
-                        uvX0 = elem.AtlasX / imgW;
-                        uvY0 = elem.AtlasY / imgH;
-                        uvX1 = (elem.AtlasX + elem.AtlasWidth)  / imgW;
-                        uvY1 = (elem.AtlasY + elem.AtlasHeight) / imgH;
+                        uvX0 = stateImg.ax / imgW;
+                        uvY0 = stateImg.ay / imgH;
+                        uvX1 = (stateImg.ax + stateImg.aw) / imgW;
+                        uvY1 = (stateImg.ay + stateImg.ah) / imgH;
                         // Clamp to [0,1] to avoid reading outside texture
                         uvX0 = Math.Clamp(uvX0, 0f, 1f);
                         uvY0 = Math.Clamp(uvY0, 0f, 1f);
                         uvX1 = Math.Clamp(uvX1, 0f, 1f);
                         uvY1 = Math.Clamp(uvY1, 0f, 1f);
-                        srcW = elem.AtlasWidth;
-                        srcH = elem.AtlasHeight;
+                        srcW = stateImg.aw;
+                        srcH = stateImg.ah;
                     }
 
                     float elemW = sx1 - sx0;
@@ -372,76 +376,119 @@ public unsafe class ViewportPanel
                     bool doSlice = elem.SliceEnabled && elem.SliceWidth > 0 && elem.SliceHeight > 0;
                     if (doSlice)
                     {
-                        // Source window in the texture
-                        float texSrcX = elem.SliceX;
-                        float texSrcY = elem.SliceY;
+                        // Source window in the texture, clamped to the bitmap exactly like the
+                        // Inspector preview. Without this a window wider/taller than the image
+                        // (e.g. W/H still 100 on a 42x12 button) pushed the right/bottom UVs
+                        // past 1.0, collapsed those bands and squashed the art.
+                        float texSrcX = Math.Max(0, elem.SliceX);
+                        float texSrcY = Math.Max(0, elem.SliceY);
                         float texSrcW = elem.SliceWidth  > 0 ? elem.SliceWidth  : imgW;
                         float texSrcH = elem.SliceHeight > 0 ? elem.SliceHeight : imgH;
-                        if (elem.UseAtlasCoordinates && elem.AtlasWidth > 0)
+                        if (stateImg.useAtlas && stateImg.aw > 0)
                         {
                             // Slice is relative to atlas crop, offset into atlas space
-                            texSrcX = elem.AtlasX + elem.SliceX;
-                            texSrcY = elem.AtlasY + elem.SliceY;
+                            texSrcX = stateImg.ax + elem.SliceX;
+                            texSrcY = stateImg.ay + elem.SliceY;
                         }
-                        // Border sizes in source texture pixels
-                        float bL = Math.Max(0, elem.SliceBorderLeft);
-                        float bR = Math.Max(0, elem.SliceBorderRight);
-                        float bT = Math.Max(0, elem.SliceBorderTop);
-                        float bB = Math.Max(0, elem.SliceBorderBottom);
+                        texSrcX = Math.Clamp(texSrcX, 0f, Math.Max(0f, imgW - 1f));
+                        texSrcY = Math.Clamp(texSrcY, 0f, Math.Max(0f, imgH - 1f));
+                        texSrcW = Math.Clamp(texSrcW, 1f, imgW - texSrcX);
+                        texSrcH = Math.Clamp(texSrcH, 1f, imgH - texSrcY);
 
-                        // Scale border sizes to screen pixels using element scale
-                        float scaleX = elemW / texSrcW;
-                        float scaleY = elemH / texSrcH;
-                        float sbL = bL * scaleX; // screen-space left border
-                        float sbR = bR * scaleX;
-                        float sbT = bT * scaleY;
-                        float sbB = bB * scaleY;
-                        // Clamp so borders don't exceed element size
-                        sbL = Math.Min(sbL, elemW * 0.49f);
-                        sbR = Math.Min(sbR, elemW * 0.49f);
-                        sbT = Math.Min(sbT, elemH * 0.49f);
-                        sbB = Math.Min(sbB, elemH * 0.49f);
+                        // Border sizes in source texture pixels, clamped so an opposite pair
+                        // always leaves a 1px stretchable strip (same rule as the preview).
+                        float bL = Math.Clamp(elem.SliceBorderLeft, 0, Math.Max(0, (int)texSrcW - 1));
+                        float bR = Math.Clamp(elem.SliceBorderRight, 0, Math.Max(0, (int)texSrcW - 1));
+                        if (bL + bR > texSrcW - 1f)
+                        {
+                            float over = bL + bR - Math.Max(0f, texSrcW - 1f);
+                            float take = Math.Min(over, bR);
+                            bR -= take;
+                            bL -= over - take;
+                        }
+                        float bT = Math.Clamp(elem.SliceBorderTop, 0, Math.Max(0, (int)texSrcH - 1));
+                        float bB = Math.Clamp(elem.SliceBorderBottom, 0, Math.Max(0, (int)texSrcH - 1));
+                        if (bT + bB > texSrcH - 1f)
+                        {
+                            float over = bT + bB - Math.Max(0f, texSrcH - 1f);
+                            float take = Math.Min(over, bB);
+                            bB -= take;
+                            bT -= over - take;
+                        }
 
-                        // UV column/row boundaries
-                        float uL  = texSrcX / imgW;
-                        float uML = (texSrcX + bL) / imgW;
-                        float uMR = (texSrcX + texSrcW - bR) / imgW;
-                        float uR  = (texSrcX + texSrcW) / imgW;
-                        float vT  = texSrcY / imgH;
-                        float vMT = (texSrcY + bT) / imgH;
-                        float vMB = (texSrcY + texSrcH - bB) / imgH;
-                        float vB  = (texSrcY + texSrcH) / imgH;
-                        uL  = Math.Clamp(uL,  0f, 1f);
-                        uML = Math.Clamp(uML, 0f, 1f);
-                        uMR = Math.Clamp(uMR, 0f, 1f);
-                        uR  = Math.Clamp(uR,  0f, 1f);
-                        vT  = Math.Clamp(vT,  0f, 1f);
-                        vMT = Math.Clamp(vMT, 0f, 1f);
-                        vMB = Math.Clamp(vMB, 0f, 1f);
-                        vB  = Math.Clamp(vB,  0f, 1f);
+                        // 9-slice rule (classic 3x3 grid): A/C/G/I are fixed corners, B/H
+                        // stretch along X, D/F stretch along Y, E stretches on both axes.
+                        // The corners are "fixed" in shape but not in size: one uniform
+                        // factor scales all four bands, so a 100x100 element keeps thin
+                        // borders, a 500x500 one gets proportionally thicker ones, and a
+                        // tall/narrow element never inflates just the top/bottom band.
+                        // Per-axis scaling distorted the frame (a tall button got a huge
+                        // top/bottom band), so both axes follow the smaller ratio.
+                        float sliceScale = MathF.Min(elemW / texSrcW, elemH / texSrcH);
+                        if (!(sliceScale > 0f) || float.IsNaN(sliceScale) || float.IsInfinity(sliceScale))
+                            sliceScale = 1f;
+                        float sbL = bL * sliceScale;
+                        float sbR = bR * sliceScale;
+                        float sbT = bT * sliceScale;
+                        float sbB = bB * sliceScale;
+                        // Only when the element is smaller than its own borders do the fixed
+                        // bands shrink, leaving a 1px middle so the layout stays valid.
+                        if (sbL + sbR > elemW - 1f && sbL + sbR > 0f)
+                        {
+                            float k = Math.Max(0f, elemW - 1f) / (sbL + sbR);
+                            sbL *= k;
+                            sbR *= k;
+                        }
+                        if (sbT + sbB > elemH - 1f && sbT + sbB > 0f)
+                        {
+                            float k = Math.Max(0f, elemH - 1f) / (sbT + sbB);
+                            sbT *= k;
+                            sbB *= k;
+                        }
 
-                        // Screen-space column/row X/Y boundaries
-                        float[] cx = [sx0, sx0 + sbL, sx1 - sbR, sx1];
-                        float[] cy = [sy0, sy0 + sbT, sy1 - sbB, sy1];
-                        float[] cu = [uL, uML, uMR, uR];
-                        float[] cv = [vT, vMT, vMB, vB];
+                        // Destination bands (screen px) and source bands (texture px).
+                        float dx1 = sx0 + sbL, dx2 = sx1 - sbR;
+                        float dy1 = sy0 + sbT, dy2 = sy1 - sbB;
+                        float[] dxs = [sx0, dx1, dx2, sx1];
+                        float[] dys = [sy0, dy1, dy2, sy1];
+                        float[] uBd = [texSrcX, texSrcX + bL, texSrcX + texSrcW - bR, texSrcX + texSrcW];
+                        float[] vBd = [texSrcY, texSrcY + bT, texSrcY + texSrcH - bB, texSrcY + texSrcH];
 
                         uint white = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, elemOpacity));
-                        for (int row = 0; row < 3; row++)
-                        for (int col = 0; col < 3; col++)
+                        void SliceQuad(float qx0, float qy0, float qx1, float qy1,
+                                       float qu0, float qv0, float qu1, float qv1)
                         {
                             drawList.AddImageQuad(
                                 (nint)texId,
-                                new Vector2(cx[col],   cy[row]),
-                                new Vector2(cx[col+1], cy[row]),
-                                new Vector2(cx[col+1], cy[row+1]),
-                                new Vector2(cx[col],   cy[row+1]),
-                                new Vector2(cu[col],   cv[row]),
-                                new Vector2(cu[col+1], cv[row]),
-                                new Vector2(cu[col+1], cv[row+1]),
-                                new Vector2(cu[col],   cv[row+1]),
+                                new Vector2(qx0, qy0),
+                                new Vector2(qx1, qy0),
+                                new Vector2(qx1, qy1),
+                                new Vector2(qx0, qy1),
+                                new Vector2(qu0 / imgW, qv0 / imgH),
+                                new Vector2(qu1 / imgW, qv0 / imgH),
+                                new Vector2(qu1 / imgW, qv1 / imgH),
+                                new Vector2(qu0 / imgW, qv1 / imgH),
                                 white);
                         }
+
+                        // A/C/G/I — fixed corners, never scaled.
+                        for (int row = 0; row < 3; row += 2)
+                        for (int col = 0; col < 3; col += 2)
+                            SliceQuad(dxs[col], dys[row], dxs[col + 1], dys[row + 1],
+                                      uBd[col], vBd[row], uBd[col + 1], vBd[row + 1]);
+
+                        // B/H — top and bottom edges stretch along X.
+                        for (int row = 0; row < 3; row += 2)
+                            SliceQuad(dx1, dys[row], dx2, dys[row + 1],
+                                      uBd[1], vBd[row], uBd[2], vBd[row + 1]);
+
+                        // D/F — left and right edges stretch along Y.
+                        for (int col = 0; col < 3; col += 2)
+                            SliceQuad(dxs[col], dy1, dxs[col + 1], dy2,
+                                      uBd[col], vBd[1], uBd[col + 1], vBd[2]);
+
+                        // E — center stretches on both axes.
+                        SliceQuad(dx1, dy1, dx2, dy2, uBd[1], vBd[1], uBd[2], vBd[2]);
                     }
                     else
                     {
@@ -623,7 +670,13 @@ public unsafe class ViewportPanel
             }
 
             //  Focus highlight (keyboard navigation)  glowing cyan border 
-            if (focusedElement != null && elem == focusedElement && isPreview)
+            // Only while the player is actually navigating with Tab / arrow keys: the ring is
+            // a keyboard affordance, so it must not add a border to mouse users or on load
+            // (a button whose BorderColor is transparent would otherwise still show cyan).
+            // A transparent BorderColor opts the element out of borders entirely, so the
+            // focus ring must not add one back.
+            if (ShowKeyboardFocusRing && elem.BorderColor.W > 0.001f &&
+                focusedElement != null && elem == focusedElement && isPreview)
             {
                 float glowExtra = 3f;
                 uint focusCol = ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.8f, 1.0f, 0.9f * elemOpacity));
@@ -2387,6 +2440,11 @@ public unsafe class ViewportPanel
     /// Used by In-Game Mode (F8) to display loaded scenes without any ImGui windows.
     /// Optional focusedElement is highlighted with a glow border for keyboard navigation.
     /// keyboardActivate signals that Enter/Space was pressed for the focused element.</summary>
+    /// <summary>True only while the player is navigating with the keyboard. The glowing
+    /// cyan focus ring is a keyboard affordance: keep it off for mouse users and on first
+    /// load so an element with a transparent BorderColor shows no border at all.</summary>
+    public bool ShowKeyboardFocusRing { get; set; }
+
     public void RenderUIElements(
         ImDrawListPtr drawList,
         Vector2 canvasMin, Vector2 canvasMax,
@@ -3643,6 +3701,15 @@ ImGui.SameLine();
                         bracketColor = 0;
                     }
 
+                    // IDE Settings → "Use Border When Selected" off: hide the outline, tint
+                    // and brackets globally, but keep the handles so elements stay resizable.
+                    if (!_bridge.ShowSelectionBorder)
+                    {
+                        fillColor = 0;
+                        wireColor = 0;
+                        bracketColor = 0;
+                    }
+
                     drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1), fillColor);
                     drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1), wireColor, 0f, ImDrawFlags.None, isPrimary ? 3f : 1.5f);
 
@@ -3726,7 +3793,8 @@ ImGui.SameLine();
                     }
 
                     //  Combined bounding box around ALL selected elements
-                    if (allSelected.Count > 1)
+                    // (also an editor selection outline → hidden with the global setting)
+                    if (allSelected.Count > 1 && _bridge.ShowSelectionBorder)
                     {
                         float bboxMinX = float.MaxValue, bboxMinY = float.MaxValue;
                         float bboxMaxX = float.MinValue, bboxMaxY = float.MinValue;

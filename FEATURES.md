@@ -141,6 +141,16 @@ The Add New Scene / Edit Scene dialogs carry a **Game Type** combo for Game Scen
 - **Legacy files**: a missing key is inferred from the saved editor camera (ortho → 2D SideScroller, otherwise 3D), so old `.ing` files keep their meaning without re-saving. Every save path (Save All / Save As, and the Hierarchy single-scene save) writes the key.
 - **Metadata today**: the type labels/persists the scene; it does not change gameplay systems yet — 2D Top Down still runs the existing sidescroller player physics.
 
+## 1.12 Image slicing (9-slice) + hover/clicked state art
+
+UI elements can draw a sliced image instead of a stretched bitmap. `UIElement.SliceEnabled` + the source window (`SliceX/Y/Width/Height`, in texture px, clamped to the bitmap and offset into the atlas crop when `UseAtlasCoordinates` is on) and four border insets (`SliceBorderLeft/Right/Top/Bottom`) define a 3×3 grid in the Inspector. Every value persists through `SceneElementData` / `SceneAssetSerializer` and `DeepCloneFrom`.
+
+- **The rule is the classic 3×3 grid**: `A C G I` are fixed corners, `B H` stretch along X only, `D F` stretch along Y only, `E` stretches on both axes. Corners are fixed in shape but scale with the element through one uniform factor (`min(elemW / srcW, elemH / srcH)`), so a 100×100 element keeps thin borders while a 500×500 one gets proportionally thicker borders — per-axis scaling is deliberately NOT used (a tall, narrow button inflated just the top/bottom band into huge blocks). When the element is smaller than its own borders the bands shrink proportionally and keep a 1 px middle.
+- **Hover / Clicked art**: `HoverImagePath` / `ClickedImagePath` (+ optional `*UseAtlasCoordinates`, `*AtlasImagePath`, `*AtlasX/Y/Width/Height`) override the normal bitmap per state; a state with nothing set falls back to `ImagePath`. In atlas mode a blank path or blank atlas image falls back to the element's default atlas image and, when the state crop is empty, to the element's own crop, so a hover frame can live in the same atlas sheet as the idle frame.
+- **Auto-detect borders**: `Engine/Visual/NineSliceDetector.cs` samples the selected window's pixels (column/row colour profiles, ignoring the outer quarter so corner decoration cannot skew the opposite axis) and fills the four insets; the Inspector also fills the source window when it is still 0×0.
+- **Visual preview**: the Inspector draws the source window with the green cut lines, `A`–`I` labels, a hover rule tooltip and draggable handles on each inset (drag a line/handle to write that border in source px); the handles are hit-tested so a drag keeps tracking outside the box.
+- **Selection outline is a global editor preference**: IDE Settings → Interface → **Use Border When Selected** (`SettingsData.ShowSelectionBorder`, also on `IDEBridge`). OFF hides the cyan wireframe/tint/corner brackets for every UI element while the resize handles stay usable; it is per-project in `settings.json` and restored by the settings Reset.
+
 ## 2. Project reference
 
 DarkEngine3D_gl_csharp/Engine. Prose references use relative paths from the repo root.

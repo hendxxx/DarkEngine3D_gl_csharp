@@ -142,6 +142,19 @@ public class IDESettingsPanel
                     SaveSetting(s => s.ToolbarFontSize = tbFont);
                 }
                 ImGui.PopItemWidth();
+
+                // Selection outline for UI elements (global editor preference).
+                bool selBorder = _bridge.ShowSelectionBorder;
+                if (ImGui.Checkbox("Use Border When Selected", ref selBorder))
+                {
+                    _bridge.ShowSelectionBorder = selBorder;
+                    SaveSetting(s => s.ShowSelectionBorder = selBorder);
+                    Console.WriteLine($"[IDESettings] Selection border: {(selBorder ? "ON" : "OFF")}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("ON: the viewport draws the cyan selection outline (plus tint and\ncorner brackets) around selected UI elements.\nOFF: no outline for any element — resize handles stay visible.\nApplies immediately; saved in settings.json per project.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(selBorder ? "selection border ON" : "selection border hidden");
             }
 
             ImGui.Separator();
@@ -341,6 +354,8 @@ public class IDESettingsPanel
                 s.ShowCursorInGame = false;
                 s.ShowDebugGrid = false;
                 s.ShowShadows = true;
+                s.ShowSelectionBorder = true;
+                _bridge.ShowSelectionBorder = true;
                 s.SpriteNormalMaps2D = true;
                 s.IDEFontSize = 20f;
                 s.ViewportFontSize = 16f;

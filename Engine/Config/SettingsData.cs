@@ -29,6 +29,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         // ── Viewport editor prefs (persisted so they survive restarts) ──
         /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>
         public bool ShowDebugGrid { get; set; } = false;
+        /// <summary>Editor selection outline for UI elements (IDE Settings → Interface).
+        /// OFF hides the cyan wireframe/tint/brackets for every element; the resize
+        /// handles stay visible so elements can still be moved and resized.</summary>
+        public bool ShowSelectionBorder { get; set; } = true;
         /// <summary>Editor viewport shadows on/off (viewport toolbar "Shadow").
         /// When off, the CSM shadow pass is skipped and shadow maps read as fully lit.</summary>
         public bool ShowShadows { get; set; } = false;   // OFF by default (CSM shadow pass skipped)
