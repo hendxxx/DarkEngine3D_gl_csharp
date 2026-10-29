@@ -1,4 +1,4 @@
-using DarkEngine3D_gl_csharp.Engine.Objects;
+﻿using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
@@ -104,8 +104,8 @@ public class HierarchyPanel
 
         // For ColorChange (color property change from Inspector)
         public string ColorPropertyName;
-        public Vector3 OldColor;
-        public Vector3 NewColor;
+        public Vector4 OldColor;
+        public Vector4 NewColor;
 
         // For EditorTransform (3D gizmo drag on an EditorObject)
         public EditorObject? EditorObj;
@@ -1623,7 +1623,7 @@ public class HierarchyPanel
     }
 
     /// <summary>Set a color property on a UIElement by property name.</summary>
-    private static void SetColorProperty(UIElement elem, string propName, Vector3 color)
+    private static void SetColorProperty(UIElement elem, string propName, Vector4 color)
     {
         switch (propName)
         {
@@ -1883,8 +1883,8 @@ public class HierarchyPanel
         if (elemType == UIElementType.Label)
         {
             newElem.UseHover = false;
-            newElem.BgColor = new Vector3(0f, 0f, 0f) * 0f; // fully transparent
-            newElem.BorderColor = new Vector3(0f, 0f, 0f) * 0f;
+            newElem.BgColor = new Vector4(0f, 0f, 0f, 0f); // fully transparent
+            newElem.BorderColor = new Vector4(0f, 0f, 0f, 0f);
             newElem.HoverBgColor = newElem.BgColor;
             newElem.HoverBorderColor = newElem.BorderColor;
             newElem.HoverTextColor = newElem.TextColor;

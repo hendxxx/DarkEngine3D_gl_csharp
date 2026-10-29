@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Libs;
@@ -50,13 +50,13 @@ public class SceneElementData
     public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
 
-    // Colors as arrays [r, g, b] — Vector3 is not directly serializable
-    public float[] TextColor { get; set; } = [0.95f, 0.95f, 1f];
-    public float[] BgColor { get; set; } = [0.10f, 0.12f, 0.18f];
-    public float[] BorderColor { get; set; } = [0.15f, 0.18f, 0.25f];
-    public float[] HoverTextColor { get; set; } = [0.95f, 0.95f, 1f];
-    public float[] HoverBgColor { get; set; } = [0.22f, 0.28f, 0.45f];
-    public float[] HoverBorderColor { get; set; } = [0.5f, 0.6f, 1.0f];
+    // Colors as arrays [r, g, b, a] — Vector4 is not directly serializable
+    public float[] TextColor { get; set; } = [0.95f, 0.95f, 1f, 1f];
+    public float[] BgColor { get; set; } = [0.10f, 0.12f, 0.18f, 1f];
+    public float[] BorderColor { get; set; } = [0.15f, 0.18f, 0.25f, 1f];
+    public float[] HoverTextColor { get; set; } = [0.95f, 0.95f, 1f, 1f];
+    public float[] HoverBgColor { get; set; } = [0.22f, 0.28f, 0.45f, 1f];
+    public float[] HoverBorderColor { get; set; } = [0.5f, 0.6f, 1.0f, 1f];
 
     public string Alignment { get; set; } = "Center";
     public bool IsVisible { get; set; } = true;

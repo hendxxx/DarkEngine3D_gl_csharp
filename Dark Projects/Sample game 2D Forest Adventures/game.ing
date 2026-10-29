@@ -38,31 +38,37 @@
           "textColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "bgColor": [
             0.1,
             0.12,
-            0.18
+            0.18,
+            1
           ],
           "borderColor": [
             0.15,
             0.18,
-            0.25
+            0.25,
+            1
           ],
           "hoverTextColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "hoverBgColor": [
             0.22,
             0.28,
-            0.45
+            0.45,
+            1
           ],
           "hoverBorderColor": [
             0.5,
             0.6,
+            1,
             1
           ],
           "alignment": "Center",
@@ -220,10 +226,10 @@
               "name": "MainMenu",
               "type": "Container",
               "text": "",
-              "x": 0,
-              "y": 0,
-              "width": 1220,
-              "height": 760,
+              "x": 720,
+              "y": 500,
+              "width": 1300,
+              "height": 620,
               "imagePath": "",
               "imageMode": "Stretch",
               "imageFilter": 0,
@@ -236,53 +242,59 @@
               "sliceBorderRight": 0,
               "sliceBorderTop": 0,
               "sliceBorderBottom": 0,
-              "useAtlasCoordinates": false,
-              "atlasImagePath": "",
-              "atlasX": 0,
-              "atlasY": 0,
-              "atlasWidth": 0,
-              "atlasHeight": 0,
+              "useAtlasCoordinates": true,
+              "atlasImagePath": "Artifacts\\images\\UI\\Main_menu.png",
+              "atlasX": 189,
+              "atlasY": 2,
+              "atlasWidth": 56,
+              "atlasHeight": 14,
               "fontSize": 13,
               "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,
+                1,
                 1
               ],
               "bgColor": [
                 0.1,
                 0.12,
-                0.18
+                0.18,
+                1
               ],
               "borderColor": [
                 0.1,
                 0.12,
-                0.18
+                0.18,
+                1
               ],
               "hoverTextColor": [
                 0.95,
                 0.95,
+                1,
                 1
               ],
               "hoverBgColor": [
                 0.22,
                 0.28,
-                0.45
+                0.45,
+                1
               ],
               "hoverBorderColor": [
                 0.5,
                 0.6,
+                1,
                 1
               ],
               "alignment": "Center",
               "isVisible": true,
-              "opacity": 0.5,
+              "opacity": 0,
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
               "anchor": "None",
               "useHover": false,
-              "clickBehavior": "overlay:MainMenu",
+              "clickBehavior": "None",
               "hoverEnterBehavior": "None",
               "hoverExitBehavior": "None",
               "minValue": 0,
@@ -304,7 +316,7 @@
               "selectedIndex": 0,
               "fallbackText": "",
               "wordWrap": true,
-              "triggeredByKeyboardButton": "Escape",
+              "triggeredByKeyboardButton": "",
               "placeholder": "Enter text...",
               "maxLength": 0,
               "inputText": "",
@@ -429,12 +441,12 @@
                   "name": "Menu",
                   "type": "Container",
                   "text": "",
-                  "x": 0,
-                  "y": 0,
-                  "width": 560,
-                  "height": 1185,
-                  "imagePath": "Artifacts\\images\\UI\\MainMenu.png",
-                  "imageMode": "Stretch",
+                  "x": 400,
+                  "y": -140,
+                  "width": 460,
+                  "height": 960,
+                  "imagePath": "",
+                  "imageMode": "Fill",
                   "imageFilter": 0,
                   "sliceEnabled": false,
                   "sliceX": 0,
@@ -445,47 +457,53 @@
                   "sliceBorderRight": 0,
                   "sliceBorderTop": 0,
                   "sliceBorderBottom": 0,
-                  "useAtlasCoordinates": false,
+                  "useAtlasCoordinates": true,
                   "atlasImagePath": "",
-                  "atlasX": 0,
+                  "atlasX": 96,
                   "atlasY": 0,
-                  "atlasWidth": 0,
-                  "atlasHeight": 0,
+                  "atlasWidth": 80,
+                  "atlasHeight": 172,
                   "fontSize": 13,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    0
                   ],
                   "borderColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    0
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0.22,
                     0.28,
-                    0.45
+                    0.45,
+                    1
                   ],
                   "hoverBorderColor": [
                     0.5,
                     0.6,
+                    1,
                     1
                   ],
                   "alignment": "Center",
                   "isVisible": true,
-                  "opacity": 0,
+                  "opacity": 1,
                   "autoFillWindow": false,
                   "autoCenterX": true,
                   "autoCenterY": true,
@@ -635,14 +653,14 @@
                   "barProgOffsetBottom": 0,
                   "children": [
                     {
-                      "name": "btn",
+                      "name": "btnResume",
                       "type": "Button",
-                      "text": "Resume",
-                      "x": 1040,
-                      "y": 200,
-                      "width": 460,
-                      "height": 120,
-                      "imagePath": "Artifacts\\images\\UI\\Button_empty2.png",
+                      "text": "",
+                      "x": -20,
+                      "y": -20,
+                      "width": 360,
+                      "height": 80,
+                      "imagePath": "",
                       "imageMode": "Stretch",
                       "imageFilter": 0,
                       "sliceEnabled": false,
@@ -654,52 +672,58 @@
                       "sliceBorderRight": 0,
                       "sliceBorderTop": 0,
                       "sliceBorderBottom": 0,
-                      "useAtlasCoordinates": false,
+                      "useAtlasCoordinates": true,
                       "atlasImagePath": "",
-                      "atlasX": 0,
-                      "atlasY": 0,
-                      "atlasWidth": 0,
-                      "atlasHeight": 0,
-                      "fontSize": 30,
+                      "atlasX": 348,
+                      "atlasY": 17,
+                      "atlasWidth": 58,
+                      "atlasHeight": 13,
+                      "fontSize": 24,
                       "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
                       "textColor": [
                         0.95,
                         0.95,
-                        1
+                        1,
+                        0
                       ],
                       "bgColor": [
                         0.1,
                         0.12,
-                        0.18
+                        0.18,
+                        0
                       ],
                       "borderColor": [
                         0.15,
                         0.18,
-                        0.25
+                        0.25,
+                        0
                       ],
                       "hoverTextColor": [
                         0.95,
                         0.95,
-                        1
+                        1,
+                        0
                       ],
                       "hoverBgColor": [
                         0.22,
                         0.28,
-                        0.45
+                        0.45,
+                        0
                       ],
                       "hoverBorderColor": [
                         0.5,
                         0.6,
-                        1
+                        1,
+                        0
                       ],
                       "alignment": "Center",
                       "isVisible": true,
-                      "opacity": 0,
+                      "opacity": 1,
                       "autoFillWindow": false,
                       "autoCenterX": false,
                       "autoCenterY": false,
                       "anchor": "None",
-                      "useHover": false,
+                      "useHover": true,
                       "clickBehavior": "None",
                       "hoverEnterBehavior": "None",
                       "hoverExitBehavior": "None",
@@ -845,15 +869,15 @@
                       "children": []
                     },
                     {
-                      "name": "btnClose",
+                      "name": "btnExit",
                       "type": "Button",
-                      "text": "bar",
-                      "x": 1474,
-                      "y": 95,
-                      "width": 65,
-                      "height": 65,
-                      "imagePath": "Artifacts\\images\\UI\\Close.png",
-                      "imageMode": "Zoom",
+                      "text": "",
+                      "x": -20,
+                      "y": 680,
+                      "width": 360,
+                      "height": 80,
+                      "imagePath": "",
+                      "imageMode": "Stretch",
                       "imageFilter": 0,
                       "sliceEnabled": false,
                       "sliceX": 0,
@@ -864,53 +888,59 @@
                       "sliceBorderRight": 0,
                       "sliceBorderTop": 0,
                       "sliceBorderBottom": 0,
-                      "useAtlasCoordinates": false,
+                      "useAtlasCoordinates": true,
                       "atlasImagePath": "",
-                      "atlasX": 0,
-                      "atlasY": 0,
-                      "atlasWidth": 0,
-                      "atlasHeight": 0,
-                      "fontSize": 13,
-                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+                      "atlasX": 348,
+                      "atlasY": 145,
+                      "atlasWidth": 58,
+                      "atlasHeight": 13,
+                      "fontSize": 24,
+                      "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
                       "textColor": [
                         0.95,
                         0.95,
-                        1
+                        1,
+                        0
                       ],
                       "bgColor": [
                         0.1,
                         0.12,
-                        0.18
+                        0.18,
+                        0
                       ],
                       "borderColor": [
                         0.15,
                         0.18,
-                        0.25
+                        0.25,
+                        0
                       ],
                       "hoverTextColor": [
                         0.95,
                         0.95,
-                        1
+                        1,
+                        0
                       ],
                       "hoverBgColor": [
                         0.22,
                         0.28,
-                        0.45
+                        0.45,
+                        0
                       ],
                       "hoverBorderColor": [
                         0.5,
                         0.6,
-                        1
+                        1,
+                        0
                       ],
                       "alignment": "Center",
                       "isVisible": true,
-                      "opacity": 0,
+                      "opacity": 1,
                       "autoFillWindow": false,
                       "autoCenterX": false,
                       "autoCenterY": false,
                       "anchor": "None",
-                      "useHover": false,
-                      "clickBehavior": "None",
+                      "useHover": true,
+                      "clickBehavior": "exit",
                       "hoverEnterBehavior": "None",
                       "hoverExitBehavior": "None",
                       "minValue": 0,

@@ -1,4 +1,4 @@
-
+﻿
 using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
@@ -318,89 +318,184 @@ public unsafe class ViewportPanel
             // This makes new Labels transparent by default, but still allows users to
             // customize BgColor/BorderColor for visible backgrounds.
             bool isLabel = elem.Type == UIElementType.Label;
-            bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f;
+            bool labelDefaultBg = isLabel && bgColor.X < 0.001f && bgColor.Y < 0.001f && bgColor.Z < 0.001f && bgColor.W < 0.001f;
 
-            //  Draw background (filled rect)  skip for Labels + Placeholder
+            //  Draw background (filled rect)  skip for Labels + Placeholder or when transparent
             // Placeholder: DrawPlaceholder handles its own background + scroll
             bool isScrollContainer = isScrollableContainer;
-            if (!labelDefaultBg && !isScrollContainer)
+            if (!labelDefaultBg && !isScrollContainer && bgColor.W > 0.001f)
             {
                 drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, 1.0f * elemOpacity)),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, bgColor.W * elemOpacity)),
                     4f);
             }
 
-            //  Draw image element on top of background 
-            bool hasImage = elem.Type != UIElementType.Bar && !string.IsNullOrEmpty(elem.ImagePath);
+            //  Draw image element on top of background (supports Atlas crop, Nine-Slice, and Image Filter)
+            // Atlas mode: render a sub-region of a parent atlas texture.
+            // When UseAtlasCoordinates is true, AtlasImagePath + crop rect override ImagePath.
+            string effectiveImagePath = elem.GetEffectiveImagePath();
+            bool hasImage = elem.Type != UIElementType.Bar && !string.IsNullOrEmpty(effectiveImagePath);
             if (hasImage)
             {
-                // Try to load and cache the image texture for preview
-                uint texId = LoadOrGetPreviewTexture(elem.ImagePath);
+                // Load texture with the element's filter setting (0=Nearest/Pixel, 1=Smooth/Linear)
+                uint texId = LoadOrGetPreviewTexture(effectiveImagePath, elem.ImageFilter);
                 if (texId != 0)
                 {
-                    // Get image dimensions for aspect ratio
-                    var dims = GetPreviewTextureDimensions(elem.ImagePath);
+                    // Get image dimensions for UV calculation
+                    var dims = GetPreviewTextureDimensions(effectiveImagePath, elem.ImageFilter);
                     float imgW = dims.Item1 > 0 ? dims.Item1 : 1f;
                     float imgH = dims.Item2 > 0 ? dims.Item2 : 1f;
 
-                    // Calculate draw rect based on ImageMode
-                    float drawX, drawY, drawW, drawH;
+                    // Compute UV sub-rect for Atlas coordinates
+                    // u0/v0 = top-left corner of the crop in UV space; u1/v1 = bottom-right
+                    float uvX0 = 0f, uvY0 = 0f, uvX1 = 1f, uvY1 = 1f;
+                    float srcW = imgW, srcH = imgH; // effective source size for aspect ratio
+                    if (elem.UseAtlasCoordinates && elem.AtlasWidth > 0 && elem.AtlasHeight > 0)
+                    {
+                        uvX0 = elem.AtlasX / imgW;
+                        uvY0 = elem.AtlasY / imgH;
+                        uvX1 = (elem.AtlasX + elem.AtlasWidth)  / imgW;
+                        uvY1 = (elem.AtlasY + elem.AtlasHeight) / imgH;
+                        // Clamp to [0,1] to avoid reading outside texture
+                        uvX0 = Math.Clamp(uvX0, 0f, 1f);
+                        uvY0 = Math.Clamp(uvY0, 0f, 1f);
+                        uvX1 = Math.Clamp(uvX1, 0f, 1f);
+                        uvY1 = Math.Clamp(uvY1, 0f, 1f);
+                        srcW = elem.AtlasWidth;
+                        srcH = elem.AtlasHeight;
+                    }
+
                     float elemW = sx1 - sx0;
                     float elemH = sy1 - sy0;
 
-                    switch (elem.ImageMode)
+                    // Nine-Slice drawing (when enabled and border values are set)
+                    bool doSlice = elem.SliceEnabled && elem.SliceWidth > 0 && elem.SliceHeight > 0;
+                    if (doSlice)
                     {
-                        case ImageMode.Zoom:
-                            {
-                                float aspect = imgW / imgH;
-                                float elemAspect = elemW / elemH;
-                                if (aspect > elemAspect)
-                                {
-                                    drawW = elemW;
-                                    drawH = elemW / aspect;
-                                }
-                                else
-                                {
-                                    drawH = elemH;
-                                    drawW = elemH * aspect;
-                                }
-                                drawX = sx0 + (elemW - drawW) * 0.5f;
-                                drawY = sy0 + (elemH - drawH) * 0.5f;
-                                break;
-                            }
-                        case ImageMode.Fill:
-                            {
-                                float aspect = imgW / imgH;
-                                float elemAspect = elemW / elemH;
-                                if (aspect > elemAspect)
-                                {
-                                    drawH = elemH;
-                                    drawW = elemH * aspect;
-                                }
-                                else
-                                {
-                                    drawW = elemW;
-                                    drawH = elemW / aspect;
-                                }
-                                drawX = sx0 + (elemW - drawW) * 0.5f;
-                                drawY = sy0 + (elemH - drawH) * 0.5f;
-                                break;
-                            }
-                        default: // Stretch
-                            drawX = sx0;
-                            drawY = sy0;
-                            drawW = elemW;
-                            drawH = elemH;
-                            break;
-}
+                        // Source window in the texture
+                        float texSrcX = elem.SliceX;
+                        float texSrcY = elem.SliceY;
+                        float texSrcW = elem.SliceWidth  > 0 ? elem.SliceWidth  : imgW;
+                        float texSrcH = elem.SliceHeight > 0 ? elem.SliceHeight : imgH;
+                        if (elem.UseAtlasCoordinates && elem.AtlasWidth > 0)
+                        {
+                            // Slice is relative to atlas crop, offset into atlas space
+                            texSrcX = elem.AtlasX + elem.SliceX;
+                            texSrcY = elem.AtlasY + elem.SliceY;
+                        }
+                        // Border sizes in source texture pixels
+                        float bL = Math.Max(0, elem.SliceBorderLeft);
+                        float bR = Math.Max(0, elem.SliceBorderRight);
+                        float bT = Math.Max(0, elem.SliceBorderTop);
+                        float bB = Math.Max(0, elem.SliceBorderBottom);
 
-                    // Draw image
-                    drawList.AddImage((nint)texId,
-                        new Vector2(drawX, drawY),
-                        new Vector2(drawX + drawW, drawY + drawH));
+                        // Scale border sizes to screen pixels using element scale
+                        float scaleX = elemW / texSrcW;
+                        float scaleY = elemH / texSrcH;
+                        float sbL = bL * scaleX; // screen-space left border
+                        float sbR = bR * scaleX;
+                        float sbT = bT * scaleY;
+                        float sbB = bB * scaleY;
+                        // Clamp so borders don't exceed element size
+                        sbL = Math.Min(sbL, elemW * 0.49f);
+                        sbR = Math.Min(sbR, elemW * 0.49f);
+                        sbT = Math.Min(sbT, elemH * 0.49f);
+                        sbB = Math.Min(sbB, elemH * 0.49f);
 
-                    // Overlay subtle hover tint (skip when blocked by overlay)
-                    if (isHovered && !blockedByOverlay)
+                        // UV column/row boundaries
+                        float uL  = texSrcX / imgW;
+                        float uML = (texSrcX + bL) / imgW;
+                        float uMR = (texSrcX + texSrcW - bR) / imgW;
+                        float uR  = (texSrcX + texSrcW) / imgW;
+                        float vT  = texSrcY / imgH;
+                        float vMT = (texSrcY + bT) / imgH;
+                        float vMB = (texSrcY + texSrcH - bB) / imgH;
+                        float vB  = (texSrcY + texSrcH) / imgH;
+                        uL  = Math.Clamp(uL,  0f, 1f);
+                        uML = Math.Clamp(uML, 0f, 1f);
+                        uMR = Math.Clamp(uMR, 0f, 1f);
+                        uR  = Math.Clamp(uR,  0f, 1f);
+                        vT  = Math.Clamp(vT,  0f, 1f);
+                        vMT = Math.Clamp(vMT, 0f, 1f);
+                        vMB = Math.Clamp(vMB, 0f, 1f);
+                        vB  = Math.Clamp(vB,  0f, 1f);
+
+                        // Screen-space column/row X/Y boundaries
+                        float[] cx = [sx0, sx0 + sbL, sx1 - sbR, sx1];
+                        float[] cy = [sy0, sy0 + sbT, sy1 - sbB, sy1];
+                        float[] cu = [uL, uML, uMR, uR];
+                        float[] cv = [vT, vMT, vMB, vB];
+
+                        uint white = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, elemOpacity));
+                        for (int row = 0; row < 3; row++)
+                        for (int col = 0; col < 3; col++)
+                        {
+                            drawList.AddImageQuad(
+                                (nint)texId,
+                                new Vector2(cx[col],   cy[row]),
+                                new Vector2(cx[col+1], cy[row]),
+                                new Vector2(cx[col+1], cy[row+1]),
+                                new Vector2(cx[col],   cy[row+1]),
+                                new Vector2(cu[col],   cv[row]),
+                                new Vector2(cu[col+1], cv[row]),
+                                new Vector2(cu[col+1], cv[row+1]),
+                                new Vector2(cu[col],   cv[row+1]),
+                                white);
+                        }
+                    }
+                    else
+                    {
+                        // Standard draw (stretch / zoom / fill) with UV crop for atlas
+                        float drawX, drawY, drawW, drawH;
+
+                        switch (elem.ImageMode)
+                        {
+                            case ImageMode.Zoom:
+                                {
+                                    float aspect = srcW / srcH;
+                                    float elemAspect = elemW / elemH;
+                                    if (aspect > elemAspect)
+                                    { drawW = elemW; drawH = elemW / aspect; }
+                                    else
+                                    { drawH = elemH; drawW = elemH * aspect; }
+                                    drawX = sx0 + (elemW - drawW) * 0.5f;
+                                    drawY = sy0 + (elemH - drawH) * 0.5f;
+                                    break;
+                                }
+                            case ImageMode.Fill:
+                                {
+                                    float aspect = srcW / srcH;
+                                    float elemAspect = elemW / elemH;
+                                    if (aspect > elemAspect)
+                                    { drawH = elemH; drawW = elemH * aspect; }
+                                    else
+                                    { drawW = elemW; drawH = elemW / aspect; }
+                                    drawX = sx0 + (elemW - drawW) * 0.5f;
+                                    drawY = sy0 + (elemH - drawH) * 0.5f;
+                                    break;
+                                }
+                            default: // Stretch
+                                drawX = sx0; drawY = sy0;
+                                drawW = elemW; drawH = elemH;
+                                break;
+                        }
+
+                        uint white = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, elemOpacity));
+                        drawList.AddImageQuad(
+                            (nint)texId,
+                            new Vector2(drawX,         drawY),
+                            new Vector2(drawX + drawW, drawY),
+                            new Vector2(drawX + drawW, drawY + drawH),
+                            new Vector2(drawX,         drawY + drawH),
+                            new Vector2(uvX0, uvY0),
+                            new Vector2(uvX1, uvY0),
+                            new Vector2(uvX1, uvY1),
+                            new Vector2(uvX0, uvY1),
+                            white);
+                    }
+
+                    // Overlay subtle hover tint (only when UseHover is enabled and hovered)
+                    if (useHover)
                     {
                         drawList.AddRectFilled(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
                             ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f * elemOpacity)));
@@ -416,9 +511,8 @@ public unsafe class ViewportPanel
                         elem.FallbackText);
                 }
             }
-
-            //  Draw text label with element's FontSize (skip for image elements & checkbox  checkbox has its own label rendering) 
-            if (!hasImage && elem.Type != UIElementType.Checkbox && elem.Type != UIElementType.RadioButton &&
+            //  Draw text label with element's FontSize (rendered ON TOP of background and image)
+            if (elem.Type != UIElementType.Checkbox && elem.Type != UIElementType.RadioButton &&
                 elem.Type != UIElementType.Dropdown && elem.Type != UIElementType.SliderNumber &&
                 elem.Type != UIElementType.SliderText && elem.Type != UIElementType.TextBox &&
                 elem.Type != UIElementType.Bar &&
@@ -507,24 +601,24 @@ public unsafe class ViewportPanel
                         }
                         lineX = Math.Max(csx0 + 2f, Math.Min(lineX, csx1 - lineSize.X - 2f));
                         drawList.AddText(fontToUse, previewFontSize, new Vector2(lineX, startY + li * lineHeight),
-                            ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
+                            ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, textColor.W * elemOpacity)),
                             lines[li]);
                     }
                 }
                 else
                 {
                     drawList.AddText(fontToUse, previewFontSize, new Vector2(textX, textY),
-                        ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, 1f * elemOpacity)),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(textColor.X, textColor.Y, textColor.Z, textColor.W * elemOpacity)),
                         label);
                 }
             }
 
-            //  Draw border  skip for Labels with default transparent border colors 
-            bool labelDefaultBorder = isLabel && borderColor.X < 0.001f && borderColor.Y < 0.001f && borderColor.Z < 0.001f;
-            if (!labelDefaultBorder)
+            //  Draw border  skip when transparent
+            bool labelDefaultBorder = isLabel && borderColor.X < 0.001f && borderColor.Y < 0.001f && borderColor.Z < 0.001f && borderColor.W < 0.001f;
+            if (!labelDefaultBorder && borderColor.W > 0.001f)
             {
                 drawList.AddRect(new Vector2(csx0, csy0), new Vector2(csx1, csy1),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, 1f * elemOpacity)),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, borderColor.W * elemOpacity)),
                     4f, ImDrawFlags.None, 1.5f);
             }
 
@@ -1406,10 +1500,12 @@ public unsafe class ViewportPanel
         // Draw background (the ONLY place the Placeholder background is drawn)
         var bgColor = placeholder.BgColor;
         var borderColor = placeholder.BorderColor;
-        drawList.AddRectFilled(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, elemOpacity)), 4f);
-        drawList.AddRect(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
-            ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, elemOpacity)), 4f);
+        if (bgColor.W > 0.001f)
+            drawList.AddRectFilled(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(bgColor.X, bgColor.Y, bgColor.Z, bgColor.W * elemOpacity)), 4f);
+        if (borderColor.W > 0.001f)
+            drawList.AddRect(new Vector2(sx0, sy0), new Vector2(sx1, sy1),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(borderColor.X, borderColor.Y, borderColor.Z, borderColor.W * elemOpacity)), 4f);
 
         // Compute content height from children
         float scrollBarW = placeholder.ScrollBarWidth;
@@ -1538,12 +1634,14 @@ public unsafe class ViewportPanel
         _previewTextureDims.Clear();
     }
 
-    private unsafe uint LoadOrGetPreviewTexture(string path)
+    private unsafe uint LoadOrGetPreviewTexture(string path, int filter = 0)
     {
         // Resolve relative image paths against the exe folder.
         path = PathHelpers.Resolve(path);
+        // Cache key includes filter mode so pixel vs smooth textures don't collide
+        string cacheKey = path + ":" + filter;
 
-        if (_previewTextureCache.TryGetValue(path, out uint cached))
+        if (_previewTextureCache.TryGetValue(cacheKey, out uint cached))
             return cached;
 
         if (!File.Exists(path))
@@ -1571,11 +1669,12 @@ public unsafe class ViewportPanel
 
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
             GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
-            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+            int glFilter = filter == 1 ? (int)Const.GL_LINEAR : (int)Const.GL_NEAREST;
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, glFilter);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, glFilter);
 
-            _previewTextureCache[path] = texID;
-            _previewTextureDims[path] = (image.Width, image.Height);
+            _previewTextureCache[cacheKey] = texID;
+            _previewTextureDims[cacheKey] = (image.Width, image.Height);
             return texID;
         }
         catch (Exception ex)
@@ -1585,9 +1684,10 @@ public unsafe class ViewportPanel
         }
     }
 
-    private (int w, int h) GetPreviewTextureDimensions(string path)
+    private (int w, int h) GetPreviewTextureDimensions(string path, int filter = 0)
     {
-        if (_previewTextureDims.TryGetValue(path, out var dims))
+        string cacheKey = PathHelpers.Resolve(path) + ":" + filter;
+        if (_previewTextureDims.TryGetValue(cacheKey, out var dims))
             return dims;
         return (0, 0);
     }
@@ -1916,8 +2016,8 @@ public unsafe class ViewportPanel
             Y = dlgY,
             Width = dlgW,
             Height = dlgH,
-            BgColor = new Vector3(0.12f, 0.13f, 0.19f),
-            BorderColor = new Vector3(0.5f, 0.3f, 0.3f),
+            BgColor = new Vector4(0.12f, 0.13f, 0.19f, 1f),
+            BorderColor = new Vector4(0.5f, 0.3f, 0.3f, 1f),
         };
 
         // Dark overlay behind the dialog  absolute position (full screen)
@@ -1927,7 +2027,7 @@ public unsafe class ViewportPanel
             Type = UIElementType.Container,
             Text = "",
             IsVisible = true,
-            BgColor = new Vector3(0f, 0f, 0f) * 0.55f,
+            BgColor = new Vector4(0f, 0f, 0f, 0.55f),
             X = 0, Y = 0, Width = w, Height = h,
         };
         exitDlg.AddChild(overlay);
@@ -1940,7 +2040,7 @@ public unsafe class ViewportPanel
             Text = "Exit Game?",
             FontSize = 32f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(1f, 1f, 1f),
+            TextColor = new Vector4(1f, 1f, 1f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             X = dlgX + (dlgW - 160f) * 0.5f,
@@ -1958,7 +2058,7 @@ public unsafe class ViewportPanel
             Text = "Are you sure you want to exit?",
             FontSize = 18f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(0.85f, 0.85f, 0.9f),
+            TextColor = new Vector4(0.85f, 0.85f, 0.9f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             X = dlgX + (dlgW - 250f) * 0.5f,
@@ -1979,11 +2079,11 @@ public unsafe class ViewportPanel
             Y = dlgY + 115f,
             FontSize = 20f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(0.95f, 0.95f, 1f),
-            BgColor = new Vector3(0.12f, 0.13f, 0.18f),
-            HoverBgColor = new Vector3(0.22f, 0.28f, 0.45f),
-            BorderColor = new Vector3(0.15f, 0.18f, 0.25f),
-            HoverBorderColor = new Vector3(0.5f, 0.6f, 1.0f),
+            TextColor = new Vector4(0.95f, 0.95f, 1f, 1f),
+            BgColor = new Vector4(0.12f, 0.13f, 0.18f, 1f),
+            HoverBgColor = new Vector4(0.22f, 0.28f, 0.45f, 1f),
+            BorderColor = new Vector4(0.15f, 0.18f, 0.25f, 1f),
+            HoverBorderColor = new Vector4(0.5f, 0.6f, 1.0f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             ClickBehaviorLabel = "cancel",
@@ -2001,11 +2101,11 @@ public unsafe class ViewportPanel
             Y = dlgY + 115f,
             FontSize = 20f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(1f, 1f, 1f),
-            BgColor = new Vector3(0.35f, 0.10f, 0.12f),
-            HoverBgColor = new Vector3(0.55f, 0.20f, 0.22f),
-            BorderColor = new Vector3(0.5f, 0.2f, 0.2f),
-            HoverBorderColor = new Vector3(0.8f, 0.4f, 0.4f),
+            TextColor = new Vector4(1f, 1f, 1f, 1f),
+            BgColor = new Vector4(0.35f, 0.10f, 0.12f, 1f),
+            HoverBgColor = new Vector4(0.55f, 0.20f, 0.22f, 1f),
+            BorderColor = new Vector4(0.5f, 0.2f, 0.2f, 1f),
+            HoverBorderColor = new Vector4(0.8f, 0.4f, 0.4f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             ClickBehaviorLabel = "exit",

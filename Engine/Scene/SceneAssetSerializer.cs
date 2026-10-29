@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
@@ -318,12 +318,12 @@ public static class SceneAssetSerializer
             AtlasHeight = Math.Max(0, data.AtlasHeight),
             FontSize = data.FontSize,
             FontPath = PathHelpers.Resolve(data.FontPath),
-            TextColor = ArrayToVec3(data.TextColor, new Vector3(0.95f, 0.95f, 1f)),
-            BgColor = ArrayToVec3(data.BgColor, new Vector3(0.10f, 0.12f, 0.18f)),
-            BorderColor = ArrayToVec3(data.BorderColor, new Vector3(0.15f, 0.18f, 0.25f)),
-            HoverTextColor = ArrayToVec3(data.HoverTextColor, new Vector3(0.95f, 0.95f, 1f)),
-            HoverBgColor = ArrayToVec3(data.HoverBgColor, new Vector3(0.22f, 0.28f, 0.45f)),
-            HoverBorderColor = ArrayToVec3(data.HoverBorderColor, new Vector3(0.5f, 0.6f, 1.0f)),
+            TextColor = ArrayToVec4(data.TextColor, new Vector4(0.95f, 0.95f, 1f, 1f)),
+            BgColor = ArrayToVec4(data.BgColor, new Vector4(0.10f, 0.12f, 0.18f, 1f)),
+            BorderColor = ArrayToVec4(data.BorderColor, new Vector4(0.15f, 0.18f, 0.25f, 1f)),
+            HoverTextColor = ArrayToVec4(data.HoverTextColor, new Vector4(0.95f, 0.95f, 1f, 1f)),
+            HoverBgColor = ArrayToVec4(data.HoverBgColor, new Vector4(0.22f, 0.28f, 0.45f, 1f)),
+            HoverBorderColor = ArrayToVec4(data.HoverBorderColor, new Vector4(0.5f, 0.6f, 1.0f, 1f)),
             Alignment = data.Alignment.ToLowerInvariant() switch
             {
                 "left" => TextAlignment.Left,
@@ -490,12 +490,12 @@ public static class SceneAssetSerializer
             AtlasHeight = elem.AtlasHeight,
             FontSize = elem.FontSize,
             FontPath = PathHelpers.MakeRelative(elem.FontPath),
-            TextColor = Vec3ToArray(elem.TextColor),
-            BgColor = Vec3ToArray(elem.BgColor),
-            BorderColor = Vec3ToArray(elem.BorderColor),
-            HoverTextColor = Vec3ToArray(elem.HoverTextColor),
-            HoverBgColor = Vec3ToArray(elem.HoverBgColor),
-            HoverBorderColor = Vec3ToArray(elem.HoverBorderColor),
+            TextColor = Vec4ToArray(elem.TextColor),
+            BgColor = Vec4ToArray(elem.BgColor),
+            BorderColor = Vec4ToArray(elem.BorderColor),
+            HoverTextColor = Vec4ToArray(elem.HoverTextColor),
+            HoverBgColor = Vec4ToArray(elem.HoverBgColor),
+            HoverBorderColor = Vec4ToArray(elem.HoverBorderColor),
             Alignment = elem.Alignment switch
             {
                 TextAlignment.Left => "Left",
@@ -616,6 +616,15 @@ public static class SceneAssetSerializer
     }
 
     // ── Helpers ──
+
+    private static Vector4 ArrayToVec4(float[]? arr, Vector4 fallback)
+    {
+        if (arr == null || arr.Length < 3) return fallback;
+        float a = arr.Length >= 4 ? arr[3] : 1f;
+        return new Vector4(arr[0], arr[1], arr[2], a);
+    }
+
+    private static float[] Vec4ToArray(Vector4 v) => [v.X, v.Y, v.Z, v.W];
 
     private static Vector3 ArrayToVec3(float[]? arr, Vector3 fallback)
     {

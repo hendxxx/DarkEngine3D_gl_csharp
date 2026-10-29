@@ -137,6 +137,34 @@ public class UIElement
     public int AtlasWidth { get; set; }
     public int AtlasHeight { get; set; }
 
+    /// <summary>
+    /// Resolve the effective image path for this element.
+    /// If UseAtlasCoordinates is true:
+    ///   - If AtlasImagePath is explicitly set, use that (override).
+    ///   - Otherwise, walk up the parent hierarchy to find the nearest ancestor with an ImagePath or AtlasImagePath.
+    /// If UseAtlasCoordinates is false:
+    ///   - Use ImagePath.
+    /// </summary>
+    public string GetEffectiveImagePath()
+    {
+        if (UseAtlasCoordinates)
+        {
+            if (!string.IsNullOrEmpty(AtlasImagePath))
+                return AtlasImagePath;
+
+            var curr = Parent;
+            while (curr != null)
+            {
+                if (!string.IsNullOrEmpty(curr.ImagePath))
+                    return curr.ImagePath;
+                if (!string.IsNullOrEmpty(curr.AtlasImagePath))
+                    return curr.AtlasImagePath;
+                curr = curr.Parent;
+            }
+        }
+        return ImagePath;
+    }
+
     // ── Helper quads (computed lazily from Slice geometry) ──
     public bool HasSliceQuads { get; private set; }
     public RectangleF[] SliceQuads { get; private set; } = Array.Empty<RectangleF>();
@@ -194,14 +222,14 @@ public class UIElement
     public float FontSize { get; set; } = 13f;
 
     // ── Colors ──
-    public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);
-    public Vector3 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f);
-    public Vector3 BorderColor { get; set; } = new(0.15f, 0.18f, 0.25f);
+    public Vector4 TextColor { get; set; } = new(0.95f, 0.95f, 1f, 1f);
+    public Vector4 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f, 1f);
+    public Vector4 BorderColor { get; set; } = new(0.15f, 0.18f, 0.25f, 1f);
 
     // ── Hover Colors ──
-    public Vector3 HoverTextColor { get; set; } = new(0.95f, 0.95f, 1f);
-    public Vector3 HoverBgColor { get; set; } = new(0.22f, 0.28f, 0.45f);
-    public Vector3 HoverBorderColor { get; set; } = new(0.5f, 0.6f, 1.0f);
+    public Vector4 HoverTextColor { get; set; } = new(0.95f, 0.95f, 1f, 1f);
+    public Vector4 HoverBgColor { get; set; } = new(0.22f, 0.28f, 0.45f, 1f);
+    public Vector4 HoverBorderColor { get; set; } = new(0.5f, 0.6f, 1.0f, 1f);
 
     // ── Alignment ──
     public TextAlignment Alignment { get; set; } = TextAlignment.Center;
@@ -751,12 +779,12 @@ public class UIButtonData
 
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
-    public Vector3 TextColor { get; set; } = new(0.95f, 0.95f, 1f);
-    public Vector3 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f);
-    public Vector3 BorderColor { get; set; } = new(0.15f, 0.18f, 0.25f);
-    public Vector3 HoverTextColor { get; set; } = new(0.95f, 0.95f, 1f);
-    public Vector3 HoverBgColor { get; set; } = new(0.22f, 0.28f, 0.45f);
-    public Vector3 HoverBorderColor { get; set; } = new(0.5f, 0.6f, 1.0f);
+    public Vector4 TextColor { get; set; } = new(0.95f, 0.95f, 1f, 1f);
+    public Vector4 BgColor { get; set; } = new(0.10f, 0.12f, 0.18f, 1f);
+    public Vector4 BorderColor { get; set; } = new(0.15f, 0.18f, 0.25f, 1f);
+    public Vector4 HoverTextColor { get; set; } = new(0.95f, 0.95f, 1f, 1f);
+    public Vector4 HoverBgColor { get; set; } = new(0.22f, 0.28f, 0.45f, 1f);
+    public Vector4 HoverBorderColor { get; set; } = new(0.5f, 0.6f, 1.0f, 1f);
     public TextAlignment Alignment { get; set; } = TextAlignment.Center;
     public bool IsVisible { get; set; } = true;
     public bool IsHovered { get; set; }

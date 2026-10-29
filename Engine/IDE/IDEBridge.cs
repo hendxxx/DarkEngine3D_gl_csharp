@@ -1,4 +1,4 @@
-using DarkEngine3D_gl_csharp.Engine.Objects;
+﻿using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.IDE.Panels;
@@ -495,7 +495,7 @@ public class IDEBridge
     public Action<UIElement, float, float, float, float, float, float, float, float>? RecordTransformUndo { get; set; }
     /// <summary>Called by InspectorPanel when a color property changes.
     /// Parameters: (element, propertyName, oldColor, newColor)</summary>
-    public Action<UIElement, string, Vector3, Vector3>? RecordColorUndo { get; set; }
+    public Action<UIElement, string, Vector4, Vector4>? RecordColorUndo { get; set; }
 
     // ── Save integration (HierarchyPanel → SceneManagerPanel) ──
     /// <summary>Called by HierarchyPanel to save ALL editor scenes (triggers SceneManager's Save All).</summary>

@@ -1,4 +1,4 @@
-using DarkEngine3D_gl_csharp.Engine.Config;
+﻿using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
@@ -835,8 +835,8 @@ public unsafe class MainMenuScene : IScene
             Type = UIElementType.Container,
             Text = "",
             IsVisible = true, // visibility synced by SyncHierarchyPositions each frame
-            BgColor = new Vector3(0.12f, 0.13f, 0.19f), // dark bg
-            BorderColor = new Vector3(0.5f, 0.3f, 0.3f), // red accent
+            BgColor = new Vector4(0.12f, 0.13f, 0.19f, 1f), // dark bg
+            BorderColor = new Vector4(0.5f, 0.3f, 0.3f, 1f), // red accent
         };
 
         // Dark overlay behind the dialog
@@ -846,7 +846,7 @@ public unsafe class MainMenuScene : IScene
             Type = UIElementType.Container,
             Text = "",
             IsVisible = true,
-            BgColor = new Vector3(0f, 0f, 0f) * 0.55f,
+            BgColor = new Vector4(0f, 0f, 0f, 0.55f),
             X = 0,
             Y = 0,
             Width = Glfw.WindowWidth,
@@ -862,7 +862,7 @@ public unsafe class MainMenuScene : IScene
             Text = "Exit Game?",
             FontSize = 32f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(1f, 1f, 1f),
+            TextColor = new Vector4(1f, 1f, 1f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
         };
@@ -876,7 +876,7 @@ public unsafe class MainMenuScene : IScene
             Text = "Are you sure you want to exit?",
             FontSize = 18f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(0.85f, 0.85f, 0.9f),
+            TextColor = new Vector4(0.85f, 0.85f, 0.9f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
         };
@@ -892,11 +892,11 @@ public unsafe class MainMenuScene : IScene
             Height = 44f,
             FontSize = 20f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(0.95f, 0.95f, 1f),
-            BgColor = new Vector3(0.12f, 0.13f, 0.18f),
-            HoverBgColor = new Vector3(0.22f, 0.28f, 0.45f),
-            BorderColor = new Vector3(0.15f, 0.18f, 0.25f),
-            HoverBorderColor = new Vector3(0.5f, 0.6f, 1.0f),
+            TextColor = new Vector4(0.95f, 0.95f, 1f, 1f),
+            BgColor = new Vector4(0.12f, 0.13f, 0.18f, 1f),
+            HoverBgColor = new Vector4(0.22f, 0.28f, 0.45f, 1f),
+            BorderColor = new Vector4(0.15f, 0.18f, 0.25f, 1f),
+            HoverBorderColor = new Vector4(0.5f, 0.6f, 1.0f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             ClickBehaviorLabel = "cancel",
@@ -913,11 +913,11 @@ public unsafe class MainMenuScene : IScene
             Height = 44f,
             FontSize = 20f,
             FontPath = "Artifacts\\fonts\\Worldstar.ttf",
-            TextColor = new Vector3(1f, 1f, 1f),
-            BgColor = new Vector3(0.35f, 0.10f, 0.12f),      // red bg
-            HoverBgColor = new Vector3(0.55f, 0.20f, 0.22f), // brighter red on hover
-            BorderColor = new Vector3(0.5f, 0.2f, 0.2f),
-            HoverBorderColor = new Vector3(0.8f, 0.4f, 0.4f),
+            TextColor = new Vector4(1f, 1f, 1f, 1f),
+            BgColor = new Vector4(0.35f, 0.10f, 0.12f, 1f),      // red bg
+            HoverBgColor = new Vector4(0.55f, 0.20f, 0.22f, 1f), // brighter red on hover
+            BorderColor = new Vector4(0.5f, 0.2f, 0.2f, 1f),
+            HoverBorderColor = new Vector4(0.8f, 0.4f, 0.4f, 1f),
             Alignment = TextAlignment.Center,
             IsVisible = true,
             ClickBehaviorLabel = "confirmexit",
@@ -1457,16 +1457,17 @@ public unsafe class MainMenuScene : IScene
             var (ex, ey, ew, eh) = elem.GetLayoutBounds(canvasW, canvasH);
 
             // ── Bar: background frame → empty interior → clipped progress fill ──
+            string effectiveImg = elem.GetEffectiveImagePath();
             if (elem.Type == UIElementType.Bar)
             {
                 RenderBarElement(elem, ex, ey, ew, eh);
             }
-            else if (!string.IsNullOrEmpty(elem.ImagePath))
+            else if (!string.IsNullOrEmpty(effectiveImg))
             {
-                if (_imageTextureCache.TryGetValue(elem.ImagePath, out uint texID) && texID != 0)
+                if (_imageTextureCache.TryGetValue(effectiveImg, out uint texID) && texID != 0)
                 {
                     int imgW = 1, imgH = 1;
-                    if (_imageTextureDims.TryGetValue(elem.ImagePath, out var d))
+                    if (_imageTextureDims.TryGetValue(effectiveImg, out var d))
                     {
                         imgW = d.w;
                         imgH = d.h;
@@ -1482,7 +1483,7 @@ public unsafe class MainMenuScene : IScene
                     // Image not loaded — draw fallback text (separate from Text property)
                     if (!string.IsNullOrEmpty(elem.FallbackText) && elem.Opacity > 0.01f)
                     {
-                        _hud.DrawText(elem.FallbackText, ex, ey, elem.TextColor);
+                        _hud.DrawText(elem.FallbackText, ex, ey, new Vector3(elem.TextColor.X, elem.TextColor.Y, elem.TextColor.Z));
                     }
                 }
             }

@@ -1,4 +1,4 @@
-using DarkEngine3D_gl_csharp.Engine.Config;
+﻿using DarkEngine3D_gl_csharp.Engine.Config;
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
@@ -6,6 +6,8 @@ using DarkEngine3D_gl_csharp.Engine.Scene;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using System.Numerics;
+using System.IO;
+using StbImageSharp;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -17,6 +19,191 @@ public class InspectorPanel
 {
     private readonly IDEBridge _bridge;
     private bool _visible = true;
+
+    // ── Visual Atlas Region Selector state ──
+    private bool _atlasPickerOpen = false;
+    private UIElement? _atlasPickerTarget = null;
+    private int _atlasPickerTempX = 0;
+    private int _atlasPickerTempY = 0;
+    private int _atlasPickerTempW = 100;
+    private int _atlasPickerTempH = 50;
+    private bool _atlasPickerDragging = false;
+    private Vector2 _atlasPickerDragStart;
+    private float _atlasPickerZoom = 1.0f;
+    private readonly Dictionary<string, (uint id, int w, int h)> _inspectorTexCache = [];
+
+    private unsafe (uint id, int w, int h) LoadOrGetInspectorTexture(string rawPath)
+    {
+        string path = Helpers.PathHelpers.Resolve(rawPath);
+        if (_inspectorTexCache.TryGetValue(path, out var cached))
+            return cached;
+
+        if (!File.Exists(path))
+            return (0, 0, 0);
+
+        try
+        {
+            uint texID;
+            GL.GenTextures(1, &texID);
+            GL.BindTexture(Const.GL_TEXTURE_2D, texID);
+
+            using var stream = File.OpenRead(path);
+            var image = StbImageSharp.ImageResult.FromStream(stream, StbImageSharp.ColorComponents.RedGreenBlueAlpha);
+
+            fixed (byte* ptr = image.Data)
+            {
+                GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA,
+                              image.Width, image.Height, 0,
+                              Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, ptr);
+            }
+
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_CLAMP_TO_EDGE);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_NEAREST);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_NEAREST);
+
+            var result = (texID, image.Width, image.Height);
+            _inspectorTexCache[path] = result;
+            return result;
+        }
+        catch
+        {
+            return (0, 0, 0);
+        }
+    }
+
+    private void RenderAtlasPickerModal()
+    {
+        if (!_atlasPickerOpen || _atlasPickerTarget == null) return;
+
+        bool open = true;
+        ImGui.SetNextWindowSize(new Vector2(850, 650), ImGuiCond.FirstUseEver);
+        if (ImGui.Begin("Atlas Region Selector", ref open, ImGuiWindowFlags.NoCollapse))
+        {
+            string imgPath = _atlasPickerTarget.GetEffectiveImagePath();
+            var (texId, texW, texH) = LoadOrGetInspectorTexture(imgPath);
+            if (texId != 0 && texW > 0 && texH > 0)
+            {
+                // Top control bar
+                ImGui.Text($"Texture: {Path.GetFileName(imgPath)} ({texW}x{texH}px)");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(100f);
+                ImGui.SliderFloat("Zoom##atlas_zoom", ref _atlasPickerZoom, 0.5f, 4f, "%.1fx");
+                ImGui.SameLine();
+                if (ImGui.Button("1:1")) _atlasPickerZoom = 1.0f;
+                ImGui.SameLine();
+                if (ImGui.Button("2:1")) _atlasPickerZoom = 2.0f;
+
+                ImGui.Separator();
+
+                // Coordinates info & manual inputs
+                ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f),
+                    $"Selection: X={_atlasPickerTempX}, Y={_atlasPickerTempY}, W={_atlasPickerTempW}, H={_atlasPickerTempH}");
+                ImGui.SameLine();
+                if (ImGui.Button("Apply Coordinates & Size", new Vector2(180, 24)))
+                {
+                    _atlasPickerTarget.AtlasX = _atlasPickerTempX;
+                    _atlasPickerTarget.AtlasY = _atlasPickerTempY;
+                    _atlasPickerTarget.AtlasWidth = _atlasPickerTempW;
+                    _atlasPickerTarget.AtlasHeight = _atlasPickerTempH;
+                    _atlasPickerTarget.Width = _atlasPickerTempW;
+                    _atlasPickerTarget.Height = _atlasPickerTempH;
+                    _atlasPickerOpen = false;
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Apply Coordinates Only", new Vector2(160, 24)))
+                {
+                    _atlasPickerTarget.AtlasX = _atlasPickerTempX;
+                    _atlasPickerTarget.AtlasY = _atlasPickerTempY;
+                    _atlasPickerTarget.AtlasWidth = _atlasPickerTempW;
+                    _atlasPickerTarget.AtlasHeight = _atlasPickerTempH;
+                    _atlasPickerOpen = false;
+                }
+
+                // Scrollable canvas area
+                if (ImGui.BeginChild("##atlas_canvas", new Vector2(-1, -1), ImGuiChildFlags.Borders, ImGuiWindowFlags.HorizontalScrollbar))
+                {
+                    float dispW = texW * _atlasPickerZoom;
+                    float dispH = texH * _atlasPickerZoom;
+                    var screenPos = ImGui.GetCursorScreenPos();
+
+                    // Render atlas image
+                    ImGui.Image((nint)texId, new Vector2(dispW, dispH));
+
+                    var drawList = ImGui.GetWindowDrawList();
+                    var io = ImGui.GetIO();
+                    var mousePos = io.MousePos;
+
+                    // Mouse interaction: drag to select region
+                    bool isHovered = mousePos.X >= screenPos.X && mousePos.X <= screenPos.X + dispW &&
+                                     mousePos.Y >= screenPos.Y && mousePos.Y <= screenPos.Y + dispH;
+
+                    if (isHovered && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                    {
+                        _atlasPickerDragging = true;
+                        int pixelX = Math.Clamp((int)((mousePos.X - screenPos.X) / _atlasPickerZoom), 0, texW);
+                        int pixelY = Math.Clamp((int)((mousePos.Y - screenPos.Y) / _atlasPickerZoom), 0, texH);
+                        _atlasPickerDragStart = new Vector2(pixelX, pixelY);
+                        _atlasPickerTempX = pixelX;
+                        _atlasPickerTempY = pixelY;
+                        _atlasPickerTempW = 1;
+                        _atlasPickerTempH = 1;
+                    }
+
+                    if (_atlasPickerDragging)
+                    {
+                        if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                        {
+                            int curX = Math.Clamp((int)((mousePos.X - screenPos.X) / _atlasPickerZoom), 0, texW);
+                            int curY = Math.Clamp((int)((mousePos.Y - screenPos.Y) / _atlasPickerZoom), 0, texH);
+
+                            int startX = (int)_atlasPickerDragStart.X;
+                            int startY = (int)_atlasPickerDragStart.Y;
+
+                            _atlasPickerTempX = Math.Min(startX, curX);
+                            _atlasPickerTempY = Math.Min(startY, curY);
+                            _atlasPickerTempW = Math.Max(1, Math.Abs(curX - startX));
+                            _atlasPickerTempH = Math.Max(1, Math.Abs(curY - startY));
+                        }
+                        else
+                        {
+                            _atlasPickerDragging = false;
+                        }
+                    }
+
+                    // Draw selection box in RED (like Gambar 4)
+                    float boxX0 = screenPos.X + _atlasPickerTempX * _atlasPickerZoom;
+                    float boxY0 = screenPos.Y + _atlasPickerTempY * _atlasPickerZoom;
+                    float boxX1 = boxX0 + _atlasPickerTempW * _atlasPickerZoom;
+                    float boxY1 = boxY0 + _atlasPickerTempH * _atlasPickerZoom;
+
+                    uint redColor = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.1f, 0.1f, 1f));
+                    uint redFill  = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.2f, 0.2f, 0.2f));
+
+                    drawList.AddRectFilled(new Vector2(boxX0, boxY0), new Vector2(boxX1, boxY1), redFill);
+                    drawList.AddRect(new Vector2(boxX0, boxY0), new Vector2(boxX1, boxY1), redColor, 0f, ImDrawFlags.None, 2f);
+
+                    // Corner handles
+                    float hs = 3f;
+                    drawList.AddRectFilled(new Vector2(boxX0 - hs, boxY0 - hs), new Vector2(boxX0 + hs, boxY0 + hs), redColor);
+                    drawList.AddRectFilled(new Vector2(boxX1 - hs, boxY0 - hs), new Vector2(boxX1 + hs, boxY0 + hs), redColor);
+                    drawList.AddRectFilled(new Vector2(boxX0 - hs, boxY1 - hs), new Vector2(boxX0 + hs, boxY1 + hs), redColor);
+                    drawList.AddRectFilled(new Vector2(boxX1 - hs, boxY1 - hs), new Vector2(boxX1 + hs, boxY1 + hs), redColor);
+                }
+                ImGui.EndChild();
+            }
+            else
+            {
+                ImGui.TextColored(new Vector4(1f, 0.4f, 0.4f, 1f), $"Failed to load atlas texture: {imgPath}");
+            }
+        }
+        ImGui.End();
+
+        if (!open)
+        {
+            _atlasPickerOpen = false;
+        }
+    }
 
     //  UI editing state 
     private System.Numerics.Vector2 _editVec2 = new();
@@ -108,6 +295,8 @@ public class InspectorPanel
 
         ImGui.EndChild(); // InspectorScroll
         ImGui.End(); // Inspector
+
+        RenderAtlasPickerModal();
     }
 
     private unsafe void RenderUIElementInspector(UIElement elem)
@@ -217,6 +406,14 @@ public class InspectorPanel
             if (ImGui.Combo("Image Mode", ref imgModeIdx, imgModes, imgModes.Length))
                 elem.ImageMode = (ImageMode)imgModeIdx;
 
+            // Image Filter
+            string[] filterNames = ["None (Pixel)", "Smooth (Linear)"];
+            int filterIdx = Math.Clamp(elem.ImageFilter, 0, 1);
+            if (ImGui.Combo("Image Filter", ref filterIdx, filterNames, filterNames.Length))
+                elem.ImageFilter = filterIdx;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("None = nearest/pixel-crisp (default for pixel art)\nSmooth = bilinear interpolation");
+
             // Image preview indicator
             if (hasImage)
             {
@@ -227,6 +424,137 @@ public class InspectorPanel
             {
                 ImGui.TextDisabled("Drop image from Asset Browser");
                 ImGui.TextDisabled("or type path above.");
+            }
+
+            ImGui.Separator();
+
+            // Nine-Slice
+            bool sliceEnabled = elem.SliceEnabled;
+            if (ImGui.Checkbox("Enable Slicing (9-slice)", ref sliceEnabled))
+                elem.SliceEnabled = sliceEnabled;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("9-slice: corners don't scale, edges scale 1 axis, center scales both.");
+
+            if (elem.SliceEnabled)
+            {
+                ImGui.Indent(12f);
+                ImGui.TextColored(new Vector4(0.6f, 0.9f, 1f, 1f), "Source Window (px in texture):");
+                int slx = elem.SliceX, sly = elem.SliceY, slw = elem.SliceWidth, slh = elem.SliceHeight;
+                if (ImGui.InputInt("X##slx", ref slx)) elem.SliceX = Math.Max(0, slx);
+                if (ImGui.InputInt("Y##sly", ref sly)) elem.SliceY = Math.Max(0, sly);
+                if (ImGui.InputInt("W##slw", ref slw)) elem.SliceWidth = Math.Max(1, slw);
+                if (ImGui.InputInt("H##slh", ref slh)) elem.SliceHeight = Math.Max(1, slh);
+                ImGui.Spacing();
+                ImGui.TextColored(new Vector4(0.6f, 0.9f, 1f, 1f), "Border (px):");
+                int slbl = elem.SliceBorderLeft, slbr = elem.SliceBorderRight;
+                int slbt = elem.SliceBorderTop,  slbb = elem.SliceBorderBottom;
+                if (ImGui.InputInt("Left##slbl",   ref slbl)) elem.SliceBorderLeft   = Math.Max(0, slbl);
+                if (ImGui.InputInt("Right##slbr",  ref slbr)) elem.SliceBorderRight  = Math.Max(0, slbr);
+                if (ImGui.InputInt("Top##slbt",    ref slbt)) elem.SliceBorderTop    = Math.Max(0, slbt);
+                if (ImGui.InputInt("Bottom##slbb", ref slbb)) elem.SliceBorderBottom = Math.Max(0, slbb);
+                ImGui.Unindent(12f);
+            }
+
+            ImGui.Separator();
+
+            // Atlas Coordinates
+            bool useAtlas = elem.UseAtlasCoordinates;
+            if (ImGui.Checkbox("Use Atlas Coordinates", ref useAtlas))
+                elem.UseAtlasCoordinates = useAtlas;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Sample a sub-region from a parent atlas texture.\nMany elements can share one atlas PNG.");
+
+            if (elem.UseAtlasCoordinates)
+            {
+                ImGui.Indent(12f);
+
+                string parentImg = "";
+                var pCurr = elem.Parent;
+                while (pCurr != null)
+                {
+                    if (!string.IsNullOrEmpty(pCurr.ImagePath)) { parentImg = pCurr.ImagePath; break; }
+                    if (!string.IsNullOrEmpty(pCurr.AtlasImagePath)) { parentImg = pCurr.AtlasImagePath; break; }
+                    pCurr = pCurr.Parent;
+                }
+
+                ImGui.Text("Atlas Image (leave blank to inherit parent):");
+                string atlasPath = elem.AtlasImagePath;
+                ImGui.SetNextItemWidth(-64f);
+                string hint = !string.IsNullOrEmpty(parentImg)
+                    ? $"Inherit: {Path.GetFileName(parentImg)}"
+                    : "Drop image or leave blank to inherit parent...";
+                if (ImGui.InputTextWithHint("##atlas_path", hint, ref atlasPath, 512))
+                    elem.AtlasImagePath = atlasPath;
+                if (ImGui.BeginDragDropTarget())
+                {
+                    var apl = ImGui.AcceptDragDropPayload("ASSET_IMAGE_PATH");
+                    if (apl.NativePtr != null && AssetBrowserPanel._dragImagePath != null)
+                    {
+                        elem.AtlasImagePath = AssetBrowserPanel._dragImagePath;
+                        AssetBrowserPanel._dragImagePath = null;
+                    }
+                    ImGui.EndDragDropTarget();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("X##clratlas") && !string.IsNullOrEmpty(elem.AtlasImagePath))
+                    elem.AtlasImagePath = "";
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Clear override (revert to parent atlas)");
+
+                string effectiveImg = elem.GetEffectiveImagePath();
+                if (!string.IsNullOrEmpty(elem.AtlasImagePath))
+                {
+                    ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.5f, 1f),
+                        $"Override Atlas: {Path.GetFileName(elem.AtlasImagePath)} ({elem.AtlasX},{elem.AtlasY}) {elem.AtlasWidth}x{elem.AtlasHeight}");
+                }
+                else if (!string.IsNullOrEmpty(parentImg))
+                {
+                    ImGui.TextColored(new Vector4(0.3f, 0.85f, 0.5f, 1f),
+                        $"Using Parent Atlas: {Path.GetFileName(parentImg)} ({elem.AtlasX},{elem.AtlasY}) {elem.AtlasWidth}x{elem.AtlasHeight}");
+                }
+                else
+                {
+                    ImGui.TextDisabled("No parent image found. Drop atlas image from Asset Browser.");
+                }
+
+                // Crop coordinates
+                ImGui.Spacing();
+                ImGui.TextColored(new Vector4(0.6f, 0.9f, 1f, 1f), "Crop Region (px in atlas):");
+                int atx = elem.AtlasX, aty = elem.AtlasY, atw = elem.AtlasWidth, ath = elem.AtlasHeight;
+                if (ImGui.InputInt("X##atx", ref atx)) elem.AtlasX = Math.Max(0, atx);
+                if (ImGui.InputInt("Y##aty", ref aty)) elem.AtlasY = Math.Max(0, aty);
+                if (ImGui.InputInt("W##atw", ref atw)) elem.AtlasWidth  = Math.Max(1, atw);
+                if (ImGui.InputInt("H##ath", ref ath)) elem.AtlasHeight = Math.Max(1, ath);
+
+                // Quick button: set element size to crop dimensions
+                if (elem.AtlasWidth > 0 && elem.AtlasHeight > 0)
+                {
+                    if (ImGui.Button("Set Element Size to Crop (W,H)", new Vector2(-1, 24)))
+                    {
+                        elem.Width = elem.AtlasWidth;
+                        elem.Height = elem.AtlasHeight;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip($"Set Width={elem.AtlasWidth} and Height={elem.AtlasHeight} to match the crop region");
+                }
+
+                // Interactive visual selector (Gambar 4)
+                if (!string.IsNullOrEmpty(effectiveImg))
+                {
+                    if (ImGui.Button("Visual Atlas Crop Selector...", new Vector2(-1, 26)))
+                    {
+                        _atlasPickerOpen = true;
+                        _atlasPickerTarget = elem;
+                        _atlasPickerTempX = elem.AtlasX;
+                        _atlasPickerTempY = elem.AtlasY;
+                        _atlasPickerTempW = elem.AtlasWidth > 0 ? elem.AtlasWidth : 100;
+                        _atlasPickerTempH = elem.AtlasHeight > 0 ? elem.AtlasHeight : 50;
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Open visual picker to select crop region directly on the atlas texture (Gambar 4)");
+                }
+
+                ImGui.Unindent(12f);
             }
 
             ImGui.Separator();
@@ -260,9 +588,9 @@ public class InspectorPanel
         }
 
         // 
-        //  Text & Font (shown only when no image)
+        //  Text & Font (label drawn on top of background & image)
         // 
-        if (!hasImage && ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader("Text & Font", ImGuiTreeNodeFlags.DefaultOpen))
         {
             string text = elem.Text;
             if (ImGui.InputTextMultiline("Label", ref text, 4096, new System.Numerics.Vector2(-1, 80)))
@@ -348,15 +676,15 @@ public class InspectorPanel
             ImGui.Indent();
 
             DrawColorPicker("Text", "N", elem.TextColor, c => RecordColorUndo(elem, "TextColor", elem.TextColor, c),
-                defaultColor: new(0.95f, 0.95f, 1f));
+                defaultColor: new(0.95f, 0.95f, 1f, 1f));
             DrawColorPicker("Background", "N", elem.BgColor, c => RecordColorUndo(elem, "BgColor", elem.BgColor, c),
-                defaultColor: new(0.10f, 0.12f, 0.18f));
-            // Border default: buttons use (0.15,0.18,0.25), overlays/labels match BgColor
-            Vector3 borderDefN = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
+                defaultColor: new(0.10f, 0.12f, 0.18f, 1f));
+            // Border default: buttons use (0.15,0.18,0.25,1), overlays/labels match BgColor
+            Vector4 borderDefN = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
                                    elem.Type == UIElementType.SliderNumber || elem.Type == UIElementType.SliderText ||
                                    elem.Type == UIElementType.Checkbox ||
                                    elem.Type == UIElementType.Dropdown || elem.Type == UIElementType.TextBox)
-                ? elem.BgColor : new Vector3(0.15f, 0.18f, 0.25f);
+                ? elem.BgColor : new Vector4(0.15f, 0.18f, 0.25f, 1f);
             DrawColorPicker("Border", "N", elem.BorderColor, c => RecordColorUndo(elem, "BorderColor", elem.BorderColor, c),
                 defaultColor: borderDefN);
 
@@ -378,15 +706,15 @@ public class InspectorPanel
             ImGui.Indent();
 
             DrawColorPicker("Text", "H", elem.HoverTextColor, c => RecordColorUndo(elem, "HoverTextColor", elem.HoverTextColor, c),
-                defaultColor: new(0.95f, 0.95f, 1f));
+                defaultColor: new(0.95f, 0.95f, 1f, 1f));
             DrawColorPicker("Background", "H", elem.HoverBgColor, c => RecordColorUndo(elem, "HoverBgColor", elem.HoverBgColor, c),
-                defaultColor: new(0.22f, 0.28f, 0.45f));
+                defaultColor: new(0.22f, 0.28f, 0.45f, 1f));
             // Border default matches BgColor for overlays/labels (invisible border by default)
-            Vector3 borderDefH = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
+            Vector4 borderDefH = (elem.Type == UIElementType.Container || elem.Type == UIElementType.Label ||
                                     elem.Type == UIElementType.SliderNumber || elem.Type == UIElementType.SliderText ||
                                     elem.Type == UIElementType.Checkbox ||
                                     elem.Type == UIElementType.Dropdown || elem.Type == UIElementType.TextBox)
-                ? elem.HoverBgColor : new Vector3(0.5f, 0.6f, 1.0f);
+                ? elem.HoverBgColor : new Vector4(0.5f, 0.6f, 1.0f, 1f);
             DrawColorPicker("Border", "H", elem.HoverBorderColor, c => RecordColorUndo(elem, "HoverBorderColor", elem.HoverBorderColor, c),
                 defaultColor: borderDefH);
 
@@ -1565,7 +1893,7 @@ public class InspectorPanel
 
     /// <summary>Record a color change undo, then apply the new color.
     /// Called from color picker callbacks.</summary>
-    private void RecordColorUndo(UIElement elem, string propName, Vector3 oldColor, Vector3 newColor)
+    private void RecordColorUndo(UIElement elem, string propName, Vector4 oldColor, Vector4 newColor)
     {
         if (_bridge.RecordColorUndo != null && oldColor != newColor)
             _bridge.RecordColorUndo(elem, propName, oldColor, newColor);
@@ -1676,6 +2004,67 @@ public class InspectorPanel
     /// pickers share the same label (e.g. "N" for Normal, "H" for Hover).
     /// When the color differs from <paramref name="defaultColor"/>, a small  reset
     /// button appears to restore the default value.</summary>
+    /// <summary>Draw a color picker for Vector4 (RGBA) with label + colored square + eyedropper + alpha bar + quick Transparent button.</summary>
+    private static void DrawColorPicker(string label, string idSuffix, Vector4 color, Action<Vector4> onChanged, Vector4? defaultColor = null)
+    {
+        ImGui.Text(label);
+        ImGui.SameLine();
+
+        //  Reset button  only show when color differs from default 
+        bool hasDefault = defaultColor.HasValue;
+        bool isDefault = false;
+        if (hasDefault)
+        {
+            var def = defaultColor.Value;
+            isDefault = Math.Abs(color.X - def.X) < 0.001f &&
+                        Math.Abs(color.Y - def.Y) < 0.001f &&
+                        Math.Abs(color.Z - def.Z) < 0.001f &&
+                        Math.Abs(color.W - def.W) < 0.001f;
+        }
+
+        if (hasDefault && !isDefault)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.3f, 0.2f, 0.15f, 1f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.5f, 0.3f, 0.2f, 1f));
+            if (ImGui.SmallButton($"##reset_{label}_{idSuffix}"))
+                onChanged(defaultColor!.Value);
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Reset to default color");
+            ImGui.SameLine();
+        }
+
+        // Quick Transparent button
+        bool isTransparent = color.W <= 0.001f;
+        if (!isTransparent)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.18f, 0.24f, 0.32f, 0.9f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.28f, 0.38f, 0.50f, 1f));
+            if (ImGui.SmallButton($"Tr##trans_{label}_{idSuffix}"))
+                onChanged(new Vector4(color.X, color.Y, color.Z, 0f));
+            ImGui.PopStyleColor(2);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Make 100% transparent (Alpha = 0)");
+            ImGui.SameLine();
+        }
+        else
+        {
+            ImGui.TextColored(new Vector4(0.4f, 0.7f, 1f, 1f), "[Tr]");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Currently Transparent (Alpha = 0)");
+            ImGui.SameLine();
+        }
+
+        ImGui.SetNextItemWidth(-1);
+
+        var c = color;
+        if (ImGui.ColorEdit4($"##color_{label}_{idSuffix}", ref c, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar | ImGuiColorEditFlags.AlphaPreviewHalf))
+            onChanged(c);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Click to open color picker with Alpha / Transparency slider and eyedropper");
+    }
+
     private static void DrawColorPicker(string label, string idSuffix, Vector3 color, Action<Vector3> onChanged, Vector3? defaultColor = null)
     {
         ImGui.Text(label);
