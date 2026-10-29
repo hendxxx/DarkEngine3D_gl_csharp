@@ -157,6 +157,13 @@ public class IDEBridge
     // ── F9 toggle — when false, game input is blocked ──
     public bool InGameActive { get; set; }
 
+    // ── True while a MENU owns the screen (MainMenuScene / LoadingScene). Refreshed
+    // every frame by SceneManager from the active scene type. Player2DSystem freezes the
+    // 2D side-scroller's gameplay keys (A/D/Shift/Space + bound action keys) while this is
+    // true: in 3D there is no player to react, so a menu that is up must leave the world
+    // static in 2D too. Physics/animation keep running — only input is frozen.
+    public bool MenuOwnsInput { get; set; }
+
     // ── Static sprite-clip registry: lets engine-side objects (Player2D EditorObject)
     // resolve the Sprite Editor's sheets/clips by name without a panel reference.
     // Refreshed every frame by SpriteEditorPanel.Render (cheap dictionary fill).

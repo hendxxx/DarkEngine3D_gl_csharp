@@ -108,6 +108,10 @@ public class SceneElementData
     public string FallbackText { get; set; } = "";
     public bool WordWrap { get; set; } = true;
     public string TriggeredByKeyboardButton { get; set; } = "";
+    /// <summary>Container only: while this container is VISIBLE it owns the input focus —
+    /// every keyboard/mouse action aimed at the game world (2D player movement/jump/action
+    /// keys, camera look, interact key) is disabled. Elements inside the menu keep working.</summary>
+    public bool CaptureInputWhenVisible { get; set; } = false;
 
     // ── TextBox properties ──
     public string Placeholder { get; set; } = "Enter text...";

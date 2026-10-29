@@ -368,6 +368,7 @@ public static class SceneAssetSerializer
             HoverExitLabel = data.HoverExitBehavior,            FallbackText = data.FallbackText,
             WordWrap = data.WordWrap,
             TriggeredByKeyboardButton = data.TriggeredByKeyboardButton,
+            CaptureInputWhenVisible = data.CaptureInputWhenVisible,
  
             // ── New element type properties ──
             MinValue = data.MinValue,
@@ -542,6 +543,7 @@ public static class SceneAssetSerializer
             HoverExitBehavior = elem.HoverExitLabel,            FallbackText = elem.FallbackText,
             WordWrap = elem.WordWrap,
             TriggeredByKeyboardButton = elem.TriggeredByKeyboardButton,
+            CaptureInputWhenVisible = elem.CaptureInputWhenVisible,
  
             // ── New element type properties ──
             MinValue = elem.MinValue,

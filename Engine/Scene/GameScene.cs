@@ -757,7 +757,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _time += deltaTime;
 
             //  Player input & camera control — only when not paused AND input not locked
-            if (!_paused)
+            // A menu (main menu scene, or a visible Container with "Capture Input While
+            // Visible") also freezes keyboard/mouse here: the menu owns the focus, so no
+            // camera look or key action may reach the game world behind it.
+            bool menuOwnsInput = _sceneManager.Bridge?.MenuOwnsInput == true;
+            if (!_paused && !menuOwnsInput)
             {
                 //  Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed 
                 if (_inputCooldown > 0f)

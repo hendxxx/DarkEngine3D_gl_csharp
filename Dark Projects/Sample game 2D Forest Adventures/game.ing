@@ -33,6 +33,20 @@
           "atlasY": 0,
           "atlasWidth": 0,
           "atlasHeight": 0,
+          "hoverImagePath": "",
+          "hoverUseAtlasCoordinates": false,
+          "hoverAtlasImagePath": "",
+          "hoverAtlasX": 0,
+          "hoverAtlasY": 0,
+          "hoverAtlasWidth": 0,
+          "hoverAtlasHeight": 0,
+          "clickedImagePath": "",
+          "clickedUseAtlasCoordinates": false,
+          "clickedAtlasImagePath": "",
+          "clickedAtlasX": 0,
+          "clickedAtlasY": 0,
+          "clickedAtlasWidth": 0,
+          "clickedAtlasHeight": 0,
           "fontSize": 13,
           "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
           "textColor": [
@@ -102,6 +116,7 @@
           "fallbackText": "",
           "wordWrap": true,
           "triggeredByKeyboardButton": "",
+          "captureInputWhenVisible": false,
           "placeholder": "Enter text...",
           "maxLength": 0,
           "inputText": "",
@@ -242,12 +257,26 @@
               "sliceBorderRight": 0,
               "sliceBorderTop": 0,
               "sliceBorderBottom": 0,
-              "useAtlasCoordinates": true,
-              "atlasImagePath": "Artifacts\\images\\UI\\Main_menu.png",
-              "atlasX": 189,
-              "atlasY": 2,
-              "atlasWidth": 56,
+              "useAtlasCoordinates": false,
+              "atlasImagePath": "",
+              "atlasX": 170,
+              "atlasY": 0,
+              "atlasWidth": 51,
               "atlasHeight": 14,
+              "hoverImagePath": "",
+              "hoverUseAtlasCoordinates": false,
+              "hoverAtlasImagePath": "",
+              "hoverAtlasX": 0,
+              "hoverAtlasY": 0,
+              "hoverAtlasWidth": 0,
+              "hoverAtlasHeight": 0,
+              "clickedImagePath": "",
+              "clickedUseAtlasCoordinates": false,
+              "clickedAtlasImagePath": "",
+              "clickedAtlasX": 0,
+              "clickedAtlasY": 0,
+              "clickedAtlasWidth": 0,
+              "clickedAtlasHeight": 0,
               "fontSize": 13,
               "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
@@ -266,34 +295,34 @@
                 0.1,
                 0.12,
                 0.18,
-                1
+                0
               ],
               "hoverTextColor": [
                 0.95,
                 0.95,
                 1,
-                1
+                0
               ],
               "hoverBgColor": [
                 0.22,
                 0.28,
                 0.45,
-                1
+                0
               ],
               "hoverBorderColor": [
                 0.5,
                 0.6,
                 1,
-                1
+                0
               ],
               "alignment": "Center",
-              "isVisible": true,
-              "opacity": 0,
+              "isVisible": false,
+              "opacity": 0.5,
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
               "anchor": "None",
-              "useHover": false,
+              "useHover": true,
               "clickBehavior": "None",
               "hoverEnterBehavior": "None",
               "hoverExitBehavior": "None",
@@ -317,6 +346,7 @@
               "fallbackText": "",
               "wordWrap": true,
               "triggeredByKeyboardButton": "",
+              "captureInputWhenVisible": true,
               "placeholder": "Enter text...",
               "maxLength": 0,
               "inputText": "",
@@ -441,28 +471,42 @@
                   "name": "Menu",
                   "type": "Container",
                   "text": "",
-                  "x": 400,
-                  "y": -140,
-                  "width": 460,
-                  "height": 960,
-                  "imagePath": "",
+                  "x": 456,
+                  "y": -48,
+                  "width": 500,
+                  "height": 610,
+                  "imagePath": "Artifacts\\images\\UI\\MainMenu.png",
                   "imageMode": "Fill",
                   "imageFilter": 0,
-                  "sliceEnabled": false,
+                  "sliceEnabled": true,
                   "sliceX": 0,
                   "sliceY": 0,
-                  "sliceWidth": 0,
-                  "sliceHeight": 0,
-                  "sliceBorderLeft": 0,
-                  "sliceBorderRight": 0,
-                  "sliceBorderTop": 0,
-                  "sliceBorderBottom": 0,
-                  "useAtlasCoordinates": true,
-                  "atlasImagePath": "",
+                  "sliceWidth": 80,
+                  "sliceHeight": 168,
+                  "sliceBorderLeft": 30,
+                  "sliceBorderRight": 30,
+                  "sliceBorderTop": 55,
+                  "sliceBorderBottom": 42,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "Artifacts\\images\\UI\\MainMenu.png",
                   "atlasX": 96,
                   "atlasY": 0,
                   "atlasWidth": 80,
                   "atlasHeight": 172,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 13,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
@@ -502,7 +546,7 @@
                     1
                   ],
                   "alignment": "Center",
-                  "isVisible": true,
+                  "isVisible": false,
                   "opacity": 1,
                   "autoFillWindow": false,
                   "autoCenterX": true,
@@ -532,6 +576,7 @@
                   "fallbackText": "",
                   "wordWrap": true,
                   "triggeredByKeyboardButton": "",
+                  "captureInputWhenVisible": false,
                   "placeholder": "Enter text...",
                   "maxLength": 0,
                   "inputText": "",
@@ -653,14 +698,14 @@
                   "barProgOffsetBottom": 0,
                   "children": [
                     {
-                      "name": "btnResume",
-                      "type": "Button",
-                      "text": "",
-                      "x": -20,
-                      "y": -20,
-                      "width": 360,
-                      "height": 80,
-                      "imagePath": "",
+                      "name": "contButtons",
+                      "type": "Container",
+                      "text": "contButtons",
+                      "x": 400,
+                      "y": -40,
+                      "width": 500,
+                      "height": 610,
+                      "imagePath": "Artifacts\\images\\UI\\Buttons.png",
                       "imageMode": "Stretch",
                       "imageFilter": 0,
                       "sliceEnabled": false,
@@ -672,58 +717,72 @@
                       "sliceBorderRight": 0,
                       "sliceBorderTop": 0,
                       "sliceBorderBottom": 0,
-                      "useAtlasCoordinates": true,
+                      "useAtlasCoordinates": false,
                       "atlasImagePath": "",
-                      "atlasX": 348,
-                      "atlasY": 17,
-                      "atlasWidth": 58,
-                      "atlasHeight": 13,
-                      "fontSize": 24,
-                      "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
+                      "atlasX": 0,
+                      "atlasY": 0,
+                      "atlasWidth": 0,
+                      "atlasHeight": 0,
+                      "hoverImagePath": "",
+                      "hoverUseAtlasCoordinates": false,
+                      "hoverAtlasImagePath": "",
+                      "hoverAtlasX": 0,
+                      "hoverAtlasY": 0,
+                      "hoverAtlasWidth": 0,
+                      "hoverAtlasHeight": 0,
+                      "clickedImagePath": "",
+                      "clickedUseAtlasCoordinates": false,
+                      "clickedAtlasImagePath": "",
+                      "clickedAtlasX": 0,
+                      "clickedAtlasY": 0,
+                      "clickedAtlasWidth": 0,
+                      "clickedAtlasHeight": 0,
+                      "fontSize": 13,
+                      "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                       "textColor": [
                         0.95,
                         0.95,
                         1,
-                        0
+                        1
                       ],
                       "bgColor": [
                         0.1,
                         0.12,
                         0.18,
-                        0
+                        1
                       ],
                       "borderColor": [
-                        0.15,
+                        0.1,
+                        0.12,
                         0.18,
-                        0.25,
-                        0
+                        1
                       ],
                       "hoverTextColor": [
                         0.95,
                         0.95,
                         1,
-                        0
+                        1
                       ],
                       "hoverBgColor": [
                         0.22,
                         0.28,
                         0.45,
-                        0
+                        1
                       ],
                       "hoverBorderColor": [
                         0.5,
                         0.6,
                         1,
-                        0
+                        1
                       ],
                       "alignment": "Center",
                       "isVisible": true,
-                      "opacity": 1,
+                      "opacity": 0,
                       "autoFillWindow": false,
-                      "autoCenterX": false,
-                      "autoCenterY": false,
+                      "autoCenterX": true,
+                      "autoCenterY": true,
                       "anchor": "None",
-                      "useHover": true,
+                      "useHover": false,
                       "clickBehavior": "None",
                       "hoverEnterBehavior": "None",
                       "hoverExitBehavior": "None",
@@ -747,6 +806,7 @@
                       "fallbackText": "",
                       "wordWrap": true,
                       "triggeredByKeyboardButton": "",
+                      "captureInputWhenVisible": false,
                       "placeholder": "Enter text...",
                       "maxLength": 0,
                       "inputText": "",
@@ -866,227 +926,705 @@
                       "barProgOffsetRight": 0,
                       "barProgOffsetTop": 0,
                       "barProgOffsetBottom": 0,
-                      "children": []
-                    },
-                    {
-                      "name": "btnExit",
-                      "type": "Button",
-                      "text": "",
-                      "x": -20,
-                      "y": 680,
-                      "width": 360,
-                      "height": 80,
-                      "imagePath": "",
-                      "imageMode": "Stretch",
-                      "imageFilter": 0,
-                      "sliceEnabled": false,
-                      "sliceX": 0,
-                      "sliceY": 0,
-                      "sliceWidth": 0,
-                      "sliceHeight": 0,
-                      "sliceBorderLeft": 0,
-                      "sliceBorderRight": 0,
-                      "sliceBorderTop": 0,
-                      "sliceBorderBottom": 0,
-                      "useAtlasCoordinates": true,
-                      "atlasImagePath": "",
-                      "atlasX": 348,
-                      "atlasY": 145,
-                      "atlasWidth": 58,
-                      "atlasHeight": 13,
-                      "fontSize": 24,
-                      "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
-                      "textColor": [
-                        0.95,
-                        0.95,
-                        1,
-                        0
-                      ],
-                      "bgColor": [
-                        0.1,
-                        0.12,
-                        0.18,
-                        0
-                      ],
-                      "borderColor": [
-                        0.15,
-                        0.18,
-                        0.25,
-                        0
-                      ],
-                      "hoverTextColor": [
-                        0.95,
-                        0.95,
-                        1,
-                        0
-                      ],
-                      "hoverBgColor": [
-                        0.22,
-                        0.28,
-                        0.45,
-                        0
-                      ],
-                      "hoverBorderColor": [
-                        0.5,
-                        0.6,
-                        1,
-                        0
-                      ],
-                      "alignment": "Center",
-                      "isVisible": true,
-                      "opacity": 1,
-                      "autoFillWindow": false,
-                      "autoCenterX": false,
-                      "autoCenterY": false,
-                      "anchor": "None",
-                      "useHover": true,
-                      "clickBehavior": "exit",
-                      "hoverEnterBehavior": "None",
-                      "hoverExitBehavior": "None",
-                      "minValue": 0,
-                      "maxValue": 100,
-                      "step": 1,
-                      "currentValue": 50,
-                      "textOptions": [
-                        "Option A",
-                        "Option B",
-                        "Option C"
-                      ],
-                      "selectedTextIndex": 0,
-                      "isChecked": false,
-                      "options": [
-                        "Option 1",
-                        "Option 2",
-                        "Option 3"
-                      ],
-                      "selectedIndex": 0,
-                      "fallbackText": "",
-                      "wordWrap": true,
-                      "triggeredByKeyboardButton": "",
-                      "placeholder": "Enter text...",
-                      "maxLength": 0,
-                      "inputText": "",
-                      "scrollY": 0,
-                      "scrollBarWidth": 10,
-                      "scrollBarTrackColor": [
-                        0.15,
-                        0.15,
-                        0.2
-                      ],
-                      "scrollBarThumbColor": [
-                        0.45,
-                        0.45,
-                        0.55
-                      ],
-                      "scrollBarThumbHoverColor": [
-                        0.55,
-                        0.55,
-                        0.65
-                      ],
-                      "sliderTrackColor": [
-                        0.3,
-                        0.3,
-                        0.35
-                      ],
-                      "sliderFillColor": [
-                        0.3,
-                        0.6,
-                        1
-                      ],
-                      "sliderThumbColor": [
-                        0.9,
-                        0.9,
-                        1
-                      ],
-                      "sliderThumbBorderColor": [
-                        0.3,
-                        0.6,
-                        1
-                      ],
-                      "sliderThumbSize": 14,
-                      "sliderTrackHeight": 6,
-                      "sliderLabelPosition": 1,
-                      "sliderLabelSpacing": 8,
-                      "labelSpacing": 8,
-                      "checkmarkColor": [
-                        0.9,
-                        0.9,
-                        1
-                      ],
-                      "checkedBgColor": [
-                        0.25,
-                        0.55,
-                        1
-                      ],
-                      "uncheckedBgColor": [
-                        0.15,
-                        0.15,
-                        0.22
-                      ],
-                      "arrowColor": [
-                        0.5,
-                        0.5,
-                        0.7
-                      ],
-                      "cursorColor": [
-                        0.5,
-                        0.8,
-                        1
-                      ],
-                      "radioSelectedColor": [
-                        0.3,
-                        0.7,
-                        1
-                      ],
-                      "radioSelectedBgColor": [
-                        0.2,
-                        0.4,
-                        0.65
-                      ],
-                      "radioUnselectedBgColor": [
-                        0.15,
-                        0.15,
-                        0.22
-                      ],
-                      "radioGroup": "default",
-                      "barBackgroundPath": "",
-                      "barEmptyPath": "",
-                      "barProgressPath": "",
-                      "barBgColor": [
-                        0.1,
-                        0.1,
-                        0.14
-                      ],
-                      "barEmptyColor": [
-                        0.05,
-                        0.05,
-                        0.08
-                      ],
-                      "barProgressColor": [
-                        0.3,
-                        0.7,
-                        1
-                      ],
-                      "barInset": 0,
-                      "barDirection": 0,
-                      "barStatBinding": "None",
-                      "barBgOffsetLeft": 0,
-                      "barBgOffsetRight": 0,
-                      "barBgOffsetTop": 0,
-                      "barBgOffsetBottom": 0,
-                      "barEmptyOffsetLeft": 0,
-                      "barEmptyOffsetRight": 0,
-                      "barEmptyOffsetTop": 0,
-                      "barEmptyOffsetBottom": 0,
-                      "barProgOffsetLeft": 0,
-                      "barProgOffsetRight": 0,
-                      "barProgOffsetTop": 0,
-                      "barProgOffsetBottom": 0,
-                      "children": []
+                      "children": [
+                        {
+                          "name": "btnResume",
+                          "type": "Button",
+                          "text": "",
+                          "x": -480,
+                          "y": 40,
+                          "width": 400,
+                          "height": 80,
+                          "imagePath": "Artifacts\\images\\UI\\Buttons.png",
+                          "imageMode": "Stretch",
+                          "imageFilter": 0,
+                          "sliceEnabled": false,
+                          "sliceX": 0,
+                          "sliceY": 0,
+                          "sliceWidth": 100,
+                          "sliceHeight": 100,
+                          "sliceBorderLeft": 4,
+                          "sliceBorderRight": 4,
+                          "sliceBorderTop": 4,
+                          "sliceBorderBottom": 4,
+                          "useAtlasCoordinates": true,
+                          "atlasImagePath": "",
+                          "atlasX": 13,
+                          "atlasY": 274,
+                          "atlasWidth": 60,
+                          "atlasHeight": 13,
+                          "hoverImagePath": "",
+                          "hoverUseAtlasCoordinates": true,
+                          "hoverAtlasImagePath": "",
+                          "hoverAtlasX": 173,
+                          "hoverAtlasY": 290,
+                          "hoverAtlasWidth": 60,
+                          "hoverAtlasHeight": 13,
+                          "clickedImagePath": "",
+                          "clickedUseAtlasCoordinates": true,
+                          "clickedAtlasImagePath": "",
+                          "clickedAtlasX": 253,
+                          "clickedAtlasY": 290,
+                          "clickedAtlasWidth": 60,
+                          "clickedAtlasHeight": 13,
+                          "fontSize": 24,
+                          "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
+                          "textColor": [
+                            0,
+                            0,
+                            0,
+                            1
+                          ],
+                          "bgColor": [
+                            0.1,
+                            0.12,
+                            0.18,
+                            0
+                          ],
+                          "borderColor": [
+                            0.15,
+                            0.18,
+                            0.25,
+                            0
+                          ],
+                          "hoverTextColor": [
+                            0,
+                            0,
+                            0,
+                            1
+                          ],
+                          "hoverBgColor": [
+                            0.22,
+                            0.28,
+                            0.45,
+                            0
+                          ],
+                          "hoverBorderColor": [
+                            0.5,
+                            0.6,
+                            1,
+                            0
+                          ],
+                          "alignment": "Center",
+                          "isVisible": true,
+                          "opacity": 1,
+                          "autoFillWindow": false,
+                          "autoCenterX": false,
+                          "autoCenterY": false,
+                          "anchor": "None",
+                          "useHover": true,
+                          "clickBehavior": "overlay:MainMenu",
+                          "hoverEnterBehavior": "None",
+                          "hoverExitBehavior": "None",
+                          "minValue": 0,
+                          "maxValue": 100,
+                          "step": 1,
+                          "currentValue": 50,
+                          "textOptions": [
+                            "Option A",
+                            "Option B",
+                            "Option C"
+                          ],
+                          "selectedTextIndex": 0,
+                          "isChecked": false,
+                          "options": [
+                            "Option 1",
+                            "Option 2",
+                            "Option 3"
+                          ],
+                          "selectedIndex": 0,
+                          "fallbackText": "",
+                          "wordWrap": true,
+                          "triggeredByKeyboardButton": "",
+                          "captureInputWhenVisible": false,
+                          "placeholder": "Enter text...",
+                          "maxLength": 0,
+                          "inputText": "",
+                          "scrollY": 0,
+                          "scrollBarWidth": 10,
+                          "scrollBarTrackColor": [
+                            0.15,
+                            0.15,
+                            0.2
+                          ],
+                          "scrollBarThumbColor": [
+                            0.45,
+                            0.45,
+                            0.55
+                          ],
+                          "scrollBarThumbHoverColor": [
+                            0.55,
+                            0.55,
+                            0.65
+                          ],
+                          "sliderTrackColor": [
+                            0.3,
+                            0.3,
+                            0.35
+                          ],
+                          "sliderFillColor": [
+                            0.3,
+                            0.6,
+                            1
+                          ],
+                          "sliderThumbColor": [
+                            0.9,
+                            0.9,
+                            1
+                          ],
+                          "sliderThumbBorderColor": [
+                            0.3,
+                            0.6,
+                            1
+                          ],
+                          "sliderThumbSize": 14,
+                          "sliderTrackHeight": 6,
+                          "sliderLabelPosition": 1,
+                          "sliderLabelSpacing": 8,
+                          "labelSpacing": 8,
+                          "checkmarkColor": [
+                            0.9,
+                            0.9,
+                            1
+                          ],
+                          "checkedBgColor": [
+                            0.25,
+                            0.55,
+                            1
+                          ],
+                          "uncheckedBgColor": [
+                            0.15,
+                            0.15,
+                            0.22
+                          ],
+                          "arrowColor": [
+                            0.5,
+                            0.5,
+                            0.7
+                          ],
+                          "cursorColor": [
+                            0.5,
+                            0.8,
+                            1
+                          ],
+                          "radioSelectedColor": [
+                            0.3,
+                            0.7,
+                            1
+                          ],
+                          "radioSelectedBgColor": [
+                            0.2,
+                            0.4,
+                            0.65
+                          ],
+                          "radioUnselectedBgColor": [
+                            0.15,
+                            0.15,
+                            0.22
+                          ],
+                          "radioGroup": "default",
+                          "barBackgroundPath": "",
+                          "barEmptyPath": "",
+                          "barProgressPath": "",
+                          "barBgColor": [
+                            0.1,
+                            0.1,
+                            0.14
+                          ],
+                          "barEmptyColor": [
+                            0.05,
+                            0.05,
+                            0.08
+                          ],
+                          "barProgressColor": [
+                            0.3,
+                            0.7,
+                            1
+                          ],
+                          "barInset": 0,
+                          "barDirection": 0,
+                          "barStatBinding": "None",
+                          "barBgOffsetLeft": 0,
+                          "barBgOffsetRight": 0,
+                          "barBgOffsetTop": 0,
+                          "barBgOffsetBottom": 0,
+                          "barEmptyOffsetLeft": 0,
+                          "barEmptyOffsetRight": 0,
+                          "barEmptyOffsetTop": 0,
+                          "barEmptyOffsetBottom": 0,
+                          "barProgOffsetLeft": 0,
+                          "barProgOffsetRight": 0,
+                          "barProgOffsetTop": 0,
+                          "barProgOffsetBottom": 0,
+                          "children": []
+                        },
+                        {
+                          "name": "btnExit",
+                          "type": "Button",
+                          "text": "",
+                          "x": -500,
+                          "y": 120,
+                          "width": 400,
+                          "height": 80,
+                          "imagePath": "",
+                          "imageMode": "Stretch",
+                          "imageFilter": 0,
+                          "sliceEnabled": false,
+                          "sliceX": 0,
+                          "sliceY": 0,
+                          "sliceWidth": 0,
+                          "sliceHeight": 0,
+                          "sliceBorderLeft": 0,
+                          "sliceBorderRight": 0,
+                          "sliceBorderTop": 0,
+                          "sliceBorderBottom": 0,
+                          "useAtlasCoordinates": true,
+                          "atlasImagePath": "",
+                          "atlasX": 90,
+                          "atlasY": 403,
+                          "atlasWidth": 60,
+                          "atlasHeight": 13,
+                          "hoverImagePath": "",
+                          "hoverUseAtlasCoordinates": true,
+                          "hoverAtlasImagePath": "",
+                          "hoverAtlasX": 170,
+                          "hoverAtlasY": 418,
+                          "hoverAtlasWidth": 60,
+                          "hoverAtlasHeight": 13,
+                          "clickedImagePath": "",
+                          "clickedUseAtlasCoordinates": true,
+                          "clickedAtlasImagePath": "",
+                          "clickedAtlasX": 250,
+                          "clickedAtlasY": 418,
+                          "clickedAtlasWidth": 60,
+                          "clickedAtlasHeight": 13,
+                          "fontSize": 24,
+                          "fontPath": "Artifacts\\fonts\\VCR_OSD_MONO_1.001.ttf",
+                          "textColor": [
+                            0.95,
+                            0.95,
+                            1,
+                            0
+                          ],
+                          "bgColor": [
+                            0.1,
+                            0.12,
+                            0.18,
+                            0
+                          ],
+                          "borderColor": [
+                            0.15,
+                            0.18,
+                            0.25,
+                            0
+                          ],
+                          "hoverTextColor": [
+                            0.95,
+                            0.95,
+                            1,
+                            1
+                          ],
+                          "hoverBgColor": [
+                            0.22,
+                            0.28,
+                            0.45,
+                            0
+                          ],
+                          "hoverBorderColor": [
+                            0.5,
+                            0.6,
+                            1,
+                            0
+                          ],
+                          "alignment": "Center",
+                          "isVisible": true,
+                          "opacity": 1,
+                          "autoFillWindow": false,
+                          "autoCenterX": false,
+                          "autoCenterY": false,
+                          "anchor": "None",
+                          "useHover": true,
+                          "clickBehavior": "exit",
+                          "hoverEnterBehavior": "None",
+                          "hoverExitBehavior": "None",
+                          "minValue": 0,
+                          "maxValue": 100,
+                          "step": 1,
+                          "currentValue": 50,
+                          "textOptions": [
+                            "Option A",
+                            "Option B",
+                            "Option C"
+                          ],
+                          "selectedTextIndex": 0,
+                          "isChecked": false,
+                          "options": [
+                            "Option 1",
+                            "Option 2",
+                            "Option 3"
+                          ],
+                          "selectedIndex": 0,
+                          "fallbackText": "",
+                          "wordWrap": true,
+                          "triggeredByKeyboardButton": "",
+                          "captureInputWhenVisible": false,
+                          "placeholder": "Enter text...",
+                          "maxLength": 0,
+                          "inputText": "",
+                          "scrollY": 0,
+                          "scrollBarWidth": 10,
+                          "scrollBarTrackColor": [
+                            0.15,
+                            0.15,
+                            0.2
+                          ],
+                          "scrollBarThumbColor": [
+                            0.45,
+                            0.45,
+                            0.55
+                          ],
+                          "scrollBarThumbHoverColor": [
+                            0.55,
+                            0.55,
+                            0.65
+                          ],
+                          "sliderTrackColor": [
+                            0.3,
+                            0.3,
+                            0.35
+                          ],
+                          "sliderFillColor": [
+                            0.3,
+                            0.6,
+                            1
+                          ],
+                          "sliderThumbColor": [
+                            0.9,
+                            0.9,
+                            1
+                          ],
+                          "sliderThumbBorderColor": [
+                            0.3,
+                            0.6,
+                            1
+                          ],
+                          "sliderThumbSize": 14,
+                          "sliderTrackHeight": 6,
+                          "sliderLabelPosition": 1,
+                          "sliderLabelSpacing": 8,
+                          "labelSpacing": 8,
+                          "checkmarkColor": [
+                            0.9,
+                            0.9,
+                            1
+                          ],
+                          "checkedBgColor": [
+                            0.25,
+                            0.55,
+                            1
+                          ],
+                          "uncheckedBgColor": [
+                            0.15,
+                            0.15,
+                            0.22
+                          ],
+                          "arrowColor": [
+                            0.5,
+                            0.5,
+                            0.7
+                          ],
+                          "cursorColor": [
+                            0.5,
+                            0.8,
+                            1
+                          ],
+                          "radioSelectedColor": [
+                            0.3,
+                            0.7,
+                            1
+                          ],
+                          "radioSelectedBgColor": [
+                            0.2,
+                            0.4,
+                            0.65
+                          ],
+                          "radioUnselectedBgColor": [
+                            0.15,
+                            0.15,
+                            0.22
+                          ],
+                          "radioGroup": "default",
+                          "barBackgroundPath": "",
+                          "barEmptyPath": "",
+                          "barProgressPath": "",
+                          "barBgColor": [
+                            0.1,
+                            0.1,
+                            0.14
+                          ],
+                          "barEmptyColor": [
+                            0.05,
+                            0.05,
+                            0.08
+                          ],
+                          "barProgressColor": [
+                            0.3,
+                            0.7,
+                            1
+                          ],
+                          "barInset": 0,
+                          "barDirection": 0,
+                          "barStatBinding": "None",
+                          "barBgOffsetLeft": 0,
+                          "barBgOffsetRight": 0,
+                          "barBgOffsetTop": 0,
+                          "barBgOffsetBottom": 0,
+                          "barEmptyOffsetLeft": 0,
+                          "barEmptyOffsetRight": 0,
+                          "barEmptyOffsetTop": 0,
+                          "barEmptyOffsetBottom": 0,
+                          "barProgOffsetLeft": 0,
+                          "barProgOffsetRight": 0,
+                          "barProgOffsetTop": 0,
+                          "barProgOffsetBottom": 0,
+                          "children": []
+                        }
+                      ]
                     }
                   ]
                 }
               ]
+            },
+            {
+              "name": "contQuickMenu",
+              "type": "Container",
+              "text": "contQuickMenu",
+              "x": 0,
+              "y": 1048,
+              "width": 1000,
+              "height": 120,
+              "imagePath": "Artifacts\\images\\UI\\Action_panel.png",
+              "imageMode": "Stretch",
+              "imageFilter": 0,
+              "sliceEnabled": false,
+              "sliceX": 0,
+              "sliceY": 0,
+              "sliceWidth": 0,
+              "sliceHeight": 0,
+              "sliceBorderLeft": 0,
+              "sliceBorderRight": 0,
+              "sliceBorderTop": 0,
+              "sliceBorderBottom": 0,
+              "useAtlasCoordinates": true,
+              "atlasImagePath": "",
+              "atlasX": 11,
+              "atlasY": 43,
+              "atlasWidth": 170,
+              "atlasHeight": 22,
+              "hoverImagePath": "",
+              "hoverUseAtlasCoordinates": false,
+              "hoverAtlasImagePath": "",
+              "hoverAtlasX": 0,
+              "hoverAtlasY": 0,
+              "hoverAtlasWidth": 0,
+              "hoverAtlasHeight": 0,
+              "clickedImagePath": "",
+              "clickedUseAtlasCoordinates": false,
+              "clickedAtlasImagePath": "",
+              "clickedAtlasX": 0,
+              "clickedAtlasY": 0,
+              "clickedAtlasWidth": 0,
+              "clickedAtlasHeight": 0,
+              "fontSize": 13,
+              "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
+              "textColor": [
+                0.95,
+                0.95,
+                1,
+                0
+              ],
+              "bgColor": [
+                0.1,
+                0.12,
+                0.18,
+                0
+              ],
+              "borderColor": [
+                0.1,
+                0.12,
+                0.18,
+                0
+              ],
+              "hoverTextColor": [
+                0.95,
+                0.95,
+                1,
+                1
+              ],
+              "hoverBgColor": [
+                0.22,
+                0.28,
+                0.45,
+                1
+              ],
+              "hoverBorderColor": [
+                0.5,
+                0.6,
+                1,
+                1
+              ],
+              "alignment": "Center",
+              "isVisible": true,
+              "opacity": 1,
+              "autoFillWindow": false,
+              "autoCenterX": true,
+              "autoCenterY": false,
+              "anchor": "BottomCenter",
+              "useHover": false,
+              "clickBehavior": "None",
+              "hoverEnterBehavior": "None",
+              "hoverExitBehavior": "None",
+              "minValue": 0,
+              "maxValue": 100,
+              "step": 1,
+              "currentValue": 50,
+              "textOptions": [
+                "Option A",
+                "Option B",
+                "Option C"
+              ],
+              "selectedTextIndex": 0,
+              "isChecked": false,
+              "options": [
+                "Option 1",
+                "Option 2",
+                "Option 3"
+              ],
+              "selectedIndex": 0,
+              "fallbackText": "",
+              "wordWrap": true,
+              "triggeredByKeyboardButton": "",
+              "captureInputWhenVisible": false,
+              "placeholder": "Enter text...",
+              "maxLength": 0,
+              "inputText": "",
+              "scrollY": 0,
+              "scrollBarWidth": 10,
+              "scrollBarTrackColor": [
+                0.15,
+                0.15,
+                0.2
+              ],
+              "scrollBarThumbColor": [
+                0.45,
+                0.45,
+                0.55
+              ],
+              "scrollBarThumbHoverColor": [
+                0.55,
+                0.55,
+                0.65
+              ],
+              "sliderTrackColor": [
+                0.3,
+                0.3,
+                0.35
+              ],
+              "sliderFillColor": [
+                0.3,
+                0.6,
+                1
+              ],
+              "sliderThumbColor": [
+                0.9,
+                0.9,
+                1
+              ],
+              "sliderThumbBorderColor": [
+                0.3,
+                0.6,
+                1
+              ],
+              "sliderThumbSize": 14,
+              "sliderTrackHeight": 6,
+              "sliderLabelPosition": 1,
+              "sliderLabelSpacing": 8,
+              "labelSpacing": 8,
+              "checkmarkColor": [
+                0.9,
+                0.9,
+                1
+              ],
+              "checkedBgColor": [
+                0.25,
+                0.55,
+                1
+              ],
+              "uncheckedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "arrowColor": [
+                0.5,
+                0.5,
+                0.7
+              ],
+              "cursorColor": [
+                0.5,
+                0.8,
+                1
+              ],
+              "radioSelectedColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "radioSelectedBgColor": [
+                0.2,
+                0.4,
+                0.65
+              ],
+              "radioUnselectedBgColor": [
+                0.15,
+                0.15,
+                0.22
+              ],
+              "radioGroup": "default",
+              "barBackgroundPath": "",
+              "barEmptyPath": "",
+              "barProgressPath": "",
+              "barBgColor": [
+                0.1,
+                0.1,
+                0.14
+              ],
+              "barEmptyColor": [
+                0.05,
+                0.05,
+                0.08
+              ],
+              "barProgressColor": [
+                0.3,
+                0.7,
+                1
+              ],
+              "barInset": 0,
+              "barDirection": 0,
+              "barStatBinding": "None",
+              "barBgOffsetLeft": 0,
+              "barBgOffsetRight": 0,
+              "barBgOffsetTop": 0,
+              "barBgOffsetBottom": 0,
+              "barEmptyOffsetLeft": 0,
+              "barEmptyOffsetRight": 0,
+              "barEmptyOffsetTop": 0,
+              "barEmptyOffsetBottom": 0,
+              "barProgOffsetLeft": 0,
+              "barProgOffsetRight": 0,
+              "barProgOffsetTop": 0,
+              "barProgOffsetBottom": 0,
+              "children": []
             }
           ]
         }

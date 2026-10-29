@@ -5,6 +5,7 @@
       "sceneName": "mnMain",
       "description": "",
       "sceneType": "MainMenu",
+      "gameType": "3d",
       "elements": [
         {
           "name": "mnMain",
@@ -16,36 +17,72 @@
           "height": 50,
           "imagePath": "",
           "imageMode": "Stretch",
+          "imageFilter": 0,
+          "sliceEnabled": false,
+          "sliceX": 0,
+          "sliceY": 0,
+          "sliceWidth": 0,
+          "sliceHeight": 0,
+          "sliceBorderLeft": 0,
+          "sliceBorderRight": 0,
+          "sliceBorderTop": 0,
+          "sliceBorderBottom": 0,
+          "useAtlasCoordinates": false,
+          "atlasImagePath": "",
+          "atlasX": 0,
+          "atlasY": 0,
+          "atlasWidth": 0,
+          "atlasHeight": 0,
+          "hoverImagePath": "",
+          "hoverUseAtlasCoordinates": false,
+          "hoverAtlasImagePath": "",
+          "hoverAtlasX": 0,
+          "hoverAtlasY": 0,
+          "hoverAtlasWidth": 0,
+          "hoverAtlasHeight": 0,
+          "clickedImagePath": "",
+          "clickedUseAtlasCoordinates": false,
+          "clickedAtlasImagePath": "",
+          "clickedAtlasX": 0,
+          "clickedAtlasY": 0,
+          "clickedAtlasWidth": 0,
+          "clickedAtlasHeight": 0,
           "fontSize": 13,
           "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
           "textColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "bgColor": [
             0.1,
             0.12,
-            0.18
+            0.18,
+            1
           ],
           "borderColor": [
             0.15,
             0.18,
-            0.25
+            0.25,
+            1
           ],
           "hoverTextColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "hoverBgColor": [
             0.22,
             0.28,
-            0.45
+            0.45,
+            1
           ],
           "hoverBorderColor": [
             0.5,
             0.6,
+            1,
             1
           ],
           "alignment": "Center",
@@ -209,41 +246,77 @@
               "height": 991,
               "imagePath": "",
               "imageMode": "Stretch",
+              "imageFilter": 0,
+              "sliceEnabled": false,
+              "sliceX": 0,
+              "sliceY": 0,
+              "sliceWidth": 0,
+              "sliceHeight": 0,
+              "sliceBorderLeft": 0,
+              "sliceBorderRight": 0,
+              "sliceBorderTop": 0,
+              "sliceBorderBottom": 0,
+              "useAtlasCoordinates": false,
+              "atlasImagePath": "",
+              "atlasX": 0,
+              "atlasY": 0,
+              "atlasWidth": 0,
+              "atlasHeight": 0,
+              "hoverImagePath": "",
+              "hoverUseAtlasCoordinates": false,
+              "hoverAtlasImagePath": "",
+              "hoverAtlasX": 0,
+              "hoverAtlasY": 0,
+              "hoverAtlasWidth": 0,
+              "hoverAtlasHeight": 0,
+              "clickedImagePath": "",
+              "clickedUseAtlasCoordinates": false,
+              "clickedAtlasImagePath": "",
+              "clickedAtlasX": 0,
+              "clickedAtlasY": 0,
+              "clickedAtlasWidth": 0,
+              "clickedAtlasHeight": 0,
               "fontSize": 13,
               "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
               "textColor": [
                 0.95,
                 0.95,
+                1,
                 1
               ],
               "bgColor": [
                 0.1,
                 0.12,
-                0.18
+                0.18,
+                1
               ],
               "borderColor": [
                 0.1,
                 0.12,
-                0.18
+                0.18,
+                1
               ],
               "hoverTextColor": [
                 0.95,
                 0.95,
+                1,
                 1
               ],
               "hoverBgColor": [
                 0.22,
                 0.28,
-                0.45
+                0.45,
+                1
               ],
               "hoverBorderColor": [
                 0.5,
                 0.6,
+                1,
                 1
               ],
               "alignment": "Center",
               "isVisible": true,
-              "opacity": 0,
+              "opacity": 0.24,
               "autoFillWindow": true,
               "autoCenterX": false,
               "autoCenterY": false,
@@ -398,41 +471,77 @@
                   "text": "DEMO",
                   "x": 820,
                   "y": 320,
-                  "width": 320,
-                  "height": 160,
+                  "width": 1120,
+                  "height": 180,
                   "imagePath": "",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 72,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
-                    0,
-                    0,
+                    0.1,
+                    0.12,
+                    0.18,
                     0
                   ],
                   "borderColor": [
-                    0,
-                    0,
+                    0.1,
+                    0.12,
+                    0.18,
                     0
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0,
                     0,
-                    0
+                    0,
+                    1
                   ],
                   "hoverBorderColor": [
                     0,
                     0,
-                    0
+                    0,
+                    1
                   ],
                   "alignment": "Center",
                   "isVisible": true,
@@ -596,19 +705,52 @@
                   "height": 280,
                   "imagePath": "",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 18,
                   "fontPath": "Artifacts\\fonts\\a song for jennifer.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
-                    0,
-                    0,
+                    0.1,
+                    0.12,
+                    0.18,
                     0
                   ],
                   "borderColor": [
+                    0,
                     0,
                     0,
                     0
@@ -616,17 +758,20 @@
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0,
                     0,
-                    0
+                    0,
+                    1
                   ],
                   "hoverBorderColor": [
                     0,
                     0,
-                    0
+                    0,
+                    1
                   ],
                   "alignment": "Center",
                   "isVisible": true,
@@ -790,36 +935,72 @@
                   "height": 80,
                   "imagePath": "",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 31,
                   "fontPath": "Artifacts\\fonts\\Blackbold.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "borderColor": [
                     0.15,
                     0.18,
-                    0.25
+                    0.25,
+                    1
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0.22,
                     0.28,
-                    0.45
+                    0.45,
+                    1
                   ],
                   "hoverBorderColor": [
                     0.5,
                     0.6,
+                    1,
                     1
                   ],
                   "alignment": "Center",
@@ -830,7 +1011,7 @@
                   "autoCenterY": false,
                   "anchor": "None",
                   "useHover": true,
-                  "clickBehavior": "scene:scnUtama",
+                  "clickBehavior": "scene:scn2",
                   "hoverEnterBehavior": "None",
                   "hoverExitBehavior": "None",
                   "minValue": 0,
@@ -984,36 +1165,72 @@
                   "height": 80,
                   "imagePath": "",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 31,
                   "fontPath": "Artifacts\\fonts\\Blackbold.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "borderColor": [
                     0.15,
                     0.18,
-                    0.25
+                    0.25,
+                    1
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0.22,
                     0.28,
-                    0.45
+                    0.45,
+                    1
                   ],
                   "hoverBorderColor": [
                     0.5,
                     0.6,
+                    1,
                     1
                   ],
                   "alignment": "Center",
@@ -1178,36 +1395,72 @@
                   "height": 280,
                   "imagePath": "Artifacts\\Textures\\moon.png",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 13,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "borderColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0.22,
                     0.28,
-                    0.45
+                    0.45,
+                    1
                   ],
                   "hoverBorderColor": [
                     0.5,
                     0.6,
+                    1,
                     1
                   ],
                   "alignment": "Center",
@@ -1372,36 +1625,72 @@
                   "height": 180,
                   "imagePath": "Artifacts\\Textures\\logo.png",
                   "imageMode": "Stretch",
+                  "imageFilter": 0,
+                  "sliceEnabled": false,
+                  "sliceX": 0,
+                  "sliceY": 0,
+                  "sliceWidth": 0,
+                  "sliceHeight": 0,
+                  "sliceBorderLeft": 0,
+                  "sliceBorderRight": 0,
+                  "sliceBorderTop": 0,
+                  "sliceBorderBottom": 0,
+                  "useAtlasCoordinates": false,
+                  "atlasImagePath": "",
+                  "atlasX": 0,
+                  "atlasY": 0,
+                  "atlasWidth": 0,
+                  "atlasHeight": 0,
+                  "hoverImagePath": "",
+                  "hoverUseAtlasCoordinates": false,
+                  "hoverAtlasImagePath": "",
+                  "hoverAtlasX": 0,
+                  "hoverAtlasY": 0,
+                  "hoverAtlasWidth": 0,
+                  "hoverAtlasHeight": 0,
+                  "clickedImagePath": "",
+                  "clickedUseAtlasCoordinates": false,
+                  "clickedAtlasImagePath": "",
+                  "clickedAtlasX": 0,
+                  "clickedAtlasY": 0,
+                  "clickedAtlasWidth": 0,
+                  "clickedAtlasHeight": 0,
                   "fontSize": 13,
                   "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
                   "textColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "bgColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "borderColor": [
                     0.1,
                     0.12,
-                    0.18
+                    0.18,
+                    1
                   ],
                   "hoverTextColor": [
                     0.95,
                     0.95,
+                    1,
                     1
                   ],
                   "hoverBgColor": [
                     0.22,
                     0.28,
-                    0.45
+                    0.45,
+                    1
                   ],
                   "hoverBorderColor": [
                     0.5,
                     0.6,
+                    1,
                     1
                   ],
                   "alignment": "Center",
@@ -4985,8 +5274,8 @@
         10,
         15
       ],
-      "editorCameraYaw": -164.5,
-      "editorCameraPitch": -24,
+      "editorCameraYaw": 180,
+      "editorCameraPitch": -33.7,
       "editorCameraOrtho": false,
       "editorCameraOrthoSize": 32,
       "renderProperties": {
@@ -5007,6 +5296,7 @@
       "sceneName": "scn2",
       "description": "",
       "sceneType": "GameScene",
+      "gameType": "3d",
       "elements": [
         {
           "name": "scn2",
@@ -5018,36 +5308,72 @@
           "height": 50,
           "imagePath": "",
           "imageMode": "Stretch",
+          "imageFilter": 0,
+          "sliceEnabled": false,
+          "sliceX": 0,
+          "sliceY": 0,
+          "sliceWidth": 0,
+          "sliceHeight": 0,
+          "sliceBorderLeft": 0,
+          "sliceBorderRight": 0,
+          "sliceBorderTop": 0,
+          "sliceBorderBottom": 0,
+          "useAtlasCoordinates": false,
+          "atlasImagePath": "",
+          "atlasX": 0,
+          "atlasY": 0,
+          "atlasWidth": 0,
+          "atlasHeight": 0,
+          "hoverImagePath": "",
+          "hoverUseAtlasCoordinates": false,
+          "hoverAtlasImagePath": "",
+          "hoverAtlasX": 0,
+          "hoverAtlasY": 0,
+          "hoverAtlasWidth": 0,
+          "hoverAtlasHeight": 0,
+          "clickedImagePath": "",
+          "clickedUseAtlasCoordinates": false,
+          "clickedAtlasImagePath": "",
+          "clickedAtlasX": 0,
+          "clickedAtlasY": 0,
+          "clickedAtlasWidth": 0,
+          "clickedAtlasHeight": 0,
           "fontSize": 13,
           "fontPath": "Artifacts\\fonts\\Worldstar.ttf",
           "textColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "bgColor": [
             0.1,
             0.12,
-            0.18
+            0.18,
+            1
           ],
           "borderColor": [
             0.15,
             0.18,
-            0.25
+            0.25,
+            1
           ],
           "hoverTextColor": [
             0.95,
             0.95,
+            1,
             1
           ],
           "hoverBgColor": [
             0.22,
             0.28,
-            0.45
+            0.45,
+            1
           ],
           "hoverBorderColor": [
             0.5,
             0.6,
+            1,
             1
           ],
           "alignment": "Center",
@@ -9983,12 +10309,12 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        14.618767,
-        15.36861,
-        -9.661779
+        10.624298,
+        10.879817,
+        -0.8640904
       ],
-      "editorCameraYaw": -115,
-      "editorCameraPitch": -32.5,
+      "editorCameraYaw": 0,
+      "editorCameraPitch": 0,
       "editorCameraOrtho": false,
       "editorCameraOrthoSize": 33.600002,
       "renderProperties": {

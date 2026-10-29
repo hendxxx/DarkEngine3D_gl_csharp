@@ -365,6 +365,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // so this must also cover sessions where a scene (e.g. GameScene)
                     // is loaded while editor Player2D objects exist. ──
                     var bridgeP2d = _ide.Bridge;
+                    if (bridgeP2d != null)
+                    {
+                        // A menu owns input in two cases: a menu scene is active (main menu /
+                        // loading), or a visible authored Container has "Capture Input While
+                        // Visible" set. 2D gameplay keys AND the camera look must be dead then,
+                        // exactly like 3D where no player exists to react.
+                        bool menuSceneActive = _currentScene is MainMenuScene or LoadingScene;
+                        bool captureMenuOpen = bridgeP2d.SceneRoot?.HasVisibleInputCapture() == true;
+                        if (!captureMenuOpen && bridgeP2d.SelectedEditorScene != null
+                            && bridgeP2d.EditorScenes.TryGetValue(bridgeP2d.SelectedEditorScene, out var captureScene))
+                        {
+                            captureMenuOpen = captureScene.Root.HasVisibleInputCapture();
+                        }
+                        bool menuOwnsInput = menuSceneActive || captureMenuOpen;
+                        if (menuOwnsInput != bridgeP2d.MenuOwnsInput)
+                        {
+                            Console.WriteLine($"[SceneManager] menu input capture: {(menuOwnsInput ? "ON" : "off")} (menuScene={menuSceneActive}, captureContainer={captureMenuOpen})");
+                        }
+                        bridgeP2d.MenuOwnsInput = menuOwnsInput;
+                    }
                     if (bridgeP2d != null && (bridgeP2d.InGameActive || bridgeP2d.IsPreviewMode))
                     {
                         Visual.Player2DSystem.Update(bridgeP2d.EditorObjectManager, bridgeP2d.ActiveTilemap, dt, bridgeP2d);
