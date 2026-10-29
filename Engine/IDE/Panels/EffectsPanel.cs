@@ -77,7 +77,7 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             ImGui.Separator();
             ImGui.Text("Global Weather");
 
-            string[] wPresets = ["Clear Day", "Sunset", "Rain", "Storm", "Snow", "Fog"];
+            string[] wPresets = ["Clear Day", "Sunset", "Rain", "Storm", "Snow", "Fog", "Mist"];
             foreach (var wp in wPresets)
             {
                 // "##wx" suffix: hidden from the label but makes the ID unique — the
@@ -93,7 +93,8 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                         "Rain" => "Hujan + kabut tanah + tint biru-gelap.",
                         "Storm" => "Hujan lebat + kabut tebal + angin kencang + tint badai.",
                         "Snow" => "Salju turun + kabut tipis + tint dingin.",
-                        "Fog" => "Kabut tanah pekat tanpa presipitasi.",
+                        "Fog" => "Kabut TEBAL: gumpalan awan besar dan padat menutupi view, abu-abu lembut.",
+                        "Mist" => "Kabut TIPIS: banyak serpihan kecil memanjang dekat tanah.",
                         _ => "" });
                 ImGui.SameLine();
             }
@@ -132,6 +133,18 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     Effect2DSystem.RainSizeMul = Math.Clamp(rs, 0.25f, 4f);
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Drop size (line length + width). 1 = default.");
+
+                float rsp = Effect2DSystem.RainSplashSize;
+                if (ImGui.SliderFloat("Splash Size", ref rsp, 0.25f, 4f, "%.2f x"))
+                    Effect2DSystem.RainSplashSize = Math.Clamp(rsp, 0.25f, 4f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Ukuran percikan (lengkung kecil di tanah + titik kecil). 1.2 = default.");
+
+                int rsa = Effect2DSystem.RainSplashAmount;
+                if (ImGui.SliderInt("Splash Drops", ref rsa, 0, 6))
+                    Effect2DSystem.RainSplashAmount = Math.Clamp(rsa, 0, 6);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Jumlah titik kecil di atas lengkung. 2-4 = referensi, 0 = lengkung saja.");
             }
 
             bool snow = Effect2DSystem.SnowEnabled;
@@ -165,15 +178,99 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
 
             bool fog = Effect2DSystem.FogEnabled;
-            if (ImGui.Checkbox("Fog (ground fog)", ref fog)) Effect2DSystem.FogEnabled = fog;
+            if (ImGui.Checkbox("Fog (thick cloud bank)", ref fog)) Effect2DSystem.FogEnabled = fog;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Kabut TEBAL: gumpalan awan besar (bentuk awan, bukan lingkaran halus) yang bergerak mengikuti angin, plus haze dasar.");
             if (fog)
             {
-                float fh = Effect2DSystem.FogHeight;
-                if (ImGui.DragFloat("Fog Height", ref fh, 0.05f, 0.1f, 8f, "%.2f"))
-                    Effect2DSystem.FogHeight = Math.Clamp(fh, 0.1f, 8f);
+                float fcvg = Effect2DSystem.FogCoverage;
+                if (ImGui.SliderFloat("Fog Coverage", ref fcvg, 0.05f, 1f, "%.2f"))
+                    Effect2DSystem.FogCoverage = Math.Clamp(fcvg, 0.05f, 1f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Seberapa tinggi bank kabut menutupi view (0.70 = sebagian besar layar).");
+
+                int fp = Effect2DSystem.FogPuffs;
+                if (ImGui.SliderInt("Fog Clouds", ref fp, 1, 32))
+                    Effect2DSystem.FogPuffs = fp;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Jumlah gumpalan awan besar. Tiap gumpalan = 1 massa + 3 lobus, jadi 12-16 sudah menutupi layar.");
+
+                float fps = Effect2DSystem.FogPuffSize;
+                if (ImGui.SliderFloat("Puff Size", ref fps, 0.1f, 2f, "%.2f x"))
+                    Effect2DSystem.FogPuffSize = Math.Clamp(fps, 0.1f, 2f);
+
                 float fo = Effect2DSystem.FogOpacity;
-                if (ImGui.SliderFloat("Fog Opacity", ref fo, 0f, 1f, "%.2f"))
+                if (ImGui.SliderFloat("Puff Opacity", ref fo, 0f, 1f, "%.2f"))
                     Effect2DSystem.FogOpacity = Math.Clamp(fo, 0f, 1f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Alpha per puff. Puff saling tumpuk, jadi 0.2-0.4 sudah pekat.");
+
+                float fbh = Effect2DSystem.FogBaseHaze;
+                if (ImGui.SliderFloat("Base Haze", ref fbh, 0f, 1f, "%.2f"))
+                    Effect2DSystem.FogBaseHaze = Math.Clamp(fbh, 0f, 1f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Haze rata di bawah puff, mengisi celah antar awan. 0 = hanya puff.");
+
+                float fsp = Effect2DSystem.FogSpeed;
+                if (ImGui.SliderFloat("Fog Drift Speed", ref fsp, 0f, 4f, "%.2f x"))
+                    Effect2DSystem.FogSpeed = Math.Clamp(fsp, 0f, 4f);
+
+                var fcol = Effect2DSystem.FogColor;
+                if (ImGui.ColorEdit3("Fog Color", ref fcol))
+                    Effect2DSystem.FogColor = fcol;
+
+                bool fut = Effect2DSystem.FogUseTint;
+                if (ImGui.Checkbox("Fog follows Tint", ref fut)) Effect2DSystem.FogUseTint = fut;
+            }
+
+            bool mist = Effect2DSystem.MistEnabled;
+            if (ImGui.Checkbox("Mist (thin low wisps)", ref mist)) Effect2DSystem.MistEnabled = mist;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Kabut TIPIS: serpihan kecil memanjang dekat tanah, bergerak mengikuti angin.");
+            if (mist)
+            {
+                int mw = Effect2DSystem.MistWisps;
+                if (ImGui.SliderInt("Mist Wisps", ref mw, 1, 96))
+                    Effect2DSystem.MistWisps = mw;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Jumlah serpihan kabut tipis. 50-70 = tebal seperti referensi.");
+
+                float mh = Effect2DSystem.MistHeight;
+                if (ImGui.SliderFloat("Mist Height", ref mh, 0.02f, 1f, "%.2f"))
+                    Effect2DSystem.MistHeight = Math.Clamp(mh, 0.02f, 1f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Tinggi zona serpihan dari bawah view (0.20 = hanya dekat tanah).");
+
+                float ml = Effect2DSystem.MistLength;
+                if (ImGui.SliderFloat("Wisp Length", ref ml, 0.02f, 0.60f, "%.2f x"))
+                    Effect2DSystem.MistLength = Math.Clamp(ml, 0.02f, 0.60f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Panjang tiap serpihan (fraksi lebar view). Kecil = potongan pendek; besar = garis panjang.");
+
+                float mt = Effect2DSystem.MistThickness;
+                if (ImGui.SliderFloat("Wisp Thickness", ref mt, 0.004f, 0.08f, "%.3f"))
+                    Effect2DSystem.MistThickness = Math.Clamp(mt, 0.004f, 0.08f);
+
+                float mo = Effect2DSystem.MistOpacity;
+                if (ImGui.SliderFloat("Mist Opacity", ref mo, 0f, 1f, "%.2f"))
+                    Effect2DSystem.MistOpacity = Math.Clamp(mo, 0f, 1f);
+
+                float mspd = Effect2DSystem.MistSpeed;
+                if (ImGui.SliderFloat("Mist Drift Speed", ref mspd, 0f, 4f, "%.2f x"))
+                    Effect2DSystem.MistSpeed = Math.Clamp(mspd, 0f, 4f);
+
+                var mc = Effect2DSystem.MistColor;
+                if (ImGui.ColorEdit3("Mist Color", ref mc))
+                    Effect2DSystem.MistColor = mc;
+
+                bool mut = Effect2DSystem.MistUseTint;
+                if (ImGui.Checkbox("Mist follows Tint", ref mut)) Effect2DSystem.MistUseTint = mut;
+
+                float mwd = Effect2DSystem.MistWindDrift;
+                if (ImGui.SliderFloat("Mist Wind Drift", ref mwd, 0f, 1f, "%.2f"))
+                    Effect2DSystem.MistWindDrift = Math.Clamp(mwd, 0f, 1f);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Seberapa kuat angin mengubah kecepatan/arah serpihan.");
             }
 
             bool tint = Effect2DSystem.TintEnabled;
@@ -193,6 +290,156 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 Effect2DSystem.WindX = wind;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("World wind (world units/s). Slants rain, drifts fog, pushes particles (WindFactor). The Storm preset raises this.");
+
+            // ── Pixel atmosphere FX — all procedural (no sprite assets) ──
+            ImGui.Separator();
+            if (ImGui.CollapsingHeader("Pixel FX (petir / god rays / heat / frost / wind)"))
+            {
+                // Lightning
+                bool bolt = Effect2DSystem.LightningEnabled;
+                if (ImGui.Checkbox("Lightning (petir)", ref bolt)) Effect2DSystem.LightningEnabled = bolt;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Petir prosedural: bolt bercabang dari atas layar ke permukaan tanah + kilat layar.");
+                if (bolt)
+                {
+                    float li = Effect2DSystem.LightningInterval;
+                    if (ImGui.DragFloat("Strike Interval (s)", ref li, 0.1f, 0f, 60f, "%.2f"))
+                        Effect2DSystem.LightningInterval = Math.Clamp(li, 0f, 60f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Jeda antar sambaran otomatis. 0 = hanya lewat tombol Strike now.");
+
+                    float lt = Effect2DSystem.LightningThickness;
+                    if (ImGui.SliderFloat("Bolt Thickness", ref lt, 0.005f, 0.30f, "%.3f"))
+                        Effect2DSystem.LightningThickness = Math.Clamp(lt, 0.005f, 0.30f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Tebal inti bolt (fraksi tinggi setengah layar).");
+
+                    float lf = Effect2DSystem.LightningFlash;
+                    if (ImGui.SliderFloat("Flash Strength", ref lf, 0f, 1f, "%.2f"))
+                        Effect2DSystem.LightningFlash = Math.Clamp(lf, 0f, 1f);
+
+                    var lc = Effect2DSystem.LightningColor;
+                    if (ImGui.ColorEdit3("Bolt Color", ref lc))
+                        Effect2DSystem.LightningColor = lc;
+
+                    if (ImGui.Button("Strike now")) Effect2DSystem.StrikeLightning();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Sambar sekarang (tanpa menunggu interval).");
+                }
+
+                // God rays
+                bool rays = Effect2DSystem.GodRaysEnabled;
+                if (ImGui.Checkbox("God Rays (sun shafts)", ref rays)) Effect2DSystem.GodRaysEnabled = rays;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Berkas cahaya diagonal dari sumber di atas layar, berkedip lembut.");
+                if (rays)
+                {
+                    int rc = Effect2DSystem.GodRaysCount;
+                    if (ImGui.SliderInt("Ray Count", ref rc, 1, 24)) Effect2DSystem.GodRaysCount = rc;
+
+                    float rsx = Effect2DSystem.GodRaysStrength;
+                    if (ImGui.SliderFloat("Ray Strength", ref rsx, 0f, 1f, "%.2f"))
+                        Effect2DSystem.GodRaysStrength = Math.Clamp(rsx, 0f, 1f);
+
+                    float rdir = Effect2DSystem.GodRaysAngle;
+                    if (ImGui.SliderFloat("Ray Direction (deg)", ref rdir, 0f, 360f, "%.0f"))
+                        Effect2DSystem.GodRaysAngle = rdir;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = kanan, 90 = atas, 236 = kiri-bawah (default referensi).");
+
+                    float rspread = Effect2DSystem.GodRaysSpread;
+                    if (ImGui.SliderFloat("Ray Spread (deg)", ref rspread, 0f, 160f, "%.0f"))
+                        Effect2DSystem.GodRaysSpread = Math.Clamp(rspread, 0f, 160f);
+
+                    float rlen = Effect2DSystem.GodRaysLength;
+                    if (ImGui.SliderFloat("Ray Length", ref rlen, 0.5f, 4f, "%.2f x"))
+                        Effect2DSystem.GodRaysLength = Math.Clamp(rlen, 0.5f, 4f);
+
+                    var rcol = Effect2DSystem.GodRaysColor;
+                    if (ImGui.ColorEdit3("Ray Color", ref rcol))
+                        Effect2DSystem.GodRaysColor = rcol;
+                }
+
+                // Wind streaks
+                bool ws = Effect2DSystem.WindStreaksEnabled;
+                if (ImGui.Checkbox("Wind Streaks", ref ws)) Effect2DSystem.WindStreaksEnabled = ws;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Garis angin horizontal melintasi layar, arahnya ikut Wind X.");
+                if (ws)
+                {
+                    float wa = Effect2DSystem.WindStreakAmount;
+                    if (ImGui.SliderFloat("Streak Amount", ref wa, 0.1f, 4f, "%.2f x"))
+                        Effect2DSystem.WindStreakAmount = Math.Clamp(wa, 0.1f, 4f);
+
+                    float wsp = Effect2DSystem.WindStreakSpeed;
+                    if (ImGui.SliderFloat("Streak Speed", ref wsp, 0f, 5f, "%.2f x"))
+                        Effect2DSystem.WindStreakSpeed = Math.Clamp(wsp, 0f, 5f);
+
+                    float wh = Effect2DSystem.WindStreakHeight;
+                    if (ImGui.SliderFloat("Wind Height", ref wh, 0.1f, 2f, "%.2f x"))
+                        Effect2DSystem.WindStreakHeight = Math.Clamp(wh, 0.1f, 2f);
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Tebal pita angin terhadap tinggi layar. 0.1 = pita tipis di tengah, 1 = setengah layar, 2 = penuh.");
+
+                    var wcol = Effect2DSystem.WindStreakColor;
+                    if (ImGui.ColorEdit3("Streak Color", ref wcol))
+                        Effect2DSystem.WindStreakColor = wcol;
+
+                    int wsm = Effect2DSystem.WindStreakMode;
+                    if (ImGui.SliderInt("Streak Style", ref wsm, 0, 2, wsm == 0 ? "0 Lurus (garis ekor)" : wsm == 1 ? "1 Swirl (kumparan slynyrd)" : "2 Campur swirl + lurus"))
+                        Effect2DSystem.WindStreakMode = wsm;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("0 = lurus tailed dashes. 1 = swirls: tanda koma mengkait dengan ekor memudar (gaya slynyrd). 2 = campur swirl + garis lurus + debu.");
+                }
+
+                // Heat haze
+                bool hh = Effect2DSystem.HeatHazeEnabled;
+                if (ImGui.Checkbox("Heat Haze", ref hh)) Effect2DSystem.HeatHazeEnabled = hh;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Gelombang udara panas di bagian bawah view (garis shimmer bergoyang).");
+                if (hh)
+                {
+                    float hs = Effect2DSystem.HeatHazeStrength;
+                    if (ImGui.SliderFloat("Haze Strength", ref hs, 0f, 1f, "%.2f"))
+                        Effect2DSystem.HeatHazeStrength = Math.Clamp(hs, 0f, 1f);
+
+                    float hhgt = Effect2DSystem.HeatHazeHeight;
+                    if (ImGui.SliderFloat("Haze Height", ref hhgt, 0.05f, 1f, "%.2f"))
+                        Effect2DSystem.HeatHazeHeight = Math.Clamp(hhgt, 0.05f, 1f);
+
+                    float hsp = Effect2DSystem.HeatHazeSpeed;
+                    if (ImGui.SliderFloat("Haze Speed", ref hsp, 0f, 4f, "%.2f x"))
+                        Effect2DSystem.HeatHazeSpeed = Math.Clamp(hsp, 0f, 4f);
+
+                    var hcol = Effect2DSystem.HeatHazeColor;
+                    if (ImGui.ColorEdit3("Haze Color", ref hcol))
+                        Effect2DSystem.HeatHazeColor = hcol;
+                }
+
+                // Frost
+                bool fr = Effect2DSystem.FrostEnabled;
+                if (ImGui.Checkbox("Frost", ref fr)) Effect2DSystem.FrostEnabled = fr;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Kristal es prosedural di tepi layar (seperti bunga es di kaca).");
+                if (fr)
+                {
+                    float fs = Effect2DSystem.FrostStrength;
+                    if (ImGui.SliderFloat("Frost Strength", ref fs, 0f, 1f, "%.2f"))
+                        Effect2DSystem.FrostStrength = Math.Clamp(fs, 0f, 1f);
+
+                    float fd = Effect2DSystem.FrostDensity;
+                    if (ImGui.SliderFloat("Frost Density", ref fd, 0.1f, 4f, "%.2f x"))
+                        Effect2DSystem.FrostDensity = Math.Clamp(fd, 0.1f, 4f);
+
+                    var fcol = Effect2DSystem.FrostColor;
+                    if (ImGui.ColorEdit3("Frost Color", ref fcol))
+                        Effect2DSystem.FrostColor = fcol;
+
+                    if (ImGui.Button("New Frost Pattern")) Effect2DSystem.ReshuffleFrost();
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Acak ulang pola bunga es.");
+                }
+            }
 
             ImGui.End();
         }

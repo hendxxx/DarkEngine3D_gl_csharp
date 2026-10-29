@@ -248,6 +248,10 @@ public class MapParallaxRenderLayer
     public float ZPosition;
     public float Alpha = 1f;
     public bool TileHorizontal = true;
+    /// <summary>Master texture-repeat switch (mirrors the Map Editor layer option).
+    /// FALSE = exactly ONE copy: no horizontal tiling copies, UV stays 1x1 with CLAMP
+    /// wrap, and the quad itself slides with ScrollFactor so the image never smears.</summary>
+    public bool RepeatTexture = true;
     /// <summary>Scroll speed multiplier for the parallax preview: while the editor
     /// camera pans, each layer slides horizontally by -camX × ScrollFactor — the same
     /// rule the runtime background uses — so the depth illusion is visible while editing.
@@ -280,6 +284,7 @@ public class MapParallaxRenderLayer
     {
         Name = Name, ImagePath = ImagePath, IsVisible = IsVisible,
         ZPosition = ZPosition, Alpha = Alpha, TileHorizontal = TileHorizontal,
+        RepeatTexture = RepeatTexture,
         ScrollFactor = ScrollFactor,
         ImageWidth = ImageWidth, ImageHeight = ImageHeight,
         WidthPx = WidthPx, HeightPx = HeightPx,
@@ -7355,17 +7360,26 @@ void main() {
                     // Texture repeats across the quad. RepeatX/Y = explicit UV repeats
                     // (requires GL_REPEAT wrapping — parallax textures use it for S).
                     // 0 = auto: one natural copy; TileHorizontal still tiles whole copies
-                    // across the grid width.
-                    int uvRepeatX = Math.Max(0, pl.RepeatX);
-                    int uvRepeatY = Math.Max(0, pl.RepeatY);
+                    // across the grid width when the layer repeats.
+                    // Repeat master switch (layer option "Repeat Texture"):
+                    //   ON  = behaviour above.
+                    //   OFF = exactly ONE copy of the picture: repeat counts forced to 1,
+                    //         no horizontal tiling copies, CLAMP wrap on both axes so the
+                    //         quad edge never bleeds the opposite texel back in.
+                    bool repeatTex = pl.RepeatTexture;
+                    int uvRepeatX = repeatTex ? Math.Max(0, pl.RepeatX) : 0;
+                    int uvRepeatY = repeatTex ? Math.Max(0, pl.RepeatY) : 0;
 
                     GL.ActiveTexture(Const.GL_TEXTURE0);
                     GL.BindTexture(Const.GL_TEXTURE_2D, pl.TextureId);
-                    // Stretch wrap mode when explicit repeats are used so UV &gt; 1 wraps.
-                    if (uvRepeatX > 0)
-                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S, (int)Const.GL_REPEAT);
-                    if (uvRepeatY > 0)
-                        GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T, (int)Const.GL_REPEAT);
+                    // Wrap mode is set explicitly on BOTH axes every layer: REPEAT when
+                    // that axis actually repeats, CLAMP otherwise (one-copy mode, or a layer
+                    // that repeats in neither direction). Relying on the texture's load-time
+                    // default would leak REPEAT into single-copy layers.
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_S,
+                        (int)(uvRepeatX > 0 ? Const.GL_REPEAT : Const.GL_CLAMP_TO_EDGE));
+                    GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_WRAP_T,
+                        (int)(uvRepeatY > 0 ? Const.GL_REPEAT : Const.GL_CLAMP_TO_EDGE));
                     GL.Uniform1i(_map2dLocTex, 0);
 
                     // Horizontal scroll preview, RELATIVE to the layer's home position:
@@ -7378,10 +7392,21 @@ void main() {
                     if (pl.ScrollFactor != 0f && w > 0.01f)
                     {
                         float scrollWorld = -camX * pl.ScrollFactor;
-                        float frac = (scrollWorld / w) % 1f;
-                        if (frac < 0f) frac += 1f;
-                        uPhase = frac;
-                        xShift = scrollWorld - frac * w; // whole widths back → home pos
+                        if (repeatTex)
+                        {
+                            float frac = (scrollWorld / w) % 1f;
+                            if (frac < 0f) frac += 1f;
+                            uPhase = frac;
+                            xShift = scrollWorld - frac * w; // whole widths back → home pos
+                        }
+                        else
+                        {
+                            // One-copy mode: UV wrapping is disabled, so a UV phase would
+                            // just clamp/smear the edge columns. Slide the QUAD instead —
+                            // the parallax illusion is kept without ever repeating the art.
+                            uPhase = 0f;
+                            xShift = scrollWorld;
+                        }
                     }
 
                     // Static offsets: Left DISABLED (pinned to grid left edge); Top is
@@ -7394,7 +7419,7 @@ void main() {
                     // Copy range: cover the grid extent AND the camera neighborhood so
                     // panning (any scroll factor) never reveals the quads' edges.
                     int rStart, rEnd;
-                    if (pl.TileHorizontal && w > 0.01f)
+                    if (repeatTex && pl.TileHorizontal && w > 0.01f)
                     {
                         float leftNeeded = MathF.Min(0f, camX - extentW);
                         float rightNeeded = MathF.Max(extentW, camX + extentW);

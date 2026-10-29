@@ -592,6 +592,7 @@ public class MapEditorPanel
                     ZPosition = pld.ZPosition,
                     Alpha = pld.Alpha,
                     TileHorizontal = pld.TileHorizontal,
+                    RepeatTexture = pld.RepeatTexture,
                     WidthPx = pld.WidthPx,
                     HeightPx = pld.HeightPx,
                     RepeatX = pld.RepeatX,
@@ -1026,6 +1027,7 @@ public class MapEditorPanel
                 ZPosition = p.ZPosition,
                 Alpha = p.Alpha,
                 TileHorizontal = p.TileHorizontal,
+                RepeatTexture = p.RepeatTexture,
                 WidthPx = p.WidthPx,
                 HeightPx = p.HeightPx,
                 RepeatX = p.RepeatX,
@@ -1055,6 +1057,7 @@ public class MapEditorPanel
                     ZPosition = pl.ZPosition,
                     Alpha = pl.Alpha,
                     TileHorizontal = pl.TileHorizontal,
+                    RepeatTexture = pl.RepeatTexture,
                     ScrollFactor = pl.ScrollFactor,
                     TextureId = tex,
                     ImageWidth = pl.ImageWidth,
@@ -2590,7 +2593,8 @@ public class MapEditorPanel
             {
                 Name = p.Name, ImagePath = p.ImagePath, IsVisible = p.IsVisible,
                 ScrollFactor = p.ScrollFactor, ZPosition = p.ZPosition, Alpha = p.Alpha,
-                TileHorizontal = p.TileHorizontal, WidthPx = p.WidthPx, HeightPx = p.HeightPx,
+                TileHorizontal = p.TileHorizontal, RepeatTexture = p.RepeatTexture,
+                WidthPx = p.WidthPx, HeightPx = p.HeightPx,
                 RepeatX = p.RepeatX, RepeatY = p.RepeatY
             }).ToList();
             if (plxSource != null)
@@ -2606,6 +2610,7 @@ public class MapEditorPanel
                         ZPosition = pld.ZPosition,
                         Alpha = pld.Alpha,
                         TileHorizontal = pld.TileHorizontal,
+                        RepeatTexture = pld.RepeatTexture,
                         WidthPx = pld.WidthPx,
                         HeightPx = pld.HeightPx,
                         RepeatX = pld.RepeatX,
@@ -2815,6 +2820,14 @@ public class MapEditorPanel
             if (ImGui.SliderFloat("Alpha##plx", ref alpha, 0f, 1f, "%.1f"))
                 sel.Alpha = alpha;
 
+            // ── Repeat master switch: OFF = one copy of the texture only. ──
+            bool repeatTex = sel.RepeatTexture;
+            if (ImGui.Checkbox("Repeat Texture (tile)##plx", ref repeatTex))
+                sel.RepeatTexture = repeatTex;
+            ImGui.TextDisabled(sel.RepeatTexture
+                ? "On - the image repeats across the map"
+                : "Off - texture drawn once (no tiling, no UV wrap)");
+
             // ── Size: Width/Height in pixels. 0 = auto (follows the map grid size). ──
             float wPx = sel.WidthPx;
             if (ImGui.DragFloat("Width (px)##plx", ref wPx, 8f, 0f, 100000f, "%.0f"))
@@ -2827,6 +2840,9 @@ public class MapEditorPanel
             ImGui.TextDisabled("0 = follow grid height");
 
             // ── Texture repeats across the quad (0 = auto, natural size). ──
+            // Greyed out while Repeat Texture is off — those repeat counts would be
+            // ignored, so editing them there would be a dead control.
+            ImGui.BeginDisabled(!sel.RepeatTexture);
             int repX = sel.RepeatX;
             if (ImGui.InputInt("Repeat X##plx", ref repX))
                 sel.RepeatX = Math.Max(0, repX);
@@ -2834,7 +2850,10 @@ public class MapEditorPanel
             int repY = sel.RepeatY;
             if (ImGui.InputInt("Repeat Y##plx", ref repY))
                 sel.RepeatY = Math.Max(0, repY);
-            ImGui.TextDisabled("0 = auto (natural size); > 0 tiles the texture");
+            ImGui.TextDisabled(sel.RepeatTexture
+                ? "0 = auto (natural size); > 0 tiles the texture"
+                : "Ignored while Repeat Texture is off");
+            ImGui.EndDisabled();
 
             // ── Position: Left/Top offsets in pixels from the grid's top-left corner. ──
             float leftPx = sel.LeftPx;
@@ -3043,8 +3062,14 @@ public class ParallaxLayer
     /// <summary>Layer opacity (0-1).</summary>
     public float Alpha = 1f;
 
-    /// <summary>Horizontal tile repeat (true = wraps infinitely).</summary>
+    /// <summary>Horizontal tile repeat (true = wraps infinitely). Only applies while
+    /// <see cref="RepeatTexture"/> is on.</summary>
     public bool TileHorizontal = true;
+
+    /// <summary>Master texture-repeat switch. TRUE (default) = the image tiles across
+    /// the quad/map as before. FALSE = the texture is drawn exactly ONCE: no horizontal
+    /// tiling copies, UV stays 1x1 and the quad clamps, so the art never repeats.</summary>
+    public bool RepeatTexture = true;
 
     /// <summary>Image dimensions (set when loaded).</summary>
     public int ImageWidth;
@@ -3085,6 +3110,7 @@ public class ParallaxLayerData
     public float ZPosition { get; set; }
     public float Alpha { get; set; } = 1f;
     public bool TileHorizontal { get; set; } = true;
+    public bool RepeatTexture { get; set; } = true;
     public float WidthPx { get; set; }
     public float HeightPx { get; set; }
     public int RepeatX { get; set; }

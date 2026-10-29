@@ -802,6 +802,14 @@ public unsafe class EditorObjectManager
             // Editor gizmos below stay on top of the fog (design tools must stay crisp).
             Effect2DSystem.RenderFogFront(camera);
 
+            // ── Mist veil (reference #2): ONE broad low haze slab, drawn AFTER the fog
+            // bands so a thick mist also mutes them. Editor gizmos stay frontmost.
+            Effect2DSystem.RenderMistFront(camera);
+
+            // ── Pixel atmosphere FX (god rays / wind streaks / heat haze / lightning /
+            // frost): the final overlay pass before the editor gizmos.
+            Effect2DSystem.RenderPixelFxFront(camera);
+
             // ── Editor gizmos for special marker types (drawn after the solid objects so
             // the wireframe lines always render on top; depth test is disabled internally
             // so they show through geometry): real-camera frustum for cameras, a direction

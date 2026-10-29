@@ -25,6 +25,27 @@ public class SceneElementData
     // ── Image (replaces Text/Font when set) ──
     public string ImagePath { get; set; } = "";
     public string ImageMode { get; set; } = "Stretch"; // Stretch, Zoom, Fill
+    // 0 = None (Nearest / pixel, default), 1 = Smooth (Linear)
+    public int ImageFilter { get; set; } = 0;
+
+    // ── Slice: nine-slice source window (Unity Sprite Editor style) ──
+    public bool SliceEnabled { get; set; } = false;
+    public int SliceX { get; set; }
+    public int SliceY { get; set; }
+    public int SliceWidth { get; set; }
+    public int SliceHeight { get; set; }
+    public int SliceBorderLeft { get; set; }
+    public int SliceBorderRight { get; set; }
+    public int SliceBorderTop { get; set; }
+    public int SliceBorderBottom { get; set; }
+
+    // ── Parent atlas coordinates ──
+    public bool UseAtlasCoordinates { get; set; } = false;
+    public string AtlasImagePath { get; set; } = "";
+    public int AtlasX { get; set; }
+    public int AtlasY { get; set; }
+    public int AtlasWidth { get; set; }
+    public int AtlasHeight { get; set; }
 
     public float FontSize { get; set; } = 13f;
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";

@@ -571,6 +571,11 @@ public class TilemapParallaxLayerData
     public float ZPosition { get; set; }
     public float Alpha { get; set; } = 1f;
     public bool TileHorizontal { get; set; } = true;
+    /// <summary>Master texture-repeat switch. TRUE = the image tiles (RepeatX/Y + the
+    /// horizontal wrap above). FALSE = exactly ONE copy of the image: no horizontal
+    /// tiling copies, UVs stay 1x1 and the quad clamps, so the art never repeats.
+    /// Defaults to true so maps saved before this field keep their old look.</summary>
+    public bool RepeatTexture { get; set; } = true;
     /// <summary>Quad width in pixels. 0 = auto (follows the grid width).</summary>
     public float WidthPx { get; set; }
     /// <summary>Quad height in pixels. 0 = auto (follows the grid height).</summary>

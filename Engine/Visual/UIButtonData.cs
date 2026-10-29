@@ -1,3 +1,5 @@
+using System;
+using System.Drawing;
 using System.Numerics;
 using DarkEngine3D_gl_csharp.Engine.Scene;
 
@@ -113,7 +115,81 @@ public class UIElement
     public string ImagePath { get; set; } = "";
     public ImageMode ImageMode { get; set; } = ImageMode.Stretch;
 
-    // ── Font ──
+    // ── Image Filter: 0 = None (Nearest / pixel-crisp, DEFAULT), 1 = Smooth (Linear) ──
+    public int ImageFilter { get; set; } = 0;
+
+    // ── Slice (9-slice source window) ──
+    public bool SliceEnabled { get; set; } = false;
+    public int SliceX { get; set; }
+    public int SliceY { get; set; }
+    public int SliceWidth { get; set; }
+    public int SliceHeight { get; set; }
+    public int SliceBorderLeft { get; set; }
+    public int SliceBorderRight { get; set; }
+    public int SliceBorderTop { get; set; }
+    public int SliceBorderBottom { get; set; }
+
+    // ── Parent atlas coordinates ──
+    public bool UseAtlasCoordinates { get; set; } = false;
+    public string AtlasImagePath { get; set; } = "";
+    public int AtlasX { get; set; }
+    public int AtlasY { get; set; }
+    public int AtlasWidth { get; set; }
+    public int AtlasHeight { get; set; }
+
+    // ── Helper quads (computed lazily from Slice geometry) ──
+    public bool HasSliceQuads { get; private set; }
+    public RectangleF[] SliceQuads { get; private set; } = Array.Empty<RectangleF>();
+    public void ComputeSliceQuads(int imgW, int imgH)
+    {
+        if (!SliceEnabled || imgW <= 0 || imgH <= 0)
+        {
+            HasSliceQuads = false;
+            SliceQuads = Array.Empty<RectangleF>();
+            return;
+        }
+        var bx = SliceBorderLeft;
+        var br = SliceBorderRight;
+        var bt = SliceBorderTop;
+        var bb = SliceBorderBottom;
+        SliceQuads = new RectangleF[9];
+        // top-left
+        SliceQuads[0] = new RectangleF(bx, bt, bx, bt);
+        // top
+        SliceQuads[1] = new RectangleF(bx, bt, SliceWidth - bx - br, bt);
+        // top-right
+        SliceQuads[2] = new RectangleF(SliceWidth - br, bt, br, bt);
+        // left
+        SliceQuads[3] = new RectangleF(bx, bt, bx, SliceHeight - bt - bb);
+        // center
+        SliceQuads[4] = new RectangleF(bx, bt, SliceWidth - bx - br, SliceHeight - bt - bb);
+        // right
+         SliceQuads[5] = new RectangleF(SliceWidth - br, bt, br, SliceHeight - bt - bb);
+        // bottom-left
+        SliceQuads[6] = new RectangleF(bx, SliceHeight - bb, bx, bb);
+        // bottom
+        SliceQuads[7] = new RectangleF(bx, SliceHeight - bb, SliceWidth - bx - br, bb);
+        // bottom-right
+        SliceQuads[8] = new RectangleF(SliceWidth - br, SliceHeight - bb, br, bb);
+        HasSliceQuads = true;
+    }
+
+    // ── DeepClone pasang field baru ──
+    public void DeepCloneFrom(UIElement other)
+    {
+        ImageFilter = other.ImageFilter;
+        SliceEnabled = other.SliceEnabled;
+        SliceX = other.SliceX;
+        SliceY = other.SliceY;
+        SliceWidth = other.SliceWidth;
+        SliceHeight = other.SliceHeight;
+        SliceBorderLeft = other.SliceBorderLeft;
+        SliceBorderRight = other.SliceBorderRight;
+        SliceBorderTop = other.SliceBorderTop;
+        SliceBorderBottom = other.SliceBorderBottom;
+        UseAtlasCoordinates = other.UseAtlasCoordinates;
+        AtlasImagePath = other.AtlasImagePath;
+    }
     public string FontPath { get; set; } = "Artifacts\\fonts\\Worldstar.ttf";
     public float FontSize { get; set; } = 13f;
 
@@ -538,6 +614,13 @@ public class UIElement
             Text = Text,
             X = X, Y = Y, Width = Width, Height = Height,
             ImagePath = ImagePath, ImageMode = ImageMode,
+            ImageFilter = ImageFilter,
+            SliceEnabled = SliceEnabled,
+            SliceX = SliceX, SliceY = SliceY, SliceWidth = SliceWidth, SliceHeight = SliceHeight,
+            SliceBorderLeft = SliceBorderLeft, SliceBorderRight = SliceBorderRight,
+            SliceBorderTop = SliceBorderTop, SliceBorderBottom = SliceBorderBottom,
+            UseAtlasCoordinates = UseAtlasCoordinates, AtlasImagePath = AtlasImagePath,
+            AtlasX = AtlasX, AtlasY = AtlasY, AtlasWidth = AtlasWidth, AtlasHeight = AtlasHeight,
             FontSize = FontSize, FontPath = FontPath,
             TextColor = TextColor, BgColor = BgColor, BorderColor = BorderColor,
             HoverTextColor = HoverTextColor, HoverBgColor = HoverBgColor, HoverBorderColor = HoverBorderColor,
