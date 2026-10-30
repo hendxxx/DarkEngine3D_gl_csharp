@@ -67,6 +67,10 @@ public class SpriteEditorPanel
     // BACKGROUND task; clip baking (which touches GL) is spread over ONE-FEW files
     // per editor frame by PumpPatternExports. The UI never blocks on either step.
     private Task<List<(string Path, SpriteSheetsSaveData? Data)>>? _autoLoadScanTask;
+    /// <summary>Source sheets this file declares (bake inputs) — kept separately from the
+    /// live SpriteSheets list so SaveAllSheets can write them back even when the live
+    /// list is empty (project open / fresh project).</summary>
+    private List<SpriteSheet>? _loadSourceSheets;
     private Queue<(string Path, SpriteSheetsSaveData Data)>? _autoLoadPending;
     private int _autoLoadTotal;
     private int _autoLoadDone;
@@ -78,9 +82,15 @@ public class SpriteEditorPanel
 
 
     // ── Sprite sheets ──
-    /// <summary>Temporary source sheets used only for slicing/preview; never written
-    /// into the project's canonical sheets file.</summary>
+    /// <summary>Source sheets (bake inputs). Their metadata IS persisted in the project's
+    /// canonical sheets file (`SourceSheets`) so the list, its tree groups and the Animation
+    /// Editor pickers come back after a reload.</summary>
     public List<SpriteSheet> SpriteSheets = new();
+
+    /// <summary>One-shot guard for the lazy restore in Render(): a completely empty panel
+    /// while a project is loaded means the project-open path never ran (auto-opened project
+    /// / missed event) — restored once instead of making the user re-import every sheet.</summary>
+    private bool _lazyRestoreTried;
     /// <summary>Persisted animation-baking atlases used by the runtime registry.</summary>
     private readonly List<SpriteSheet> _bakedAtlasSheets = new();
 
@@ -321,6 +331,18 @@ public class SpriteEditorPanel
 
     public void Render()
     {
+        // LAZY AUTO-LOAD (once per project): a wholly empty panel while a project is open
+        // means the project-open load never ran — restore it here instead of asking the
+        // user to re-import. Guarded so deliberate deletions are not undone every frame.
+        if (!_lazyRestoreTried && Engine.Project.ProjectManager.IsProjectLoaded &&
+            SpriteSheets.Count == 0 && _bakedAtlasSheets.Count == 0 && AnimationClips.Count == 0)
+        {
+            _lazyRestoreTried = true;
+            string projectSheets = GetDefaultSavePath();
+            if (File.Exists(projectSheets)) LoadSheetsFromFile(projectSheets);
+            if (SpriteSheets.Count == 0) EnsureSourceSheetsLoaded();
+        }
+
         PumpAtlasRepack();
         PumpPatternExports();
         // Keep the static sprite registry fresh even when the panel is hidden, so
@@ -1666,25 +1688,69 @@ public class SpriteEditorPanel
         }
 
         int deleteIdx = -1;
-        for (int i = 0; i < AnimationClips.Count; i++)
+
+        void DrawClipRow(int i)
         {
             var clip = AnimationClips[i];
             bool isSelected = i == _selectedClipIdx;
             string loopTag = clip.Loop ? " [loop]" : "";
             int start = clip.FrameIndices.Count > 0 ? clip.FrameIndices[0] : 0;
             int end = clip.FrameIndices.Count > 0 ? clip.FrameIndices[^1] : 0;
-            string label = $"{clip.Name} ({start}-{end}, {clip.FrameIndices.Count}f @ {clip.FPS:F0}fps){loopTag}##{i}";
+            // Inside a group the base name is the section header already, so the row
+            // shows just the action (idle / walk / run). Ungrouped rows keep the name.
+            string baseName = AnimationClipGroups.BaseNameOf(clip.Name);
+            string shown = baseName.Length > 0 ? AnimationClipGroups.ActionLabelOf(clip.Name) : clip.Name;
+            string label = $"{shown} ({start}-{end}, {clip.FrameIndices.Count}f @ {clip.FPS:F0}fps){loopTag}##{i}";
 
             ImGui.PushID(i);
             if (ImGui.SmallButton("X"))
             {
                 deleteIdx = i;
                 ImGui.PopID();
-                continue;
+                return;
             }
             ImGui.SameLine();
             if (ImGui.Selectable(label, isSelected))
                 _selectedClipIdx = i;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip($"{clip.Name}\nAtlas: {clip.SpriteSheetName}");
+            ImGui.PopID();
+        }
+
+        // ── DISPLAY-ONLY sections by base sprite name (`Male Skin1-idle` → "Male Skin1").
+        // Sections never own their clips and no index changes: the master list stays the
+        // single source of truth (same pattern as the sheet-list categories). Nothing is
+        // written to the clip or to any sprite-anim JSON file.
+        var sectionOrder = new List<string>();
+        var sectionRows = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < AnimationClips.Count; i++)
+        {
+            string b = AnimationClipGroups.BaseNameOf(AnimationClips[i].Name);
+            if (b.Length == 0) b = "(no group)";
+            if (!sectionRows.TryGetValue(b, out var rows))
+            {
+                rows = new List<int>();
+                sectionRows[b] = rows;
+                sectionOrder.Add(b);
+            }
+            rows.Add(i);
+        }
+        // Named groups first (alphabetical), the leftovers bucket last.
+        sectionOrder.Sort((a, b) =>
+        {
+            bool aNone = a == "(no group)", bNone = b == "(no group)";
+            if (aNone != bNone) return aNone ? 1 : -1;
+            return string.Compare(a, b, StringComparison.OrdinalIgnoreCase);
+        });
+        foreach (string section in sectionOrder)
+        {
+            var rows = sectionRows[section];
+            ImGui.PushID("clipseg_" + section);
+            if (ImGui.CollapsingHeader($"{section}  ({rows.Count})", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                ImGui.Indent(8f);
+                foreach (int i in rows) DrawClipRow(i);
+                ImGui.Unindent(8f);
+            }
             ImGui.PopID();
         }
         if (deleteIdx >= 0)
@@ -1954,7 +2020,17 @@ public class SpriteEditorPanel
 
     private void ImportNewSheet()
     {
-        _importDialog.OpenForLoadMulti("*.png;*.jpg", "Import Sprite Sheets");
+        // START WHERE THE ART LIVES: the selected sheet's image folder (so re-importing a
+        // set of skins never restarts at the project root), falling back to the folder the
+        // user confirmed the last import in (open-last-folder memory in ImGuiFileDialog).
+        string? startDir = null;
+        if (SelectedSheet != null && !string.IsNullOrEmpty(SelectedSheet.ImagePath))
+        {
+            string resolved = Engine.Helpers.PathHelpers.ResolveProjectAsset(SelectedSheet.ImagePath);
+            string? dir = Path.GetDirectoryName(resolved);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) startDir = dir;
+        }
+        _importDialog.OpenForLoadMulti("*.png;*.jpg", "Import Sprite Sheets", startDir, "sprite_import");
     }
 
     // ── Save/Load ──
@@ -1976,6 +2052,12 @@ public class SpriteEditorPanel
         var data = new SpriteSheetsSaveData
         {
             Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
+            // Source sheets are bake inputs — this is what the Sprite Editor lists as
+            // its sheet list, groups and pickers. We save them from _loadSourceSheets
+            // (the file's declared SourceSheets), NOT from the live list, because the
+            // live list may be empty on project open and writing an empty SourceSheets
+            // would clobber the file and force a re-import on every reload.
+            SourceSheets = _loadSourceSheets?.Select(s => s.ToData()).ToList() ?? new List<SpriteSheetData>(),
             AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
             AnimationGroups = AnimationGroups.Select(g => g.Clone()).ToList(),
             Rigs = AnimationRigs.Select(r => r.Clone()).ToList(),
@@ -2019,6 +2101,114 @@ public class SpriteEditorPanel
             string.IsNullOrEmpty(Engine.Project.ProjectManager.ProjectRoot))
             return "";
         return Path.Combine(Engine.Project.ProjectManager.ProjectRoot!, "Artifacts", "Sprites");
+    }
+
+    /// <summary>Indices in [start..end] whose SOURCE cell is completely blank (every alpha
+    /// byte ≈ 0). The Animation Editor's "New Set" uses this to skip empty grid cells
+    /// instead of authoring timeline keys that render nothing. NULL = image unreadable,
+    /// in which case the caller must keep every frame.</summary>
+    public HashSet<int>? EmptySourceFramesPublic(SpriteSheet source, int start, int end)
+    {
+        var all = EmptyFramesOfSheet(source);
+        if (all == null) return null;
+        int first = Math.Max(0, Math.Min(start, end));
+        int last = Math.Min(Math.Max(0, source.FrameCount - 1), Math.Max(start, end));
+        var result = new HashSet<int>();
+        foreach (int i in all)
+            if (i >= first && i <= last) result.Add(i);
+        return result;
+    }
+
+    /// <summary>Blank-cell cache: scanning decodes the PNG, so the New-Set dialog's per-row
+    /// trims (and repeated Create Set clicks) must not re-decode for every row. Keyed on the
+    /// resolved path + file stamp + the sheet's grid geometry, so editing either invalidates.</summary>
+    private readonly Dictionary<string, (long Ticks, long Length, HashSet<int> Empty)> _emptyFrameCache = [];
+
+    private HashSet<int>? EmptyFramesOfSheet(SpriteSheet source)
+    {
+        string path = Engine.Helpers.PathHelpers.ResolveProjectAsset(source.ImagePath);
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+
+        var info = new FileInfo(path);
+        string key = $"{path}|{info.Length}|{source.FrameCount}|{source.FrameWidth}x{source.FrameHeight}"
+            + $"|{source.OffsetX},{source.OffsetY}|{source.Columns}|{source.PaddingX},{source.PaddingY}"
+            + $"|{source.CustomFrames?.Count ?? -1}";
+        if (source.CustomFrames != null)
+        {
+            // Custom-frame RECT edits keep the same count, so hash the rects too — otherwise
+            // a dragged cell would keep reporting its old blank/opaque state.
+            ulong h = 1469598103934665603UL;
+            foreach (var f in source.CustomFrames)
+            {
+                h = (h ^ (ulong)(long)(f.X * 31f + f.Y)) * 1099511628211UL;
+                h = (h ^ (ulong)(long)(f.Width * 17f + f.Height)) * 1099511628211UL;
+            }
+            key += $"|h{h:x}";
+        }
+        if (_emptyFrameCache.TryGetValue(key, out var hit) && hit.Ticks == info.LastWriteTimeUtc.Ticks)
+            return hit.Empty;
+
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            var empty = new HashSet<int>();
+            for (int index = 0; index < source.FrameCount; index++)
+            {
+                if (!TryGetSourceFrameRect(source, index, out SpriteFrame frame)) continue;
+                if (frame.Width <= 0 || frame.Height <= 0 || frame.X < 0 || frame.Y < 0 ||
+                    frame.X + frame.Width > image.Width || frame.Y + frame.Height > image.Height)
+                    continue;
+                if (IsFrameRectTransparent(image, frame)) empty.Add(index);
+            }
+            _emptyFrameCache[key] = (info.LastWriteTimeUtc.Ticks, info.Length, empty);
+            return empty;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Empty-frame scan failed for '{source.Name}': {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>True when the frame rect has no pixel above the alpha cut-off.</summary>
+    private static bool IsFrameRectTransparent(ImageResult image, SpriteFrame frame)
+    {
+        const int alphaCut = 8;
+        for (int y = 0; y < frame.Height; y++)
+        {
+            int row = (frame.Y + y) * image.Width;
+            for (int x = 0; x < frame.Width; x++)
+            {
+                if (image.Data[(row + frame.X + x) * 4 + 3] > alphaCut) return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Grid/custom-frame rect of a source cell, using the same math as baking.</summary>
+    private static bool TryGetSourceFrameRect(SpriteSheet source, int index, out SpriteFrame frame)
+    {
+        frame = default!;
+        if (source.CustomFrames != null)
+        {
+            if (index < 0 || index >= source.CustomFrames.Count) return false;
+            frame = source.CustomFrames[index];
+            return true;
+        }
+        if (index < 0 || index >= source.FrameCount) return false;
+        int col = index % Math.Max(1, source.Columns);
+        int row = index / Math.Max(1, source.Columns);
+        frame = new SpriteFrame
+        {
+            X = source.OffsetX + source.ColOffset * (source.FrameWidth + source.PaddingX)
+                + col * (source.FrameWidth + source.PaddingX),
+            Y = source.OffsetY + row * (source.FrameHeight + source.PaddingY),
+            Width = source.FrameWidth,
+            Height = source.FrameHeight,
+            Name = $"{source.Name}_{index}",
+        };
+        return true;
     }
 
     /// <summary>Copy the requested source cells and metadata into the baking input.
@@ -2250,6 +2440,25 @@ public class SpriteEditorPanel
         {
             var opts = new JsonSerializerOptions { WriteIndented = true };
             var data = CaptureSaveData();
+            // Preserve the file's SourceSheets (bake inputs) when the live sheet list
+            // is empty: CaptureSaveData() writes SourceSheets from the live list,
+            // which is empty on project open, and that would clobber the file and
+            // make every sheet re-imported on the next reload. Restore from the
+            // file itself so SourceSheets survives a reload.
+            if (data.SourceSheets?.Count == 0)
+            {
+                try
+                {
+                    string existingJson = File.ReadAllText(path);
+                    var existing = JsonSerializer.Deserialize<SpriteSheetsSaveData>(existingJson);
+                    if (existing?.SourceSheets?.Count > 0)
+                        data.SourceSheets = existing.SourceSheets;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SpriteEditor] SaveAllSheets: could not read existing file for SourceSheets: {ex.Message}");
+                }
+            }
             string json = JsonSerializer.Serialize(data, opts);
             File.WriteAllText(path, json);
             Engine.Helpers.BinaryObjectCache.TryWrite(path, data);
@@ -2529,7 +2738,7 @@ public class SpriteEditorPanel
         var sheet = new SpriteSheet
         {
             Name = name,
-            ImagePath = Tilemap2D.MakeDataPathRelative(imagePath),
+            ImagePath = SpriteSheet.KeepSourceImagePath(imagePath),
             ImageWidth = image.Width,
             ImageHeight = image.Height,
             // Pattern = the source sheet's settings verbatim (grid + padding/offset
@@ -2774,18 +2983,28 @@ public class SpriteEditorPanel
     /// default sheets file and the generated &lt;file&gt;-sprite-anim.json exports.</summary>
     public void LoadAllSheetsDialog()
     {
-        _loadSheetsDialog.OpenForLoad("*.sheets.json;*-sprite-anim.json", "Load Sprite Sheets");
+        _loadSheetsDialog.OpenForLoad("*.sheets.json;*-sprite-anim.json", "Load Sprite Sheets",
+            Path.GetDirectoryName(GetDefaultSavePath()), "sprite_sheets_load");
     }
 
     private void LoadSheetsFromFile(string path)
     {
+        Console.WriteLine($"[SpriteEditor] LoadSheetsFromFile ENTER path={path}, exists={File.Exists(path)}");
         try
         {
             string json = File.ReadAllText(path);
             // Binary sidecar fast path — skips the JSON parse when the sidecar is
             // fresh; any miss/staleness/corruption falls back to the parse below.
-            var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(path)
-                       ?? JsonSerializer.Deserialize<SpriteSheetsSaveData>(json);
+            var data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(path);
+            // The sidecar is only a fast-path accelerator. If it is missing, stale, or
+            // does not carry the Source sheets (which is the whole point of the file),
+            // fall back to the JSON file — it is the source of truth for Sheets +
+            // SourceSheets. Never let a corrupt/stale sidecar make SourceSheets empty.
+            if (data == null || data.SourceSheets == null || data.SourceSheets.Count == 0)
+            {
+                data = JsonSerializer.Deserialize<SpriteSheetsSaveData>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
             if (data?.Sheets == null)
             {
                 Console.WriteLine($"[SpriteEditor] Invalid save file: {path}");
@@ -2824,6 +3043,27 @@ public class SpriteEditorPanel
                     legacySources.Add(sheet);
                 if (!string.IsNullOrEmpty(sheet.ImagePath) && File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(sheet.ImagePath)))
                     LoadPreviewTexture(sheet.ImagePath);
+            }
+            // Restore the SOURCE sheets saved with this file (bake inputs). Their metadata
+            // brings back the sheet list, its tree GROUPS and the Animation Editor's sheet
+            // pickers; the clips themselves are still served by the baked atlases above.
+            // A source whose name already arrived through the baked/legacy path is kept ONCE.
+            if (data.SourceSheets != null)
+            {
+                _loadSourceSheets = data.SourceSheets?.Select(s => SpriteSheet.FromData(s)).ToList() ?? new List<SpriteSheet>();
+                foreach (var sourceData in data.SourceSheets)
+                {
+                    var source = SpriteSheet.FromData(sourceData);
+                    if (string.IsNullOrWhiteSpace(source.Name)) continue;
+                    if (legacySources.Any(s => string.Equals(s.Name, source.Name, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    if (sourceData.ColOffset == null)
+                        source.ColOffset = SpritePatternExport.PredictColOffset(source.ImagePath);
+                    legacySources.Add(source);
+                    if (!string.IsNullOrEmpty(source.ImagePath) &&
+                        File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(source.ImagePath)))
+                        LoadPreviewTexture(source.ImagePath);
+                }
             }
             SpriteSheets.AddRange(legacySources);
             AnimationClips.Clear();
@@ -2895,7 +3135,8 @@ public class SpriteEditorPanel
             if (!string.IsNullOrWhiteSpace(data.PatternActions))
                 _patternActions = data.PatternActions;
 
-            Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} temporary source sheets + {_bakedAtlasSheets.Count} baked atlases + {AnimationClips.Count} clips from: {path}");
+            Console.WriteLine($"[SpriteEditor] Loaded {SpriteSheets.Count} source sheets + {_bakedAtlasSheets.Count} baked atlases + {AnimationClips.Count} clips from: {path} (file declares {data.SourceSheets?.Count ?? 0} source sheet(s))");
+            Console.WriteLine($"[SpriteEditor] After LoadSheetsFromFile: SpriteSheets.Count={SpriteSheets.Count}, SourceSheets loaded={data.SourceSheets?.Count ?? 0}");
             if ((migratedLegacyData || normalMapsUpdated) && allLegacyClipsMigrated &&
                 string.Equals(Path.GetFullPath(path), Path.GetFullPath(GetDefaultSavePath()), StringComparison.OrdinalIgnoreCase))
                 SaveAllSheets();
@@ -2903,6 +3144,60 @@ public class SpriteEditorPanel
         catch (Exception ex)
         {
             Console.WriteLine($"[SpriteEditor] Load failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>AUTO-RESTORE the source sheets the project file declares. `sprites.sheets.json`
+    /// stores them in `SourceSheets`; if a load ends with an EMPTY sheet list while the file
+    /// lists some (missed project-open event, an older build's save, a partial load), the panel
+    /// pulls them back instead of forcing a manual re-import of every sheet. Idempotent —
+    /// sheets already present (case-insensitive name) are skipped.</summary>
+    private void EnsureSourceSheetsLoaded()
+    {
+        string path = GetDefaultSavePath();
+        if (!File.Exists(path)) return;
+
+        SpriteSheetsSaveData? data;
+        try
+        {
+            data = Engine.Helpers.BinaryObjectCache.TryLoad<SpriteSheetsSaveData>(path);
+            if (data == null)
+            {
+                string json = File.ReadAllText(path);
+                data = JsonSerializer.Deserialize<SpriteSheetsSaveData>(json);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Source-sheet restore read failed: {ex.Message}");
+            return;
+        }
+
+        var saved = data?.SourceSheets;
+        if (saved == null || saved.Count == 0) return;
+
+        int added = 0;
+        foreach (var sourceData in saved)
+        {
+            var source = SpriteSheet.FromData(sourceData);
+            if (string.IsNullOrWhiteSpace(source.Name)) continue;
+            if (SpriteSheets.Any(s => string.Equals(s.Name, source.Name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (sourceData.ColOffset == null)
+                source.ColOffset = SpritePatternExport.PredictColOffset(source.ImagePath);
+            SpriteSheets.Add(source);
+            added++;
+            if (!string.IsNullOrEmpty(source.ImagePath) &&
+                File.Exists(Engine.Helpers.PathHelpers.ResolveProjectAsset(source.ImagePath)))
+                LoadPreviewTexture(source.ImagePath);
+        }
+
+        if (added > 0)
+        {
+            if (_selectedSheetIdx < 0 && SpriteSheets.Count > 0) _selectedSheetIdx = 0;
+            if (SelectedSheet != null) LoadSheetSettings();
+            Console.WriteLine($"[SpriteEditor] Auto-restored {added} source sheet(s) from {Path.GetFileName(path)}.");
+            Console.WriteLine($"[SpriteEditor] After EnsureSourceSheetsLoaded: SpriteSheets.Count={SpriteSheets.Count}, added={added}");
         }
     }
 
@@ -2917,9 +3212,17 @@ public class SpriteEditorPanel
     /// lives on the sheets (GroupName), so nothing extra is persisted.</summary>
     private void RenderSheetTree()
     {
-        ImGui.TextDisabled("Source sheets are temporary bake inputs; only baked clips and atlas metadata are saved.");
+        ImGui.TextDisabled("Source sheets are saved with the file (name, image path, grid, master box, tree group) — clips stay baked.");
         if (SpriteSheets.Count == 0)
-            ImGui.TextDisabled("No temporary source sheets loaded. Existing baked clips are listed below; use Import Sheet to create more.\nGroup them via Sheet Settings → 'Group Name' (or double-click a group node to rename it).");
+        {
+            // Say WHY the list is empty — a missing sheets file (deleted/zipped project
+            // assets) is a different problem from an empty file, and the user must not be
+            // left guessing that the auto-load is broken.
+            string sheetsFile = GetDefaultSavePath();
+            ImGui.TextDisabled(File.Exists(sheetsFile)
+                ? "No source sheets in sprites.sheets.json. Import Sheet to add them — the import is saved for the next open.\nGroup them via Sheet Settings → 'Group Name' (or double-click a group node to rename it)."
+                : $"sprites.sheets.json not found — nothing to auto-load:\n{sheetsFile}\nRestore the project's Artifacts/Sprites folder (or Import Sheet again).");
+        }
 
         // Ordered: groups (alphabetically), then root sheets — stable via first index.
         var groups = SpriteSheets
@@ -3038,6 +3341,7 @@ public class SpriteEditorPanel
         if (!string.IsNullOrEmpty(projectRoot))
         {
             string spriteDirectory = Path.Combine(projectRoot, "Artifacts", "Sprites");
+            Console.WriteLine($"[SpriteEditor] OnProjectChanged projectRoot='{projectRoot}', spriteDirectory='{spriteDirectory}', exists={Directory.Exists(spriteDirectory)}");
             try { SpriteAtlasBaker.EnsureDefaultAtlas(spriteDirectory); }
             catch (Exception ex) { Console.WriteLine($"[SpriteEditor] Failed to create default atlas: {ex.Message}"); }
         }
@@ -3046,8 +3350,16 @@ public class SpriteEditorPanel
         // Pattern exports (*-sprite-anim.json) are NOT auto-loaded here;
         // they stay button-triggered (Auto Load toolbar / Load dialog).
         string sheetsPath = GetDefaultSavePath();
+        _lazyRestoreTried = false;
         if (File.Exists(sheetsPath))
             LoadSheetsFromFile(sheetsPath);
+        // AUTO-LOAD GUARANTEE: never leave an empty sheet list while the file declares
+        // source sheets (that forced a manual re-import after every restart).
+        // Always attempt the source-sheet restore on a project switch: a save may have
+        // written the sheets into `SourceSheets` (the bake inputs) instead of `Sheets`
+        // (the live list), or the live list may only contain baked atlases and the
+        // editable source list still needs restoring.
+        EnsureSourceSheetsLoaded();
     }
 
     /// <summary>AUTO LOAD ALL FILES: canonical sprites.sheets.json load (synchronous,
@@ -3227,7 +3539,7 @@ public class SpriteEditorPanel
         var sheet = new SpriteSheet
         {
             Name = Path.GetFileNameWithoutExtension(path),
-            ImagePath = Tilemap2D.MakeDataPathRelative(path),
+            ImagePath = SpriteSheet.KeepSourceImagePath(path),
             Columns = _editCols,
             Rows = _editRows,
             FrameWidth = _editFrameW,
@@ -3312,7 +3624,10 @@ public class SpriteEditorPanel
     /// auto-fitted from the image itself.</summary>
     private SpriteSheet CreateSheetForImport(string path, out SpriteSheetsSaveData? siblingExport)
     {
-        string dataPath = Tilemap2D.MakeDataPathRelative(path);
+        // IMPORT AS-IS: the picked image stays exactly where it is (a local path is kept
+        // absolute). It is only opened to read pixels / bake the atlas, so re-anchoring it
+        // to the project or the exe's bin folder would just lose the file.
+        string dataPath = SpriteSheet.KeepSourceImagePath(path);
         string name = Path.GetFileNameWithoutExtension(path);
         if (SpritePatternExport.TryLoadExport(path, out var data, out var entry))
         {
@@ -3583,6 +3898,14 @@ public class SpriteEditorPanel
 public class SpriteSheetsSaveData
 {
     public List<SpriteSheetData> Sheets { get; set; } = new();
+
+    /// <summary>SOURCE sheets (the bake inputs the Sprite Editor lists) — saved so a reload
+    /// restores the sheet list, its tree groups and the Animation Editor's sheet pickers.
+    /// Written only by the editor's own save paths; null when omitted (pattern exports stay
+    /// lean). Old files without the field simply come back with baked atlases only.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<SpriteSheetData>? SourceSheets { get; set; }
+
     public List<AnimationClip2DData> AnimationClips { get; set; } = new();
 
     /// <summary>Animation Library groups (display-only tree). Missing/empty on old files →

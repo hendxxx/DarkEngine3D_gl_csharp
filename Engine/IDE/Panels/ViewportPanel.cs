@@ -4342,8 +4342,12 @@ ImGui.SameLine();
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
 
-            // Modal overlay: a visible root-level Container owns ALL input — the 3D
-            bool worldInputBlocked = _bridge.IsOverlayVisible;
+            // WORLD INPUT is blocked only by MODAL UI — a visible Container marked
+            // "Capture Input While Visible" (or one containing such a control). A decorative
+            // HUD container (hotbar, quick actions, health bar) must NOT freeze the world:
+            // gating on ANY visible container turned the transform gizmo, selection, marquee
+            // and tile painting into dead handles the moment the HUD became UI Containers.
+            bool worldInputBlocked = _bridge.SceneRoot?.HasVisibleInputCapture() == true;
 
             if (mouseOverImage)
             {
