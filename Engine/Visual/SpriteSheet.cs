@@ -178,6 +178,18 @@ public class SpriteSheet
 
     // ── Serialization ──
 
+    /// <summary>Import/load keeps a SOURCE image where the user picked it: an absolute
+    /// path that still resolves is stored untouched (baking reads it; nothing is copied
+    /// into the project or bin). Relative paths stay relative; a dead absolute path is
+    /// migrated to the portable project/exe-relative form.</summary>
+    public static string KeepSourceImagePath(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return path ?? "";
+        string p = Helpers.PathHelpers.Normalize(path);
+        if (System.IO.Path.IsPathRooted(p) && System.IO.File.Exists(p)) return p;
+        return Tilemap2D.MakeDataPathRelative(p);
+    }
+
     public SpriteSheetData ToData() => new()
     {
         Name = Name,
@@ -215,10 +227,11 @@ public class SpriteSheet
     public static SpriteSheet FromData(SpriteSheetData data) => new()
     {
         Name = data.Name,
-        // Rule: sheet/anim JSON (*-sprite-anim.json, *.sheets.json, .ing) must never
-        // contain "C:\\..." — old saves with absolute paths are migrated to relative
-        // here (project-relative when a project is loaded) at load time.
-        ImagePath = Tilemap2D.MakeDataPathRelative(data.ImagePath),
+        // SOURCE IMAGE = loaded exactly where it lives. An absolute local path that still
+        // exists is kept as-is: the source is only read to BAKE the atlas, so it is never
+        // copied into the project or the exe/bin folder. A stale absolute path (file gone)
+        // still falls back to the portable relative form so old saves keep loading.
+        ImagePath = KeepSourceImagePath(data.ImagePath),
         ImageWidth = data.ImageWidth,
         ImageHeight = data.ImageHeight,
         Columns = data.Columns,

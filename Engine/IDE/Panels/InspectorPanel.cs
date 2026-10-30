@@ -3512,6 +3512,67 @@ public class InspectorPanel
         ImGui.TextDisabled("Particles render in preview/in-game. Global wind comes\nfrom a trigger action 'Set Wind'; rain via 'Rain'.");
     }
 
+    /// <summary>CASCADE ADOPTION — no combo needs a first click to fill the next one.
+    /// Each cascade combo (Sheet → Animation Group → Clip) displays a FALLBACK label when
+    /// its stored value is empty or unknown (the sheet list's first entry, the group's
+    /// default `-idle` clip), so the stored value must ADOPT exactly that fallback.
+    /// Without this the Inspector showed `mainsprite1` in the Sprite Sheet combo while the
+    /// Animation Group below still read "(no groups…)" — the label was the fallback, the
+    /// VALUE was still empty, so the group lookup resolved against an empty sheet name
+    /// until the user clicked the sheet combo once.
+    /// Only an EMPTY / unresolvable value is replaced — a real choice is never discarded.</summary>
+    private static void EnsureSpriteCascade(EditorObject obj)
+    {
+        var sheets = IDEBridge.GetSpriteSheetNames();
+        if (sheets.Count == 0) return;
+
+        // 1) SHEET: adopt the first sheet the combo already displays as selected.
+        string sheet = obj.Player2DSpriteSheet ?? "";
+        bool sheetKnown = sheet.Length > 0 &&
+            sheets.Any(s => string.Equals(s, sheet, StringComparison.OrdinalIgnoreCase));
+        if (!sheetKnown)
+        {
+            obj.Player2DSpriteSheet = sheets[0];
+            obj.Player2DAnimationClip = "";      // different sheet → re-derive the clip below
+            obj.Sprite2DAnimTime = 0;
+            sheet = obj.Player2DSpriteSheet;
+        }
+
+        // 2) GROUP: the clip's group; the name-derived group is used when the sprite
+        //    registry has not caught up yet (clip names carry their group: `Male Skin1-idle`).
+        var clips = IDEBridge.GetClipNames(sheet);
+        string clip = obj.Player2DAnimationClip ?? "";
+        bool clipKnown = clip.Length > 0 &&
+            clips.Any(c => string.Equals(c, clip, StringComparison.OrdinalIgnoreCase));
+        var groups = ClipGroupRootsForSheet(sheet, clip);
+        if (groups.Count == 0) return;
+
+        // 3) CLIP: adopt the group's default (idle, else its first clip).
+        if (clipKnown) return;
+        string def = IDEBridge.FindGroupClip(sheet, groups[0], "idle");
+        if (def.Length == 0) def = IDEBridge.FindGroupClip(sheet, groups[0], "");
+        if (def.Length == 0 && clips.Count > 0) def = clips[0];
+        if (def.Length == 0) return;
+        obj.Player2DAnimationClip = def;
+        obj.Sprite2DAnimTime = 0;
+    }
+
+    /// <summary>Group roots for an Animation Group combo: the registry's groups for the
+    /// sheet PLUS the current clip's own group. The name-derived group is what keeps the
+    /// combo truthful when the sprite registry has not registered that clip yet — otherwise
+    /// a sheet whose clip plainly reads `Male Skin1-idle` would claim "(no groups…)".</summary>
+    private static List<string> ClipGroupRootsForSheet(string sheet, string clip)
+    {
+        var groups = IDEBridge.GetClipGroupRoots(sheet);
+        string current = IDEBridge.GetClipGroupRoot(sheet, clip);
+        if (current.Length == 0)
+            current = AnimationClipGroups.RootGroupOf(AnimationClipGroups.BaseNameOf(clip));
+        if (current.Length > 0 &&
+            !groups.Any(g => string.Equals(g, current, StringComparison.OrdinalIgnoreCase)))
+            groups.Insert(0, current);
+        return groups;
+    }
+
     /// <summary>Inspector for Sprite2D: sheet/clip pickers (or drag a clip box from the
     /// Asset Browser onto this Inspector), render height, loop/speed/offset playback.</summary>
     private unsafe void RenderSprite2DInspector(EditorObject editorObj)
@@ -3519,8 +3580,8 @@ public class InspectorPanel
         if (!ImGui.CollapsingHeader("Sprite 2D", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
+        EnsureSpriteCascade(editorObj);
         var sheets = IDEBridge.GetSpriteSheetNames();
-        var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
 
         // NOTE: NPC Dialogue section is rendered once by the main dispatcher
         // (RenderNpcDialogueInspector for Sprite2D/Player2D). Do NOT call it here —
@@ -3541,8 +3602,18 @@ public class InspectorPanel
                 if (ImGui.Selectable(sheetArr[i], sel))
                 {
                     editorObj.Player2DSpriteSheet = sheetArr[i];
-                    var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
-                    editorObj.Player2DAnimationClip = newClips.Count > 0 ? newClips[0] : "";
+                    // A fresh sheet starts on its FIRST group's default animation (idle),
+                    // falling back to the sheet's first clip when no group/default exists.
+                    var newGroups = IDEBridge.GetClipGroupRoots(editorObj.Player2DSpriteSheet);
+                    string defClip = newGroups.Count > 0
+                        ? IDEBridge.FindGroupClip(editorObj.Player2DSpriteSheet, newGroups[0], "idle")
+                        : "";
+                    if (string.IsNullOrEmpty(defClip))
+                    {
+                        var newClips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
+                        defClip = newClips.Count > 0 ? newClips[0] : "";
+                    }
+                    editorObj.Player2DAnimationClip = defClip;
                     editorObj.Sprite2DAnimTime = 0;
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
@@ -3550,28 +3621,40 @@ public class InspectorPanel
             ImGui.EndCombo();
         }
 
-        // Clip combo.
-        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
-        int clipIdx = 0;
-        for (int i = 0; i < clipArr.Length; i++)
-            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
-        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
-            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        // ── Animation GROUP combo (same rule as Player 2D): only the PARENT groups, and
+        // picking one loads its DEFAULT animation (idle). A Sprite2D is a single animated
+        // sprite, so a group-level picker matches how the clips were authored.
+        var groupNames = ClipGroupRootsForSheet(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        string curGroup = IDEBridge.GetClipGroupRoot(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        int groupIdx = -1;
+        for (int i = 0; i < groupNames.Count; i++)
+            if (string.Equals(groupNames[i], curGroup, StringComparison.OrdinalIgnoreCase)) { groupIdx = i; break; }
+        string groupLabel = groupNames.Count == 0
+            ? "(no groups — create clips in Sprite Editor)"
+            : (groupIdx >= 0 ? groupNames[groupIdx] : groupNames[0]);
+        if (ImGui.BeginCombo("Animation Group", groupLabel))
         {
-            for (int i = 0; i < clipArr.Length; i++)
+            for (int i = 0; i < groupNames.Count; i++)
             {
-                if (clips.Count == 0) break;
-                bool sel = i == clipIdx;
-                if (ImGui.Selectable(clipArr[i], sel))
+                bool sel = i == groupIdx;
+                if (ImGui.Selectable(groupNames[i], sel))
                 {
-                    editorObj.Player2DAnimationClip = clipArr[i];
-                    editorObj.Sprite2DAnimTime = 0;
+                    string clip = IDEBridge.FindGroupClip(editorObj.Player2DSpriteSheet, groupNames[i], "idle");
+                    if (string.IsNullOrEmpty(clip))
+                        clip = IDEBridge.FindGroupClip(editorObj.Player2DSpriteSheet, groupNames[i], "");
+                    if (!string.IsNullOrEmpty(clip))
+                    {
+                        editorObj.Player2DAnimationClip = clip;
+                        editorObj.Sprite2DAnimTime = 0;
+                    }
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
             ImGui.EndCombo();
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Or drag a clip box from Asset Browser > Artifacts/Sprites onto this Inspector");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Animation GROUP = this sprite's clip set. Selecting one loads its DEFAULT animation (idle).\n"
+                + "You can also drag a clip box from Asset Browser > Artifacts/Sprites onto this Inspector.");
 
         // Jump straight into the animation workspace for the selected clip — the same
         // navigation the Asset Browser exposes via double-click.
@@ -3621,9 +3704,14 @@ public class InspectorPanel
             editorObj.Sprite2DStartOffset = MathF.Max(0f, soff);
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Playback offset in seconds — desynchronize several copies sharing one clip (e.g. campfires)");
 
-        bool faceR = editorObj.Sprite2DFacingRight;
-        if (ImGui.Checkbox("Facing Right", ref faceR))
-            editorObj.Sprite2DFacingRight = faceR;
+        // "Flip Facing" = horizontal MIRROR, displayed inverted so the default state is
+        // UNCHECKED (normal, art as authored) and checking it flips the sprite. The stored
+        // flag is still Sprite2DFacingRight, so existing scenes keep their orientation.
+        bool flipFace = !editorObj.Sprite2DFacingRight;
+        if (ImGui.Checkbox("Flip Facing", ref flipFace))
+            editorObj.Sprite2DFacingRight = !flipFace;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Mirror this sprite horizontally (NPCs/props).\nOff = the art exactly as authored.");
 
         // Repeat-to-width: tile the animated frame across a world width (water,
         // hedges, fences). 0 = auto single frame. DragFloat = TANPA batas atas
@@ -4036,6 +4124,8 @@ public class InspectorPanel
         if (!ImGui.CollapsingHeader("Player 2D", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
+        // Sheet → Animation Group → Clip fill themselves — no first click required.
+        EnsureSpriteCascade(editorObj);
         var sheets = IDEBridge.GetSpriteSheetNames();
         var clips = IDEBridge.GetClipNames(editorObj.Player2DSpriteSheet);
 
@@ -4071,32 +4161,46 @@ public class InspectorPanel
         }
         if (ImGui.IsItemHovered()) ImGui.SetTooltip("Sprite sheet imported in the Sprite Editor panel");
 
-        // ── Animation Clip combo (auto-select index 0 when empty/sheet changed) ──
-        string[] clipArr = clips.Count > 0 ? clips.ToArray() : ["(no clips — create in Sprite Editor)"];
-        int clipIdx = 0;
-        for (int i = 0; i < clipArr.Length; i++)
-            if (clipArr[i] == editorObj.Player2DAnimationClip) { clipIdx = i; break; }
-        if (ImGui.BeginCombo("Animation Clip", clips.Count == 0 ? clipArr[0]
-            : (clipIdx > 0 ? clipArr[clipIdx] : (string.IsNullOrEmpty(editorObj.Player2DAnimationClip) ? clipArr[0] : editorObj.Player2DAnimationClip))))
+        // ── Animation GROUP combo: only the clip-set PARENTS (Male Skin1, Female Skin1…).
+        // Picking a group loads its DEFAULT animation (idle) and lets the Idle/Walk/Run
+        // action clips that pointed at the old clip follow along; per-action clips stay
+        // assignable in Animation Actions below.
+        var groupNames = ClipGroupRootsForSheet(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        string curGroup = IDEBridge.GetClipGroupRoot(editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+        int groupIdx = -1;
+        for (int i = 0; i < groupNames.Count; i++)
+            if (string.Equals(groupNames[i], curGroup, StringComparison.OrdinalIgnoreCase)) { groupIdx = i; break; }
+        string groupLabel = groupNames.Count == 0
+            ? "(no groups — create clips in Sprite Editor)"
+            : (groupIdx >= 0 ? groupNames[groupIdx] : groupNames[0]);
+        if (ImGui.BeginCombo("Animation Group", groupLabel))
         {
-            for (int i = 0; i < clipArr.Length; i++)
+            for (int i = 0; i < groupNames.Count; i++)
             {
-                if (clips.Count == 0) break;
-                bool sel = i == clipIdx;
-                if (ImGui.Selectable(clipArr[i], sel))
+                bool sel = i == groupIdx;
+                if (ImGui.Selectable(groupNames[i], sel))
                 {
                     string oldClip = editorObj.Player2DAnimationClip;
-                    editorObj.Player2DAnimationClip = clipArr[i];
-                    editorObj.Player2DAnimTime = 0;
-                    BindMatchingPlayer2DActionClips(editorObj,
-                        editorObj.Player2DSpriteSheet, oldClip,
-                        editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
+                    string clip = IDEBridge.FindGroupClip(editorObj.Player2DSpriteSheet, groupNames[i], "idle");
+                    if (string.IsNullOrEmpty(clip))
+                        clip = IDEBridge.FindGroupClip(editorObj.Player2DSpriteSheet, groupNames[i], "");
+                    if (!string.IsNullOrEmpty(clip))
+                    {
+                        editorObj.Player2DAnimationClip = clip;
+                        editorObj.Player2DAnimTime = 0;
+                        BindMatchingPlayer2DActionClips(editorObj,
+                            editorObj.Player2DSpriteSheet, oldClip,
+                            editorObj.Player2DSpriteSheet, clip);
+                    }
                 }
                 if (sel) ImGui.SetItemDefaultFocus();
             }
             ImGui.EndCombo();
         }
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip("Animation clip (FPS/loop/reverse/speed come from the clip's settings).\nIdle/Walk/Run actions still pointing at the old clip follow this change.");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Animation GROUP = one sprite's clip set (Male Skin1, Female Skin1, …).\n"
+                + "Selecting a group loads its DEFAULT animation (idle).\n"
+                + "FPS/loop/reverse/speed come from the clip; Walk/Run/Jump stay assignable in Animation Actions below.");
 
         ImGui.SameLine();
         if (ImGui.SmallButton("Edit Clip##player2d"))
@@ -4154,6 +4258,14 @@ public class InspectorPanel
         bool showCap = editorObj.Player2DShowCapsule;
         if (ImGui.Checkbox("Show Capsule##player", ref showCap))
             editorObj.Player2DShowCapsule = showCap;
+
+        // Same toggle the NPC/Sprite2D block has: mirrors the player on top of its
+        // movement facing (movement still flips the sprite left/right while walking).
+        bool flipFacing = editorObj.Player2DFlipFacing;
+        if (ImGui.Checkbox("Flip Facing##player", ref flipFacing))
+            editorObj.Player2DFlipFacing = flipFacing;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Mirror the player sprite horizontally on top of its movement facing.\nUse it when the art was authored facing the other way.");
 
         // Per-sprite glow (emissive) — same as Sprite2D glow: bright pixels bloom.
         float pGlow = editorObj.Player2DGlow;
@@ -4348,6 +4460,23 @@ public class InspectorPanel
             editorObj.Player2DSpriteSheet, editorObj.Player2DAnimationClip);
         var sheets = IDEBridge.GetSpriteSheetNames();
 
+        // DEFAULT CLIP PER ACTION NAME: a fresh action row starts on the group's clip that
+        // matches its own name (Idle→-idle, Walk→-walk, Jump→-jump start, Fall→-jump end,
+        // Attack→-attack…). Only an EMPTY or still-inherited (== base clip) assignment is
+        // replaced, so a manual choice is never thrown away.
+        string baseClipNow = editorObj.Player2DAnimationClip;
+        foreach (var act in editorObj.Actions)
+        {
+            string actSheet = string.IsNullOrEmpty(act.SpriteSheet)
+                ? editorObj.Player2DSpriteSheet : act.SpriteSheet;
+            bool inherited = string.IsNullOrEmpty(act.Clip)
+                || string.Equals(act.Clip, baseClipNow, StringComparison.OrdinalIgnoreCase);
+            if (!inherited) continue;
+            string def = DefaultClipForAction(actSheet, baseClipNow, act.Name);
+            if (def.Length > 0 && !string.Equals(def, act.Clip, StringComparison.OrdinalIgnoreCase))
+                act.Clip = def;
+        }
+
         ImGui.TextDisabled("Bind keys + clips; higher priority interrupts lower (Dead=100 cancels all)");
         ImGui.TextDisabled("Each action's Clip dropdown lists clips created in Sprite Editor; matching -idle/-walk/-run clips auto-bind from the base clip.");
 
@@ -4380,35 +4509,67 @@ public class InspectorPanel
                     }
                 }
 
-                // Sheet dropdown (auto-select first — dropdown rule)
+                // Sheet dropdown (auto-select — dropdown rule). EMPTY = follow the player's
+                // BASE sheet (shown as "(base sheet)"), so the Clip list below already
+                // resolves WITHOUT a first click; picking a sheet pins the action to it.
                 string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
-                int sheetIdx = 0;
-                for (int s = 0; s < sheetArr.Length; s++)
-                    if (sheetArr[s] == act.SpriteSheet) { sheetIdx = s; break; }
-                if (ImGui.BeginCombo("Sheet", sheetArr[sheetIdx]))
+                string inheritedSheet = string.IsNullOrEmpty(editorObj.Player2DSpriteSheet)
+                    ? sheetArr[0] : editorObj.Player2DSpriteSheet;
+                int sheetIdx = -1;
+                if (!string.IsNullOrEmpty(act.SpriteSheet))
+                    for (int s = 0; s < sheetArr.Length; s++)
+                        if (string.Equals(sheetArr[s], act.SpriteSheet, StringComparison.OrdinalIgnoreCase)) { sheetIdx = s; break; }
+                string sheetLabel = string.IsNullOrEmpty(act.SpriteSheet)
+                    ? (sheets.Count > 0 ? $"(base sheet) {inheritedSheet}" : "(no sheets)")
+                    : act.SpriteSheet;
+                if (ImGui.BeginCombo("Sheet", sheetLabel))
                 {
+                    if (ImGui.Selectable("(base sheet)", string.IsNullOrEmpty(act.SpriteSheet)))
+                    {
+                        act.SpriteSheet = "";
+                        act.Clip = DefaultClipForAction(inheritedSheet,
+                            editorObj.Player2DAnimationClip, act.Name);
+                    }
+                    if (string.IsNullOrEmpty(act.SpriteSheet)) ImGui.SetItemDefaultFocus();
                     for (int s = 0; s < sheetArr.Length; s++)
                     {
-                        bool sel = s == sheetIdx;
+                        bool sel = !string.IsNullOrEmpty(act.SpriteSheet) && s == sheetIdx;
                         if (ImGui.Selectable(sheetArr[s], sel))
                         {
                             act.SpriteSheet = sheetArr[s];
                             var clipNames = IDEBridge.GetClipNames(act.SpriteSheet);
-                            act.Clip = clipNames.Count > 0 ? clipNames[0] : "";
+                            // Prefer the clip that matches THIS action's name; only fall back
+                            // to the sheet's first clip when the action has no match.
+                            string def = DefaultClipForAction(act.SpriteSheet,
+                                editorObj.Player2DAnimationClip, act.Name);
+                            act.Clip = def.Length > 0 ? def : (clipNames.Count > 0 ? clipNames[0] : "");
                         }
                         if (sel) ImGui.SetItemDefaultFocus();
                     }
                     ImGui.EndCombo();
                 }
 
-                // Clip dropdown (resolves against the action's sheet or the player's sheet)
-                var clips = IDEBridge.GetClipNames(string.IsNullOrEmpty(act.SpriteSheet)
-                    ? editorObj.Player2DSpriteSheet : act.SpriteSheet);
+                // Clip dropdown (resolves against the action's sheet or the player's BASE
+                // sheet). An EMPTY assignment adopts this action's DEFAULT clip (Idle→-idle,
+                // Jump→-jump start, Fall→-jump end…) and the label ALWAYS shows the real
+                // stored value — never a silently different first clip.
+                string clipSheet = string.IsNullOrEmpty(act.SpriteSheet)
+                    ? editorObj.Player2DSpriteSheet : act.SpriteSheet;
+                var clips = IDEBridge.GetClipNames(clipSheet);
+                if (string.IsNullOrEmpty(act.Clip) && clips.Count > 0)
+                {
+                    string defClip = DefaultClipForAction(clipSheet, editorObj.Player2DAnimationClip, act.Name);
+                    act.Clip = defClip.Length > 0 ? defClip : clips[0];
+                }
                 string[] clipArr = clips.Count > 0 ? clips.ToArray() : [""];
-                int clipIdx = 0;
+                int clipIdx = -1;
                 for (int c = 0; c < clipArr.Length; c++)
-                    if (clipArr[c] == act.Clip) { clipIdx = c; break; }
-                if (ImGui.BeginCombo("Clip", clipArr[clipIdx]))
+                    if (string.Equals(clipArr[c], act.Clip, StringComparison.OrdinalIgnoreCase)) { clipIdx = c; break; }
+                string clipLabel = clips.Count == 0
+                    ? "(no clips — create in Sprite Editor)"
+                    : (clipIdx >= 0 ? clipArr[clipIdx]
+                        : (string.IsNullOrEmpty(act.Clip) ? clipArr[0] : act.Clip));
+                if (ImGui.BeginCombo("Clip", clipLabel))
                 {
                     for (int c = 0; c < clipArr.Length; c++)
                     {
@@ -4534,10 +4695,19 @@ public class InspectorPanel
                     {
                         var pClips = IDEBridge.GetClipNames(act.ProjectileSheet);
                         string[] pClipArr = pClips.Count > 0 ? pClips.ToArray() : [""];
-                        int pClipIdx = 0;
-                        for (int c = 0; c < pClipArr.Length; c++)
-                            if (pClipArr[c] == act.ProjectileClip) { pClipIdx = c; break; }
-                        if (ImGui.BeginCombo("Clip", pClipArr[pClipIdx]))
+                        // CASCADE ADOPTION: an empty/unknown clip adopts the value the combo
+                        // already displays (the sheet's first clip) — the flying sprite needs
+                        // one, and the label was lying until the combo was clicked once.
+                        int pClipIdx = Array.IndexOf(pClipArr, act.ProjectileClip);
+                        if (pClips.Count > 0 && pClipIdx < 0)
+                        {
+                            pClipIdx = 0;
+                            act.ProjectileClip = pClipArr[0];
+                        }
+                        string pClipLabel = pClips.Count == 0
+                            ? "(no clips — create in Sprite Editor)"
+                            : pClipArr[Math.Max(0, pClipIdx)];
+                        if (ImGui.BeginCombo("Clip", pClipLabel))
                         {
                             for (int c = 0; c < pClipArr.Length; c++)
                             {
@@ -4572,16 +4742,24 @@ public class InspectorPanel
                     float pDmgMp = act.ProjectileDamageMP;
                     if (ImGui.DragFloat("Damage MP", ref pDmgMp, 0.5f, -50f, 200f)) act.ProjectileDamageMP = pDmgMp;
 
-                    // Hit animation pickers (sheet + clip, optional).
+                    // Hit animation pickers (sheet + clip, optional). "(none)" is a real
+                    // choice — the combo now SHOWS it instead of the first sheet, so nothing
+                    // looks assigned until it is.
                     string[] hSheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
-                    int hSheetIdx = 0;
-                    for (int s = 0; s < hSheetArr.Length; s++)
-                        if (hSheetArr[s] == act.ProjectileHitSheet) { hSheetIdx = s; break; }
-                    if (ImGui.BeginCombo("Hit Sheet", hSheetArr[hSheetIdx]))
+                    int hSheetIdx = Array.IndexOf(hSheetArr, act.ProjectileHitSheet);
+                    string hSheetLabel = !string.IsNullOrEmpty(act.ProjectileHitSheet)
+                        ? act.ProjectileHitSheet : "(none)";
+                    if (ImGui.BeginCombo("Hit Sheet", hSheetLabel))
                     {
+                        if (ImGui.Selectable("(none)", string.IsNullOrEmpty(act.ProjectileHitSheet)))
+                        {
+                            act.ProjectileHitSheet = "";
+                            act.ProjectileHitClip = "";
+                        }
+                        if (string.IsNullOrEmpty(act.ProjectileHitSheet)) ImGui.SetItemDefaultFocus();
                         for (int s = 0; s < hSheetArr.Length; s++)
                         {
-                            bool sel = s == hSheetIdx;
+                            bool sel = s == hSheetIdx && !string.IsNullOrEmpty(act.ProjectileHitSheet);
                             if (ImGui.Selectable(hSheetArr[s], sel))
                             {
                                 act.ProjectileHitSheet = hSheetArr[s];
@@ -4595,14 +4773,15 @@ public class InspectorPanel
                     {
                         var hClips = IDEBridge.GetClipNames(act.ProjectileHitSheet);
                         string[] hClipArr = hClips.Count > 0 ? hClips.ToArray() : [""];
-                        int hClipIdx = 0;
-                        for (int c = 0; c < hClipArr.Length; c++)
-                            if (hClipArr[c] == act.ProjectileHitClip) { hClipIdx = c; break; }
-                        if (ImGui.BeginCombo("Hit Clip", hClipArr[hClipIdx]))
+                        int hClipIdx = Array.IndexOf(hClipArr, act.ProjectileHitClip);
+                        string hClipLabel = string.IsNullOrEmpty(act.ProjectileHitClip)
+                            ? (hClips.Count > 0 ? "(sheet default)" : "(no clips — create in Sprite Editor)")
+                            : (hClipIdx >= 0 ? hClipArr[hClipIdx] : act.ProjectileHitClip);
+                        if (ImGui.BeginCombo("Hit Clip", hClipLabel))
                         {
                             for (int c = 0; c < hClipArr.Length; c++)
                             {
-                                bool sel = c == hClipIdx;
+                                bool sel = !string.IsNullOrEmpty(act.ProjectileHitClip) && c == hClipIdx;
                                 if (ImGui.Selectable(hClipArr[c], sel))
                                     act.ProjectileHitClip = hClipArr[c];
                                 if (sel) ImGui.SetItemDefaultFocus();
@@ -4649,6 +4828,12 @@ public class InspectorPanel
             });
         }
     }
+
+    /// <summary>The clip an ACTION NAME defaults to inside the current group: Idle→-idle,
+    /// Walk→-walk, Run→-run, Jump→-jump start, Fall→-jump end, Attack→-attack. "" when the
+    /// group has no such clip (the row then stays empty / keeps its manual choice).</summary>
+    private static string DefaultClipForAction(string sheetName, string baseClip, string actionName)
+        => IDEBridge.FindAnimationClipForAction(sheetName, baseClip, actionName)?.Name ?? "";
 
     /// <summary>Bind default locomotion actions to sibling Sprite Editor clips
     /// (for example, base "Male Skin1-idle" maps Run to "Male Skin1-run"). Only

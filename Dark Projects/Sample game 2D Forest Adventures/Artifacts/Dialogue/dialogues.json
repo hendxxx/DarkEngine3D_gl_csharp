@@ -31,8 +31,8 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 30,
+          "GraphY": 30
         },
         {
           "Id": "accept",
@@ -46,8 +46,8 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 260,
+          "GraphY": 126
         },
         {
           "Id": "decline",
@@ -61,8 +61,8 @@
           "AutoAdvanceDelay": 1.5,
           "OnStartActions": [],
           "OnEndActions": [],
-          "GraphX": 0,
-          "GraphY": 0
+          "GraphX": 260,
+          "GraphY": 126
         }
       ],
       "Notes": []

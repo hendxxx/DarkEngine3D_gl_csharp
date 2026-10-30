@@ -251,78 +251,105 @@ public unsafe class AssetBrowserPanel
         IDEBridge.RequestSprite2DPlacement?.Invoke(pending.Sheet, pending.Clip, null);
     }
 
-    /// <summary>Render the Sprite Editor's animation clips as draggable boxes (shown in
-    /// the Artifacts/Sprites folder). One box per clip: colored tile + sheet/clip label.</summary>
+    /// <summary>Render the Sprite Editor's clips as DRAGGABLE GROUP ROWS in the
+    /// Artifacts/Sprites folder. A GROUP is the placeable unit (`Male Skin1`,
+    /// `Female Skin1`…): click or drag it and it drops with the group's DEFAULT animation
+    /// (idle). The individual action clips (`-walk`, `-run`, `-attack`…) are authoring
+    /// detail, so they are NOT listed as separate boxes. A clip without a group has no
+    /// parent row — those still appear individually, labelled by their clip name.</summary>
     private void RenderSpriteClipBoxes()
     {
         ImGui.Separator();
-        ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Animation Clips (click = place, double-click = edit)");
+        ImGui.TextColored(new Vector4(0.6f, 0.8f, 1f, 1f), "Animation Groups (click = place, double-click = edit)");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Click or drag into the viewport = place a Sprite2D (animated, no controller) / assign to the selected Player2D or Sprite2D.\nDouble-click = open the clip in the Animation Editor (timeline, holds, events, bake).");
+            ImGui.SetTooltip("Click or drag into the viewport = place a Sprite2D (animated, no controller) / assign to the selected Player2D or Sprite2D, using the GROUP's default animation (idle).\nDouble-click = open that default clip in the Animation Editor (timeline, holds, events, bake).\nGrouped like the Animation Editor tree (display only — files untouched).");
 
-        var clips = IDEBridge.GetSpriteClipPairs().ToList();
+        var clips = IDEBridge.GetSpriteClipTriples().ToList();
         float boxW = 132f;
         float boxH = ImGui.GetTextLineHeightWithSpacing() + 8f;
         float avail = ImGui.GetContentRegionAvail().X;
         int cols = Math.Max(1, (int)(avail / (boxW + 6f)));
 
-        int n = 0;
-        while (n < clips.Count)
+        // ONE ROW PER GROUP (the placeable unit). Only clips WITHOUT a group — which have no
+        // parent row to carry them — keep their own row, labelled by their clip name.
+        var rows = new List<(string Label, string Sheet, string Clip, int Count)>();
+        foreach (var group in clips
+                     .GroupBy(c => string.IsNullOrWhiteSpace(c.Group) ? "" : c.Group)
+                     .OrderBy(g => g.Key.Length == 0 ? 1 : 0)
+                     .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
         {
-            for (int c = 0; c < cols && n < clips.Count; c++, n++)
+            if (group.Key.Length > 0)
             {
-                if (c > 0) ImGui.SameLine();
-                var (sheetName, clipName) = clips[n];
-
-                // Color-code per sheet so clips from the same sheet share a hue.
-                int hash = 0;
-                foreach (char ch in sheetName) hash = hash * 31 + ch;
-                var hue = (hash & 0xFF) / 255f;
-                var boxCol = ImGui.ColorConvertU32ToFloat4(ImGui.ColorConvertFloat4ToU32(
-                    new Vector4(System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.5f + hue, 0.45f, 0.75f - hue)), 0.45f)));
-
-                var boxMin = ImGui.GetCursorScreenPos();
-                ImGui.InvisibleButton($"clipbox{n}", new Vector2(boxW, boxH));
-                bool boxHovered = ImGui.IsItemHovered();
-                // Hand-drawn tile: a Button fires on the first release of a double click,
-                // which would place a sprite while opening the editor.
-                var boxDraw = ImGui.GetWindowDrawList();
-                var boxMax = boxMin + new Vector2(boxW, boxH);
-                boxDraw.AddRectFilled(boxMin, boxMax,
-                    ImGui.ColorConvertFloat4ToU32(boxHovered
-                        ? new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.7f) : boxCol), 3f);
-                boxDraw.AddRect(boxMin, boxMax,
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 0.25f)), 3f);
-                var labelSize = ImGui.CalcTextSize(clipName);
-                boxDraw.PushClipRect(boxMin + new Vector2(5, 0), boxMax - new Vector2(5, 0), true);
-                boxDraw.AddText(new Vector2(boxMin.X + 6, boxMin.Y + (boxH - labelSize.Y) * 0.5f),
-                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.95f, 0.95f, 1f, 1f)), clipName);
-                boxDraw.PopClipRect();
-
-                if (boxHovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                {
-                    _pendingPlace = null;   // the first click must not spawn a sprite
-                    IDEBridge.OpenClipInAnimationEditor(sheetName, clipName);
-                }
-                else if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
-                {
-                    // Click = same as drop at the camera spawn, deferred (see above).
-                    _pendingPlace = (sheetName, clipName, ImGui.GetTime());
-                }
-                if (boxHovered)
-                    ImGui.SetTooltip($"{sheetName} / {clipName}\nClick or drag into the viewport to place.\nDouble-click = edit in the Animation Editor.");
-
-                // ── Drag source ──
-                if (ImGui.BeginDragDropSource())
-                {
-                    _pendingPlace = null;   // a drag is not a click
-                    ImGui.SetDragDropPayload(SpriteClipPayload, nint.Zero, 0);
-                    _dragSpriteClip = $"{sheetName}|{clipName}";
-                    ImGui.Text($"{clipName}");
-                    ImGui.TextDisabled($"{sheetName}");
-                    ImGui.EndDragDropSource();
-                }
+                string grpSheet = group.First().Sheet;
+                // DEFAULT ANIMATION = idle; fall back to the group's first clip.
+                string def = IDEBridge.FindGroupClip(grpSheet, group.Key, "idle");
+                if (string.IsNullOrEmpty(def)) def = group.First().Clip;
+                if (def.Length == 0) continue;
+                rows.Add((group.Key, grpSheet, def, group.Count()));
+                continue;
             }
+            foreach (var (sheetName, clipName, _) in group)
+                rows.Add((clipName, sheetName, clipName, 1));
+        }
+
+        int n = 0;
+        foreach (var row in rows)
+        {
+            if (n % cols != 0) ImGui.SameLine();
+            n++;
+            ImGui.PushID($"cliprow_{row.Sheet}|{row.Clip}|{row.Label}");
+
+            // Color-code per sheet so rows from the same sheet share a hue.
+            int hash = 0;
+            foreach (char ch in row.Sheet) hash = hash * 31 + ch;
+            var hue = (hash & 0xFF) / 255f;
+            var boxCol = ImGui.ColorConvertU32ToFloat4(ImGui.ColorConvertFloat4ToU32(
+                new Vector4(System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(0.5f + hue, 0.45f, 0.75f - hue)), 0.45f)));
+
+            var boxMin = ImGui.GetCursorScreenPos();
+            ImGui.InvisibleButton("clipbox", new Vector2(boxW, boxH));
+            bool boxHovered = ImGui.IsItemHovered();
+            // Hand-drawn tile: a Button fires on the first release of a double click,
+            // which would place a sprite while opening the editor.
+            var boxDraw = ImGui.GetWindowDrawList();
+            var boxMax = boxMin + new Vector2(boxW, boxH);
+            boxDraw.AddRectFilled(boxMin, boxMax,
+                ImGui.ColorConvertFloat4ToU32(boxHovered
+                    ? new Vector4(boxCol.X, boxCol.Y, boxCol.Z, 0.7f) : boxCol), 3f);
+            boxDraw.AddRect(boxMin, boxMax,
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.95f, 0.25f)), 3f);
+            var labelSize = ImGui.CalcTextSize(row.Label);
+            boxDraw.PushClipRect(boxMin + new Vector2(5, 0), boxMax - new Vector2(5, 0), true);
+            boxDraw.AddText(new Vector2(boxMin.X + 6, boxMin.Y + (boxH - labelSize.Y) * 0.5f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(0.95f, 0.95f, 1f, 1f)), row.Label);
+            boxDraw.PopClipRect();
+
+            if (boxHovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                _pendingPlace = null;   // the first click must not spawn a sprite
+                IDEBridge.OpenClipInAnimationEditor(row.Sheet, row.Clip);
+            }
+            else if (ImGui.IsItemClicked(ImGuiMouseButton.Left))
+            {
+                // Click = same as drop at the camera spawn, deferred (see above).
+                _pendingPlace = (row.Sheet, row.Clip, ImGui.GetTime());
+            }
+            if (boxHovered)
+                ImGui.SetTooltip(row.Count > 1
+                    ? $"{row.Sheet} / {row.Label}\n{row.Count} clips — places the DEFAULT animation ({row.Clip}).\nClick or drag into the viewport to place.\nDouble-click = edit in the Animation Editor."
+                    : $"{row.Sheet} / {row.Clip}\nClick or drag into the viewport to place.\nDouble-click = edit in the Animation Editor.");
+
+            // ── Drag source: the row carries the same (sheet, clip) a click would place ──
+            if (ImGui.BeginDragDropSource())
+            {
+                _pendingPlace = null;   // a drag is not a click
+                ImGui.SetDragDropPayload(SpriteClipPayload, nint.Zero, 0);
+                _dragSpriteClip = $"{row.Sheet}|{row.Clip}";
+                ImGui.Text(row.Label);
+                ImGui.TextDisabled(row.Count > 1 ? $"{row.Sheet} · default animation" : row.Sheet);
+                ImGui.EndDragDropSource();
+            }
+            ImGui.PopID();
         }
         ImGui.Separator();
     }

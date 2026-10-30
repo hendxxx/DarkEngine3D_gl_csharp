@@ -317,14 +317,59 @@ public class IDEBridge
         int selectedDash = selectedClipName.LastIndexOf('-');
         if (selectedDash <= 0 || selectedDash == selectedClipName.Length - 1) return null;
 
-        string action = ActionToken(baseName);
-        if (string.IsNullOrEmpty(action)) return null;
+        string prefix = selectedClipName[..selectedDash];
 
-        string matchingName = $"{selectedClipName[..selectedDash]}-{action}";
-        return TryGetSpriteClip(sheetName, matchingName, out _, out var matchingClip)
-            && matchingClip != null && matchingClip.FrameIndices.Count > 0
-                ? matchingClip
-                : null;
+        // Try every token the ACTION NAME maps to: Jump grabs `-jump start` (the launch
+        // pose) and Fall grabs `-jump end` (the landing pose) — the names the player sheets
+        // use — with the plain `-jump` / `-fall` spellings as fallbacks. Other actions use
+        // their own name as the token (Attack → `<group>-attack`).
+        foreach (string token in ActionClipTokens(baseName))
+        {
+            string candidate = $"{prefix}-{token}";
+            if (TryGetSpriteClip(sheetName, candidate, out _, out var exact)
+                && exact != null && exact.FrameIndices.Count > 0)
+                return exact;
+
+            var relaxed = FindClipIgnoreCase(sheetName, candidate);
+            if (relaxed != null && relaxed.FrameIndices.Count > 0) return relaxed;
+        }
+        return null;
+    }
+
+    /// <summary>Clip-name tokens tried for an action, in priority order (see
+    /// <see cref="FindAnimationClipForAction"/>). Unlisted actions fall back to their own
+    /// name, so a custom "Attack" action still resolves `&lt;group&gt;-attack`.</summary>
+    private static readonly (string Action, string[] Tokens)[] _actionClipTokens =
+    [
+        ("Idle", ["idle"]),
+        ("Walk", ["walk"]),
+        ("Run", ["run"]),
+        ("Jump", ["jump start", "jumpstart", "jump"]),
+        ("Jump Start", ["jump start", "jumpstart", "jump"]),
+        ("Fall", ["jump end", "jumpend", "fall"]),
+        ("Jump End", ["jump end", "jumpend", "fall"]),
+    ];
+
+    private static string[] ActionClipTokens(string actionName)
+    {
+        string name = actionName?.Trim() ?? "";
+        if (name.Length == 0) return [];
+        foreach (var (action, tokens) in _actionClipTokens)
+            if (string.Equals(action, name, StringComparison.OrdinalIgnoreCase))
+                return tokens;
+        string token = ActionToken(name);
+        return token.Length == 0 ? [] : [token];
+    }
+
+    /// <summary>Exact-name lookup first; this case-insensitive scan covers sheets whose
+    /// clip names capitalise differently (`Male Skin1-Idle`).</summary>
+    private static AnimationClip2D? FindClipIgnoreCase(string sheetName, string clipName)
+    {
+        foreach (var kv in _spriteClips)
+            if (string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(kv.Key.clip, clipName, StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
+        return null;
     }
 
     /// <summary>The action token of a clip name: everything after the LAST '-' (a name
@@ -360,6 +405,60 @@ public class IDEBridge
     /// Browser's clip boxes). Ordered by sheet then clip name for stable UI.</summary>
     public static IEnumerable<(string Sheet, string Clip)> GetSpriteClipPairs()
         => _spriteClips.Keys.Select(k => (k.sheet, k.clip)).OrderBy(p => p.sheet).ThenBy(p => p.clip);
+
+    /// <summary>Clips WITH the group the Animation Editor tree shows them under ("" =
+    /// ungrouped), so the Asset Browser mirrors that tree. A manual `GroupPath` wins;
+    /// otherwise the `<sprite>-<action>` base-name group is derived (display only — no file
+    /// is touched, exactly like the editor's Auto-group). Ordered group → clip.</summary>
+    public static IEnumerable<(string Sheet, string Clip, string Group)> GetSpriteClipTriples()
+        => _spriteClips
+            .Select(kv => (Sheet: kv.Key.sheet, Clip: kv.Key.clip,
+                Group: AnimationClipGroups.DisplayGroupOf(kv.Value, true)))
+            .OrderBy(p => p.Group, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.Clip, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Distinct PARENT groups of one sheet's clips ("Male Skin1", "Female Skin1"),
+    /// using the same grouping the editor tree shows; nested paths collapse to their root.
+    /// This is what the Inspector's "Animation Group" picker lists.</summary>
+    public static List<string> GetClipGroupRoots(string sheetName)
+        => _spriteClips
+            .Where(kv => string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
+            .Select(kv => AnimationClipGroups.RootGroupOf(AnimationClipGroups.DisplayGroupOf(kv.Value, true)))
+            .Where(g => g.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>The parent group a given clip belongs to ("" when unknown). Falls back to
+    /// the name-derived base so the combo can label an object before the registry syncs.</summary>
+    public static string GetClipGroupRoot(string sheetName, string clipName)
+    {
+        if (string.IsNullOrWhiteSpace(clipName)) return "";
+        if (_spriteClips.TryGetValue((sheetName, clipName), out var clip) && clip != null)
+            return AnimationClipGroups.RootGroupOf(AnimationClipGroups.DisplayGroupOf(clip, true));
+        return AnimationClipGroups.RootGroupOf(AnimationClipGroups.BaseNameOf(clipName));
+    }
+
+    /// <summary>The clip a group selects by default (`<group>-idle` when it exists, else the
+    /// group's first clip in name order). "" when the group has no clip on this sheet.</summary>
+    public static string FindGroupClip(string sheetName, string group, string action = "idle")
+    {
+        if (string.IsNullOrWhiteSpace(group)) return "";
+        string? first = null;
+        foreach (var kv in _spriteClips)
+        {
+            if (!string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase)) continue;
+            var clip = kv.Value;
+            if (clip == null) continue;
+            string root = AnimationClipGroups.RootGroupOf(AnimationClipGroups.DisplayGroupOf(clip, true));
+            if (!string.Equals(root, group, StringComparison.OrdinalIgnoreCase)) continue;
+            first ??= kv.Key.clip;
+            if (string.Equals(AnimationClipGroups.ActionLabelOf(clip.Name), action,
+                    StringComparison.OrdinalIgnoreCase))
+                return clip.Name;
+        }
+        return first ?? "";
+    }
 
     /// <summary>Request a Sprite2D placement from the Asset Browser (clip box click or
     /// viewport drop). Handler lives in IDE: (sheetName, clipName, dropWorldPos — null

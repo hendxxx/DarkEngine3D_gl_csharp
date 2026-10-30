@@ -39,6 +39,14 @@ public class AnimationEditorPanel
     private string _groupFilter = "";
     private bool _dirtyOnly;
 
+    // ── Auto group (DISPLAY-ONLY) ──
+    /// <summary>When true every clip with NO manual group is rendered under a virtual
+    /// group derived from its base sprite name (`Male Skin1-idle` → `Male Skin1`, with
+    /// `idle` nested under it). Nothing is written: clip.GroupPath and the sprite-anim
+    /// JSON files stay untouched — a manual group always wins over the derived one.
+    /// Session-only on purpose (a display preference, not project data).</summary>
+    private bool _autoGroupByBase = true;
+
     // ── Preview / playback ──
     private AnimationClip2D? _boundClip;
     private bool _playing;
@@ -66,6 +74,47 @@ public class AnimationEditorPanel
     /// <summary>Session-only loadout for UNGROUPED clips (no group to persist it on).</summary>
     private readonly List<PreviewLoadoutEntry> _ungroupedLoadout = new();
     private string _loadoutFilter = "";
+
+    // ── Timeline (Unity-style track view) ──
+    /// <summary>Track-header column width (name + "frame" sub-track labels).</summary>
+    private const float TlmHeaderW = 138f;
+    /// <summary>Height of the time-ruler row.</summary>
+    private const float TlmRulerH = 20f;
+    /// <summary>Height of the keyframe track row (thumbnails live here).</summary>
+    private const float TlmTrackH = 58f;
+    /// <summary>Height of the "frame" sub-track row.</summary>
+    private const float TlmSubH = 16f;
+    /// <summary>Default horizontal scale: pixels per second of clip time. Keys are laid out
+    /// on this axis, so a longer Hold visibly stretches its key.</summary>
+    private const float TlmPxPerSecBase = 260f;
+    /// <summary>Live zoom (Ctrl+scroll). 100% == <see cref="TlmPxPerSecBase"/>.</summary>
+    private float _tlPxPerSec = TlmPxPerSecBase;
+    private const float TlmZoomMin = 40f;
+    private const float TlmZoomMax = 2200f;
+    /// <summary>Horizontal pan in px — how far the time axis is scrolled left past 0.</summary>
+    private float _tlScrollX;
+    private float _tlPanStartScroll;
+    private float _tlPanStartMouseX;
+    private bool _tlPanDrag;
+    /// <summary>Pan/zoom moved this frame → key rects snap instead of gliding.</summary>
+    private bool _tlSnapAnim;
+    /// <summary>Timeline MULTI-SELECTION (local frame indices). `_cursor` stays the
+    /// active key for Hold/Event; the bulk actions (Duplicate / Remove / Insert) walk
+    /// every entry here. The set always holds at least the cursor, and is cleared when
+    /// the timeline switches to a different clip.</summary>
+    private readonly HashSet<int> _tlSel = [];
+    /// <summary>Shift+click range anchor (last plain click).</summary>
+    private int _tlAnchor;
+    /// <summary>Clip the current selection belongs to.</summary>
+    private object? _tlSelClip;
+    /// <summary>Key the LMB went down on — released over a different key = reorder.
+    /// Manual (not ImGui drag-drop) so overlapping short keys behave.</summary>
+    private int _tlPressFrame = -1;
+    private bool _tlDragActive;
+    /// <summary>Smoothed key rectangles (indexed by LOCAL FRAME, not slot) so a reorder
+    /// visibly slides each key to its new home and the drop preview reads as motion.</summary>
+    private float[] _tlAnimX0 = [];
+    private float[] _tlAnimX1 = [];
 
     // ── Frame editing ──
     private int _dragFrameFrom = -1;
@@ -287,13 +336,14 @@ public class AnimationEditorPanel
         if (_dirtyOnly && !clip.BakeDirty) return false;
         if (respectGroupFilter && !string.IsNullOrEmpty(_groupFilter))
         {
-            bool inGroup = IsInGroup(clip.GroupPath, _groupFilter);
+            bool inGroup = IsInGroup(DisplayGroupOf(clip), _groupFilter);
             if (!inGroup) return false;
         }
         if (!string.IsNullOrWhiteSpace(_search))
         {
             string s = _search.Trim();
             bool hit = clip.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || DisplayGroupOf(clip).Contains(s, StringComparison.OrdinalIgnoreCase)
                 || clip.GroupPath.Contains(s, StringComparison.OrdinalIgnoreCase)
                 || clip.SpriteSheetName.Contains(s, StringComparison.OrdinalIgnoreCase);
             if (!hit) return false;
@@ -301,11 +351,23 @@ public class AnimationEditorPanel
         return true;
     }
 
+    /// <summary>The group a clip is DISPLAYED under (see <see cref="AnimationClipGroups"/>).
+    /// Manual GroupPath wins; otherwise the base-name group is derived in-memory.</summary>
+    private string DisplayGroupOf(AnimationClip2D clip)
+        => AnimationClipGroups.DisplayGroupOf(clip, _autoGroupByBase);
+
+    /// <summary>True when <paramref name="path"/> is a REAL group (stored on a group
+    /// entry or on a clip) — derived auto-groups are display-only and can't be renamed
+    /// or deleted.</summary>
+    private bool IsManualGroup(string path)
+        => _spriteEditor.AnimationGroups.Any(g => string.Equals(g.Path, path, StringComparison.OrdinalIgnoreCase))
+        || _spriteEditor.AnimationClips.Any(c => IsInGroup(c.GroupPath, path));
+
     private List<string> GroupPaths()
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var g in _spriteEditor.AnimationGroups) AddWithParents(set, g.Path);
-        foreach (var c in _spriteEditor.AnimationClips) AddWithParents(set, c.GroupPath);
+        foreach (var c in _spriteEditor.AnimationClips) AddWithParents(set, DisplayGroupOf(c));
         return set.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -558,9 +620,24 @@ public class AnimationEditorPanel
                     _groupFilter = path;
             ImGui.EndCombo();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Includes auto-groups derived from clip names (display only).");
 
         bool dirty = _dirtyOnly;
         if (ImGui.Checkbox("Dirty only", ref dirty)) _dirtyOnly = dirty;
+        ImGui.SameLine();
+        if (ImGui.Checkbox("Auto-group", ref _autoGroupByBase))
+        {
+            if (!_autoGroupByBase && !string.IsNullOrEmpty(_groupFilter)) _groupFilter = "";
+            Status(_autoGroupByBase
+                ? "Auto-group ON (display only: clips grouped by sprite name, files untouched)"
+                : "Auto-group OFF (only saved groups are shown)");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("DISPLAY ONLY: clips named `<sprite>-<action>` are listed under a\n"
+                + "group named after the sprite (e.g. 'Male Skin1' → idle / walk / run).\n"
+                + "Nothing is written — clip groups, sprites.sheets.json and the\n"
+                + "*-sprite-anim.json files keep their stored values.");
         if (ImGui.Button("+ Group")) { _newGroupPath = string.IsNullOrEmpty(_groupFilter) ? "New Group" : _groupFilter + "/New Group"; _openNewGroup = true; }
 
         ImGui.Separator();
@@ -601,7 +678,7 @@ public class AnimationEditorPanel
         string s = _search.Trim();
         if (s.Length == 0) return true;
         if (path.Contains(s, StringComparison.OrdinalIgnoreCase)) return true;
-        return _spriteEditor.AnimationClips.Any(c => IsInGroup(c.GroupPath, path) && ClipMatches(c, false));
+        return _spriteEditor.AnimationClips.Any(c => IsInGroup(DisplayGroupOf(c), path) && ClipMatches(c, false));
     }
 
     /// <summary>Clips DIRECTLY in <paramref name="path"/> ("" = ungrouped), honouring
@@ -612,7 +689,7 @@ public class AnimationEditorPanel
         for (int i = 0; i < _spriteEditor.AnimationClips.Count; i++)
         {
             var clip = _spriteEditor.AnimationClips[i];
-            if (!string.Equals(clip.GroupPath ?? "", path, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(DisplayGroupOf(clip), path, StringComparison.OrdinalIgnoreCase)) continue;
             if (!ClipMatches(clip, respectGroupFilter: false)) continue;
             list.Add((clip, i));
         }
@@ -626,7 +703,8 @@ public class AnimationEditorPanel
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var direct = ClipsForGroup(path);
-        int total = _spriteEditor.AnimationClips.Count(c => IsInGroup(c.GroupPath, path) && ClipMatches(c, false));
+        int total = _spriteEditor.AnimationClips.Count(c => IsInGroup(DisplayGroupOf(c), path) && ClipMatches(c, false));
+        bool manualGroup = IsManualGroup(path);
 
         ImGui.PushID(path);
         var flags = ImGuiTreeNodeFlags.DefaultOpen | ImGuiTreeNodeFlags.SpanAvailWidth;
@@ -647,19 +725,27 @@ public class AnimationEditorPanel
                 _newGroupPath = path + "/New Group";
                 _openNewGroup = true;
             }
-            if (ImGui.MenuItem("Rename group"))
+            if (!manualGroup)
             {
-                _renameGroupOld = path;
-                _renameGroupNew = path;
-                _openRenameGroup = true;
+                // Derived from clip names only — nothing is stored to rename/delete.
+                ImGui.TextDisabled("Auto group (from clip names)");
             }
-            if (ImGui.MenuItem("Delete group (clips become ungrouped)"))
+            else
             {
-                _spriteEditor.AnimationGroups.RemoveAll(g => IsInGroup(g.Path, path));
-                foreach (var c in _spriteEditor.AnimationClips)
-                    if (IsInGroup(c.GroupPath, path)) c.GroupPath = "";
-                if (IsInGroup(_groupFilter, path)) _groupFilter = "";
-                Status($"Deleted group '{path}' (and its sub-groups)");
+                if (ImGui.MenuItem("Rename group"))
+                {
+                    _renameGroupOld = path;
+                    _renameGroupNew = path;
+                    _openRenameGroup = true;
+                }
+                if (ImGui.MenuItem("Delete group (clips become ungrouped)"))
+                {
+                    _spriteEditor.AnimationGroups.RemoveAll(g => IsInGroup(g.Path, path));
+                    foreach (var c in _spriteEditor.AnimationClips)
+                        if (IsInGroup(c.GroupPath, path)) c.GroupPath = "";
+                    if (IsInGroup(_groupFilter, path)) _groupFilter = "";
+                    Status($"Deleted group '{path}' (and its sub-groups)");
+                }
             }
             ImGui.EndPopup();
         }
@@ -688,10 +774,16 @@ public class AnimationEditorPanel
         ImGui.Indent(12f * indent);
         ImGui.PushID($"clip{idx}");
         string badge = clip.BakeDirty ? " *" : "";
-        if (ImGui.Selectable($"{clip.Name}{badge}", idx == _clipIdx))
+        // Under a DERIVED group the base name is already the parent node, so the row
+        // shows just the action ("idle"); a manual group keeps the full clip name.
+        string shown = string.IsNullOrEmpty(clip.GroupPath) && _autoGroupByBase
+            && AnimationClipGroups.BaseNameOf(clip.Name).Length > 0
+                ? AnimationClipGroups.ActionLabelOf(clip.Name)
+                : clip.Name;
+        if (ImGui.Selectable($"{shown}{badge}", idx == _clipIdx))
             SelectClip(idx);
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip($"{clip.Name}\nGroup: {(string.IsNullOrEmpty(clip.GroupPath) ? "(ungrouped)" : clip.GroupPath)}\n"
+            ImGui.SetTooltip($"{clip.Name}\nGroup: {(string.IsNullOrEmpty(clip.GroupPath) ? "(auto: " + AnimationClipGroups.BaseNameOf(clip.Name) + ")" : clip.GroupPath)}\n"
                 + $"Atlas: {clip.SpriteSheetName}\nFrames: {clip.FrameIndices.Count}  FPS: {clip.FPS:0.#}");
         ImGui.PopID();
         ImGui.Unindent(12f * indent);
@@ -727,7 +819,15 @@ public class AnimationEditorPanel
             ? (clip.BakeDirty ? "SOURCE (dirty — bake to update the runtime clip)" : "SOURCE (baked)")
             : "BAKED ATLAS (legacy clip: timing edits only)");
         ImGui.SameLine();
-        ImGui.TextDisabled($"| {clip.Mode} | {(string.IsNullOrEmpty(clip.GroupPath) ? "ungrouped" : clip.GroupPath)}");
+        {
+            // The tree may show this clip under a DERIVED group; the header must say so
+            // instead of claiming "ungrouped" (nothing is stored on the clip).
+            string autoGroup = DisplayGroupOf(clip);
+            string groupText = !string.IsNullOrEmpty(clip.GroupPath) ? clip.GroupPath
+                : autoGroup.Length > 0 ? $"auto: {autoGroup}"
+                : "ungrouped";
+            ImGui.TextDisabled($"| {clip.Mode} | {groupText}");
+        }
 
         if (sheet == null || count == 0)
         {
@@ -1238,7 +1338,7 @@ public class AnimationEditorPanel
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  Timeline / frame strip
+    //  Timeline — track header + time ruler + keyframe track
     // ═══════════════════════════════════════════════════════════════
 
     private void DrawTimeline(AnimationClip2D clip)
@@ -1250,7 +1350,7 @@ public class AnimationEditorPanel
         ImGui.Text("TIMELINE");
         ImGui.SameLine();
         ImGui.TextDisabled(editableSource
-            ? "source strip — drag frames to reorder / edit holds & events, then Bake"
+            ? "click/Ctrl/Shift = select · drag = reorder · scroll = pan · Ctrl+scroll = zoom"
             : "baked strip — timing edits are live (no source to rebake from)");
 
         if (count == 0)
@@ -1259,71 +1359,509 @@ public class AnimationEditorPanel
         }
         else
         {
+            // ════════════════════════════════════════════════════════════════════
+            //  TRACK TIMELINE (Unity-style): track header column + time ruler + the
+            //  clip's keyframe track + its "frame" sub-track.
+            //
+            //  A sprite clip owns exactly ONE track (its frame strip), so keys are laid
+            //  out on a real TIME axis (start/duration from FPS + per-frame holds) —
+            //  changing a Hold visibly stretches its key instead of silently rewriting a
+            //  tile width. Everything is drawn into ONE canvas item and hit-tested
+            //  manually: overlapping short keys can never steal each other's clicks,
+            //  and drag-reorder stays a plain press→release over two keys.
+            // ════════════════════════════════════════════════════════════════════
             EnsureHolds(clip, count);
             _cursor = Math.Clamp(_cursor, 0, count - 1);
-            if (!ImGui.IsMouseDown(ImGuiMouseButton.Left)) _dragFrameFrom = -1;
 
-            ImGui.BeginChild("##frame_strip", new Vector2(0, 88), ImGuiChildFlags.Borders,
-                ImGuiWindowFlags.HorizontalScrollbar);
-            var drawList = ImGui.GetWindowDrawList();
+            // Multi-selection bookkeeping: drop stale indices (frames were removed), never
+            // let it go empty, and reset it when the timeline switches clips.
+            if (!ReferenceEquals(_tlSelClip, clip))
+            {
+                _tlSelClip = clip;
+                _tlSel.Clear();
+                _tlAnchor = _cursor;
+            }
+            _tlSel.RemoveWhere(i => i < 0 || i >= count);
+            if (_tlSel.Count <= 1)
+            {
+                // A single selection FOLLOWS the active key (playback scrub, prev/next frame
+                // buttons). A real multi-selection stays put; the cursor only marks the
+                // active key for the Hold/Event fields.
+                _tlSel.Clear();
+                _tlSel.Add(_cursor);
+            }
+            _tlAnchor = Math.Clamp(_tlAnchor, 0, count - 1);
+
+            float duration = MathF.Max(0.001f, DurationFor(clip, count));
+            float frameDur = 1f / MathF.Max(0.0001f, clip.FPS * MathF.Max(0.0001f, clip.SpeedMultiplier));
+            float canvasH = TlmRulerH + TlmTrackH + TlmSubH + 6f;
+
+            // The timeline PANS/ZOOMS ITSELF (no ImGui scrollbar): one canvas item, every
+            // x derived from _tlScrollX + _tlPxPerSec, so zoom and pan never desync the
+            // ruler, the keys and the hit tests.
+            //
+            // Child height MUST include both window paddings + the 1px borders, otherwise
+            // the canvas is taller than the child's interior and the ruler labels / the
+            // "frame" sub-track get silently Clipped (text cut in half by the child edge).
+            float childPadY = ImGui.GetStyle().WindowPadding.Y;
+            ImGui.BeginChild("##anim_timeline", new Vector2(0, canvasH + childPadY * 2f + 4f),
+                ImGuiChildFlags.Borders,
+                ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
+            Vector2 origin = ImGui.GetCursorScreenPos();
+            var tl = ImGui.GetWindowDrawList();
+            float canvasW = MathF.Max(160f, ImGui.GetContentRegionAvail().X);
+            float laneX = origin.X + TlmHeaderW;
+            float visibleW = MathF.Max(60f, canvasW - TlmHeaderW);
+            float rulerY = origin.Y;
+            float trackY = origin.Y + TlmRulerH;
+            float subY = trackY + TlmTrackH;
+            float rowEndY = subY + TlmSubH;
+
+            ImGui.InvisibleButton("##tl_canvas", new Vector2(canvasW, canvasH));
+            bool tlHovered = ImGui.IsItemHovered();
+
+            // ── Input: Ctrl+wheel zoom (anchored under the cursor) · wheel / ruler drag /
+            // MMB drag = horizontal pan. Collapse any boost/out-of-range state BEFORE the
+            // geometry below is computed, so this frame draws the post-input view. ──
+            Vector2 tlMouse = ImGui.GetIO().MousePos;
+            bool tlDown = ImGui.IsMouseDown(ImGuiMouseButton.Left);
+            bool tlPressed = ImGui.IsMouseClicked(ImGuiMouseButton.Left);
+            _tlSnapAnim = false;
+            float wheelV = ImGui.GetIO().MouseWheel;
+            float wheelH = ImGui.GetIO().MouseWheelH;
+            if (tlHovered && (wheelV != 0f || wheelH != 0f))
+            {
+                if (wheelV != 0f && ImGui.GetIO().KeyCtrl)
+                {
+                    // Keep the CLIP TIME under the cursor fixed while the zoom changes.
+                    float tAt = (tlMouse.X - laneX + _tlScrollX) / MathF.Max(1f, _tlPxPerSec);
+                    float next = Math.Clamp(_tlPxPerSec * MathF.Pow(1.18f, wheelV), TlmZoomMin, TlmZoomMax);
+                    if (MathF.Abs(next - _tlPxPerSec) > 0.01f)
+                    {
+                        _tlPxPerSec = next;
+                        _tlScrollX = tAt * next - (tlMouse.X - laneX);
+                        _tlSnapAnim = true;
+                    }
+                }
+                else
+                {
+                    _tlScrollX -= (wheelH != 0f ? wheelH : wheelV) * 64f;
+                    _tlSnapAnim = true;
+                }
+                // Eat the wheel: the timeline panned/zoomed, so the PANEL must not also
+                // scroll vertically under it (both would move at once).
+                ImGui.GetIO().MouseWheel = 0f;
+                ImGui.GetIO().MouseWheelH = 0f;
+            }
+            if (tlPressed && tlHovered && tlMouse.X > laneX && tlMouse.Y < trackY)
+            {
+                // Press on the ruler: a click still scrubs, a horizontal drag pans.
+                _tlPanDrag = true;
+                _tlPanStartScroll = _tlScrollX;
+                _tlPanStartMouseX = tlMouse.X;
+            }
+            else if (!tlDown)
+            {
+                _tlPanDrag = false;
+            }
+            if (_tlPanDrag && tlDown && MathF.Abs(tlMouse.X - _tlPanStartMouseX) > 3f)
+            {
+                _tlScrollX = _tlPanStartScroll - (tlMouse.X - _tlPanStartMouseX);
+                _tlSnapAnim = true;
+            }
+            if (tlHovered && ImGui.IsMouseDragging(ImGuiMouseButton.Middle))
+            {
+                _tlScrollX -= ImGui.GetIO().MouseDelta.X;
+                _tlSnapAnim = true;
+            }
+
+            float maxScroll = MathF.Max(0f, duration * _tlPxPerSec - visibleW + 24f);
+            _tlScrollX = Math.Clamp(_tlScrollX, 0f, maxScroll);
+            float tX(float t) => laneX - _tlScrollX + t * _tlPxPerSec;
+
+            // ── Surfaces ──
+            uint colCanvas = ImGui.ColorConvertFloat4ToU32(new Vector4(0.125f, 0.125f, 0.155f, 1f));
+            uint colHeader = ImGui.ColorConvertFloat4ToU32(new Vector4(0.175f, 0.175f, 0.215f, 1f));
+            uint colLane = ImGui.ColorConvertFloat4ToU32(new Vector4(0.155f, 0.155f, 0.19f, 1f));
+            uint colSub = ImGui.ColorConvertFloat4ToU32(new Vector4(0.115f, 0.115f, 0.145f, 1f));
+            uint colRule = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.08f));
+            uint colTick = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.22f));
+            uint colDimTxt = ImGui.ColorConvertFloat4ToU32(ColDim);
+            uint colTxt = ImGui.ColorConvertFloat4ToU32(ColText);
+
+            tl.AddRectFilled(origin, new Vector2(origin.X + canvasW, rowEndY), colCanvas);
+            tl.AddRectFilled(origin, new Vector2(laneX, rowEndY), colHeader);
+            tl.AddRectFilled(new Vector2(laneX, trackY), new Vector2(origin.X + canvasW, trackY + TlmTrackH), colLane);
+            tl.AddRectFilled(new Vector2(laneX, subY), new Vector2(origin.X + canvasW, rowEndY), colSub);
+            tl.AddLine(new Vector2(laneX, rulerY), new Vector2(laneX, rowEndY), colTick, 1f);
+            tl.AddLine(new Vector2(origin.X, trackY), new Vector2(origin.X + canvasW, trackY), colRule, 1f);
+            tl.AddLine(new Vector2(origin.X, subY), new Vector2(origin.X + canvasW, subY), colRule, 1f);
+
+            // ── Time ruler (labels pick a step that keeps ~46px between ticks) ──
+            float step = 1f;
+            foreach (float cand in new[] { 0.05f, 0.1f, 0.2f, 0.25f, 0.5f, 1f, 2f, 5f, 10f })
+            {
+                step = cand;
+                if (cand * _tlPxPerSec >= 46f) break;
+            }
+            for (float t = 0f; t <= duration + 0.0001f; t += step + 0.000001f)
+            {
+                float x = tX(t);
+                if (x < laneX - 1f) continue;
+                // Major tick + a faint column line down the track: reads as a time grid.
+                tl.AddLine(new Vector2(x, rulerY + TlmRulerH - 6f), new Vector2(x, rulerY + TlmRulerH), colTick, 1f);
+                tl.AddLine(new Vector2(x, trackY + 1f), new Vector2(x, rowEndY), colRule, 1f);
+                string lbl = step >= 1f ? $"{t:0}" : (step < 0.1f ? t.ToString("0.00") : t.ToString("0.##"));
+                tl.AddText(new Vector2(x + 4f, rulerY + 3f), colDimTxt, lbl);
+            }
+
+            // ── Track header: colour swatch + name (ellipsised) + timing summary ──
+            uint colSwatch = ImGui.ColorConvertFloat4ToU32(new Vector4(0.35f, 0.62f, 1f, 1f));
+            tl.AddRectFilled(new Vector2(origin.X + 9f, trackY + 8f),
+                new Vector2(origin.X + 17f, trackY + 16f), colSwatch, 2f);
+            string trackName = string.IsNullOrEmpty(clip.SpriteSheetName) ? "Sprite" : clip.SpriteSheetName;
+            float nameMax = TlmHeaderW - 30f;
+            if (ImGui.CalcTextSize(trackName).X > nameMax)
+            {
+                while (trackName.Length > 3 && ImGui.CalcTextSize(trackName + "…").X > nameMax)
+                    trackName = trackName[..^1];
+                trackName += "…";
+            }
+            tl.AddText(new Vector2(origin.X + 21f, trackY + 6f), colTxt, trackName);
+            tl.AddText(new Vector2(origin.X + 10f, trackY + 24f), colDimTxt,
+                $"{count} frame{(count == 1 ? "" : "s")}  ·  {clip.FPS:0.#} FPS");
+            tl.AddText(new Vector2(origin.X + 10f, subY + 1f), colDimTxt, "frame");
+
+            // Zoom readout (right edge of the ruler) + a mini scroll thumb while panned.
+            string zoomTxt = $"{_tlPxPerSec / TlmPxPerSecBase * 100f:0}%";
+            Vector2 zoomSz = ImGui.CalcTextSize(zoomTxt);
+            tl.AddText(new Vector2(origin.X + canvasW - zoomSz.X - 8f, rulerY + 3f), colDimTxt, zoomTxt);
+            if (_tlSel.Count > 1)
+            {
+                string selTxt = $"{_tlSel.Count} selected";
+                Vector2 selSz = ImGui.CalcTextSize(selTxt);
+                tl.AddText(new Vector2(origin.X + canvasW - zoomSz.X - selSz.X - 16f, rulerY + 3f),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.8f, 0.3f, 1f)), selTxt);
+            }
+            if (maxScroll > 0f)
+            {
+                float thumbW = MathF.Max(24f, visibleW * visibleW / MathF.Max(1f, duration * _tlPxPerSec));
+                float thumbX = laneX + (visibleW - thumbW) * (_tlScrollX / maxScroll);
+                tl.AddRectFilled(new Vector2(thumbX, rowEndY - 3f), new Vector2(thumbX + thumbW, rowEndY - 1f),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.65f, 0.65f, 0.72f, 0.55f)), 1f);
+            }
+
+            // ── Keyframes ──
+            var artSource = _spriteEditor.FindSourceSheetPublic(clip.SourceSheetName);
+            bool artUsesSource = artSource != null && clip.SourceFrameIndices.Count > 0;
+            var artSheet = artUsesSource ? artSource : _spriteEditor.FindBakedAtlasPublic(clip.SpriteSheetName);
+            uint artTex = artSheet != null ? _spriteEditor.EnsureImageTextureForEditor(artSheet.ImagePath) : 0;
+            float artCellW = artSheet != null && artSheet.FrameWidth > 0 ? artSheet.FrameWidth
+                : (artSheet?.ImageWidth ?? 0f);
+            float artCellH = artSheet != null && artSheet.FrameHeight > 0 ? artSheet.FrameHeight
+                : (artSheet?.ImageHeight ?? 0f);
+
+            float keyY0 = trackY + 5f, keyY1 = trackY + TlmTrackH - 5f;
+            float keyH = keyY1 - keyY0;
+
+            // ── Slot geometry: one slot per key, width = that key's HOLD on the time axis ──
+            var slotW = new float[count];
+            var origX0 = new float[count];
+            var origX1 = new float[count];
+            float accT = 0f;
+            for (int s = 0; s < count; s++)
+            {
+                slotW[s] = frameDur * HoldOf(clip, s);
+                origX0[s] = tX(accT);
+                accT += slotW[s];
+                origX1[s] = tX(accT);
+            }
+
+            // Hover resolves against the UN-PERMUTED layout, so the drag preview below can
+            // never feed back into its own hit test (the classic reorder jitter).
+            int hoverKey = -1;
+            if (tlHovered && tlMouse.Y >= trackY && tlMouse.Y <= rowEndY)
+            {
+                for (int s = 0; s < count; s++)
+                {
+                    if (tlMouse.X >= origX0[s] + 1f && tlMouse.X <= MathF.Max(origX0[s] + 9f, origX1[s] - 2f))
+                    { hoverKey = s; break; }
+                }
+            }
+
+            int dragFrom = _tlDragActive && _tlPressFrame >= 0 && _tlPressFrame < count ? _tlPressFrame : -1;
+            int dropSlot = dragFrom >= 0 && hoverKey >= 0 && hoverKey != dragFrom ? hoverKey : -1;
+
+            // POST-DROP order: while a key is held the lane renders this order, so the
+            // neighbours slide aside and one gap shows exactly where the key will land.
+            var order = new int[count];
+            for (int i = 0; i < count; i++) order[i] = i;
+            if (dragFrom >= 0 && dropSlot >= 0)
+            {
+                var after = new List<int>(count);
+                for (int i = 0; i < count; i++) if (i != dragFrom) after.Add(i);
+                after.Insert(dropSlot, dragFrom);
+                order = after.ToArray();
+            }
+            var slotOf = new int[count];
+            for (int s = 0; s < count; s++) slotOf[order[s]] = s;
+            var tgtX0 = new float[count];
+            var tgtX1 = new float[count];
+            float accP = 0f;
+            for (int s = 0; s < count; s++)
+            {
+                tgtX0[s] = tX(accP);
+                accP += slotW[order[s]];
+                tgtX1[s] = tX(accP);
+            }
+
+            // Animate PER FRAME (not per slot): a key that changes slot glides across to
+            // its new home, which is what makes the reorder obvious to the eye.
+            if (_tlAnimX0.Length != count)
+            {
+                _tlAnimX0 = new float[count];
+                _tlAnimX1 = new float[count];
+                for (int i = 0; i < count; i++)
+                {
+                    _tlAnimX0[i] = tgtX0[slotOf[i]];
+                    _tlAnimX1[i] = tgtX1[slotOf[i]];
+                }
+            }
+            float animK = 1f - MathF.Exp(-MathF.Max(0.0001f, ImGui.GetIO().DeltaTime) * 26f);
             for (int i = 0; i < count; i++)
             {
-                ImGui.PushID(i);
-                Vector2 p = ImGui.GetCursorScreenPos();
-                ImGui.InvisibleButton("##cell", new Vector2(42, 66));
-                bool hovered = ImGui.IsItemHovered();
-                bool clicked = ImGui.IsItemClicked();
-                bool selected = i == _cursor;
+                float tx0 = tgtX0[slotOf[i]], tx1 = tgtX1[slotOf[i]];
+                // Pan/zoom (or a big jump) must not rubber-band: snap those, glide reorders.
+                if (_tlSnapAnim || MathF.Abs(tx0 - _tlAnimX0[i]) > 80f)
+                {
+                    _tlAnimX0[i] = tx0;
+                    _tlAnimX1[i] = tx1;
+                }
+                else
+                {
+                    _tlAnimX0[i] += (tx0 - _tlAnimX0[i]) * animK;
+                    _tlAnimX1[i] += (tx1 - _tlAnimX1[i]) * animK;
+                }
+            }
+
+            static uint Alpha(uint c, float a)
+            {
+                uint na = (uint)Math.Clamp((int)(((c >> 24) & 0xFF) * Math.Clamp(a, 0f, 1f)), 0, 255);
+                return (c & 0x00FFFFFFu) | (na << 24);
+            }
+
+            // One key card: background, frame thumbnail, border, frame/local labels.
+            void DrawKey(float x0, float x1, float y0, float y1, int fi, int li,
+                         bool selected, bool active, bool hot, bool ghost)
+            {
+                float a = ghost ? 0.94f : 1f;
+                if (ghost)
+                    tl.AddRectFilled(new Vector2(x0 + 3f, y0 + 5f), new Vector2(x1 + 3f, y1 + 5f),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(0f, 0f, 0f, 0.35f)), 4f);
 
                 uint bg = selected
-                    ? ImGui.ColorConvertFloat4ToU32(new Vector4(0.2f, 0.45f, 0.85f, 0.95f))
-                    : ImGui.ColorConvertFloat4ToU32(hovered ? new Vector4(0.3f, 0.3f, 0.38f, 1f) : new Vector4(0.2f, 0.2f, 0.26f, 1f));
-                drawList.AddRectFilled(p, p + new Vector2(40, 64), bg, 3f);
-                if (selected)
-                    drawList.AddRect(p, p + new Vector2(40, 64),
-                        ImGui.ColorConvertFloat4ToU32(new Vector4(0.6f, 0.85f, 1f, 1f)), 3f, ImDrawFlags.None, 2f);
+                    ? ImGui.ColorConvertFloat4ToU32(new Vector4(0.24f, 0.47f, 0.85f, 0.95f))
+                    : ImGui.ColorConvertFloat4ToU32(ghost ? new Vector4(0.30f, 0.52f, 0.88f, 0.95f)
+                        : hot ? new Vector4(0.34f, 0.34f, 0.42f, 1f)
+                              : new Vector4(0.23f, 0.23f, 0.29f, 1f));
+                tl.AddRectFilled(new Vector2(x0, y0), new Vector2(x1, y1), Alpha(bg, a), 4f);
 
-                drawList.AddText(new Vector2(p.X + 5f, p.Y + 5f),
-                    ImGui.ColorConvertFloat4ToU32(selected ? Vector4.One : ColText), frames[i].ToString());
-                float hold = HoldOf(clip, i);
-                if (hold != 1f)
-                    drawList.AddText(new Vector2(p.X + 5f, p.Y + 22f),
-                        ImGui.ColorConvertFloat4ToU32(ColAmber), $"x{hold:0.##}");
-                if (clip.Events.ContainsKey(i))
-                    drawList.AddCircleFilled(new Vector2(p.X + 33f, p.Y + 10f), 3.5f,
-                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.35f, 0.3f, 1f)));
-                drawList.AddText(new Vector2(p.X + 5f, p.Y + 44f),
-                    ImGui.ColorConvertFloat4ToU32(ColDim), $"#{i}");
+                // Thumbnail of the frame's own art, bottom-aligned inside the key.
+                float thumbBot = y1 - 14f;
+                if (artTex != 0 && artSheet != null && artCellW > 0f && artCellH > 0f
+                    && thumbBot - y0 > 8f)
+                {
+                    var (uvMin, uvMax) = artSheet.GetFrameUV(fi);
+                    float tu0 = uvMin.X, tu1 = uvMax.X;
+                    float tvTop = 1f - uvMax.Y, tvBot = 1f - uvMin.Y;
+                    if (artSheet.FlipY) (tvTop, tvBot) = (tvBot, tvTop);
+                    if (artSheet.FlipX) (tu0, tu1) = (tu1, tu0);
 
-                if (clicked)
+                    float availW = MathF.Max(2f, (x1 - x0) - 8f);
+                    float availH = MathF.Max(2f, thumbBot - (y0 + 2f));
+                    float fit = MathF.Min(availW / artCellW, availH / artCellH);
+                    float iw = MathF.Max(2f, artCellW * fit), ih = MathF.Max(2f, artCellH * fit);
+                    float ix = x0 + ((x1 - x0) - iw) * 0.5f;
+                    float iy = thumbBot - ih;
+                    tl.AddImage((nint)artTex, new Vector2(ix, iy), new Vector2(ix + iw, iy + ih),
+                        new Vector2(tu0, tvTop), new Vector2(tu1, tvBot), Alpha(0xFFFFFFFFu, a));
+                }
+
+                if (selected || ghost)
+                    tl.AddRect(new Vector2(x0, y0), new Vector2(x1, y1),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(0.6f, 0.85f, 1f, 1f)), 4f, ImDrawFlags.None, 2f);
+                else if (hot)
+                    tl.AddRect(new Vector2(x0, y0), new Vector2(x1, y1),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.35f)), 4f, ImDrawFlags.None, 1f);
+
+                // The ACTIVE key of a multi-selection gets an inner white ring, so the
+                // group reads as "selected … and this one is the one Hold/Event edits".
+                if (active && !ghost)
+                    tl.AddRect(new Vector2(x0 + 1.5f, y0 + 1.5f), new Vector2(x1 - 1.5f, y1 - 1.5f),
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 0.9f)), 3f, ImDrawFlags.None, 1f);
+
+                tl.AddText(new Vector2(x0 + 4f, y0 + 1f),
+                    Alpha(ImGui.ColorConvertFloat4ToU32(selected ? Vector4.One : ColText), a), fi.ToString());
+                string foot = $"#{li}";
+                float hold = HoldOf(clip, li);
+                if (hold != 1f) foot += $"  x{hold:0.##}";
+                // Only when it actually fits: a narrow key must not spill its local index
+                // over the neighbouring key's art/labels ("tulisan ketutup").
+                if (x1 - x0 >= ImGui.CalcTextSize(foot).X + 6f)
+                    tl.AddText(new Vector2(x0 + 4f, y1 - 13f), Alpha(colDimTxt, a), foot);
+                if (clip.Events.ContainsKey(li))
+                    tl.AddCircleFilled(new Vector2(x1 - 7f, y0 + 7f), 3.5f,
+                        ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.35f, 0.3f, 1f)), 10);
+            }
+
+            // Dashed "reserved" slot: where the lifted key will drop.
+            void DrawGap(float x0, float x1)
+            {
+                uint g = ImGui.ColorConvertFloat4ToU32(new Vector4(0.35f, 0.62f, 1f, 0.75f));
+                tl.AddRectFilled(new Vector2(x0, keyY0), new Vector2(x1, keyY1),
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.24f, 0.42f, 0.75f, 0.22f)), 4f);
+                for (float x = x0 + 1f; x < x1 - 1f; x += 9f)
+                {
+                    float xe = MathF.Min(x + 4.5f, x1 - 1f);
+                    tl.AddLine(new Vector2(x, keyY0 + 1f), new Vector2(xe, keyY0 + 1f), g, 1.5f);
+                    tl.AddLine(new Vector2(x, keyY1 - 1f), new Vector2(xe, keyY1 - 1f), g, 1.5f);
+                }
+            }
+
+            // ── Keys (post-drop order, animated x) + the "frame" sub-track diamonds ──
+            for (int i = 0; i < count; i++)
+            {
+                float x0 = _tlAnimX0[i] + 1f;
+                float x1 = MathF.Max(x0 + 10f, _tlAnimX1[i] - 2f);
+                if (i == dragFrom)
+                {
+                    DrawGap(x0, x1);
+                }
+                else
+                {
+                    DrawKey(x0, x1, keyY0, keyY1, frames[i], i, _tlSel.Contains(i), i == _cursor, i == hoverKey, false);
+                }
+
+                float mx = (_tlAnimX0[i] + _tlAnimX1[i]) * 0.5f;
+                float my = subY + TlmSubH * 0.5f;
+                bool sel = _tlSel.Contains(i);
+                uint dc = ImGui.ColorConvertFloat4ToU32(sel ? new Vector4(0.6f, 0.85f, 1f, 1f)
+                    : i == dragFrom ? new Vector4(0.35f, 0.62f, 1f, 0.6f)
+                                    : new Vector4(0.65f, 0.65f, 0.72f, 1f));
+                tl.AddQuadFilled(new Vector2(mx, my - 4.5f), new Vector2(mx + 4.5f, my),
+                    new Vector2(mx, my + 4.5f), new Vector2(mx - 4.5f, my), dc);
+            }
+
+            // ── Playhead ──
+            float phX = tX(Math.Clamp(_time, 0f, duration));
+            uint colPlay = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.78f, 0.25f, 1f));
+            tl.AddLine(new Vector2(phX, rulerY + 4f), new Vector2(phX, rowEndY), colPlay, 1.5f);
+            tl.AddTriangleFilled(new Vector2(phX - 5f, rulerY + 1f), new Vector2(phX + 5f, rulerY + 1f),
+                new Vector2(phX, rulerY + 9f), colPlay);
+
+            // ── Drag feedback: insertion bracket + the lifted key card under the pointer ──
+            if (dragFrom >= 0)
+            {
+                if (dropSlot >= 0)
+                {
+                    float cx = tgtX0[dropSlot];
+                    uint cb = ImGui.ColorConvertFloat4ToU32(new Vector4(0.25f, 0.62f, 1f, 1f));
+                    tl.AddLine(new Vector2(cx, keyY0 - 5f), new Vector2(cx, keyY1 + 6f), cb, 2.5f);
+                    tl.AddLine(new Vector2(cx - 6f, keyY1 + 6f), new Vector2(cx + 6f, keyY1 + 6f), cb, 2.5f);
+                    tl.AddLine(new Vector2(cx - 6f, keyY1 + 6f), new Vector2(cx - 6f, keyY1), cb, 2f);
+                    tl.AddLine(new Vector2(cx + 6f, keyY1 + 6f), new Vector2(cx + 6f, keyY1), cb, 2f);
+                }
+
+                int ds = slotOf[dragFrom];
+                float gw = MathF.Max(30f, tgtX1[ds] - tgtX0[ds]);
+                float gx0 = Math.Clamp(tlMouse.X - gw * 0.5f, origin.X + 2f,
+                    MathF.Max(origin.X + 2f, origin.X + canvasW - gw - 2f));
+                float gy1 = Math.Clamp(tlMouse.Y - 4f, origin.Y + keyH + 2f, rowEndY - 2f);
+                DrawKey(gx0, gx0 + gw, gy1 - keyH, gy1, frames[dragFrom], dragFrom, true, false, false, true);
+
+                // Number badge on the lifted card ("which key am I moving?").
+                float bx = gx0 + gw - 3f, by = gy1 - keyH + 3f;
+                tl.AddCircleFilled(new Vector2(bx, by), 8.5f,
+                    ImGui.ColorConvertFloat4ToU32(new Vector4(0.25f, 0.62f, 1f, 1f)), 14);
+                string bn = frames[dragFrom].ToString();
+                Vector2 bts = ImGui.CalcTextSize(bn);
+                tl.AddText(new Vector2(bx - bts.X * 0.5f, by - bts.Y * 0.5f), 0xFFFFFFFFu, bn);
+            }
+
+            // ── Interactions: press = select (+scrub on empty space), release on
+            // another key = reorder. All manual so keys never fight over the mouse. ──
+            if (tlPressed && tlHovered)
+            {
+                if (hoverKey >= 0)
                 {
                     _playing = false;
-                    _cursor = i;
-                    _time = FrameStartTime(clip, i);
+                    _cursor = hoverKey;
+                    _time = FrameStartTime(clip, hoverKey);
+                    _eventFrame = -1;
+                    _tlPressFrame = hoverKey;
+
+                    // Modifier rules: Shift = range from the anchor, Ctrl = toggle one,
+                    // plain click = replace the whole selection.
+                    var io = ImGui.GetIO();
+                    if (io.KeyShift && _tlSel.Count > 0)
+                    {
+                        int a = Math.Clamp(_tlAnchor, 0, count - 1);
+                        _tlSel.Clear();
+                        for (int i = Math.Min(a, hoverKey); i <= Math.Max(a, hoverKey); i++) _tlSel.Add(i);
+                    }
+                    else if (io.KeyCtrl)
+                    {
+                        if (!_tlSel.Remove(hoverKey)) _tlSel.Add(hoverKey);
+                        if (_tlSel.Count == 0) _tlSel.Add(hoverKey);
+                        _tlAnchor = hoverKey;
+                    }
+                    else
+                    {
+                        _tlSel.Clear();
+                        _tlSel.Add(hoverKey);
+                        _tlAnchor = hoverKey;
+                    }
+                }
+                else if (tlMouse.X >= laneX && tlMouse.Y <= trackY + TlmTrackH)
+                {
+                    // Scrub: click anywhere on the time axis (ruler / empty lane).
+                    float t = Math.Clamp((tlMouse.X - laneX + _tlScrollX) / _tlPxPerSec, 0f, duration - 0.00001f);
+                    _playing = false;
+                    _cursor = LocalFrameAt(clip, count, t, false);
+                    _time = FrameStartTime(clip, _cursor);
                     _eventFrame = -1;
                 }
-
-                if (ImGui.BeginDragDropSource())
-                {
-                    _dragFrameFrom = i;
-                    ImGui.SetDragDropPayload("ANIM_FRAME", nint.Zero, 0);
-                    ImGui.Text($"Frame {i}");
-                    ImGui.EndDragDropSource();
-                }
-                if (ImGui.BeginDragDropTarget())
-                {
-                    ImGui.AcceptDragDropPayload("ANIM_FRAME");
-                    if (_dragFrameFrom >= 0 && _dragFrameFrom != i)
-                    {
-                        MoveFrame(clip, _dragFrameFrom, i);
-                        _dragFrameFrom = -1;
-                    }
-                    ImGui.EndDragDropTarget();
-                }
-
-                ImGui.SameLine();
-                ImGui.PopID();
             }
+            // Reorder drag stays a SINGLE-key gesture: a group drag would need block move
+            // semantics, so a multi-selection is never turned into an implicit one-key move.
+            if (_tlPressFrame >= 0 && tlDown && hoverKey >= 0 && hoverKey != _tlPressFrame
+                && _tlSel.Count <= 1)
+                _tlDragActive = true;
+            if (_tlPressFrame >= 0 && !tlDown)
+            {
+                if (_tlDragActive && hoverKey >= 0 && hoverKey != _tlPressFrame && hoverKey < count)
+                {
+                    MoveFrame(clip, _tlPressFrame, hoverKey);
+                    _cursor = hoverKey;
+                    _tlSel.Clear();
+                    _tlSel.Add(hoverKey);
+                    _tlAnchor = hoverKey;
+                    Status($"Moved frame key #{_tlPressFrame} → #{hoverKey}");
+                }
+                _tlPressFrame = -1;
+                _tlDragActive = false;
+                _dragFrameFrom = -1;
+            }
+
+            // "+ Track" parity with a Unity timeline — a sprite clip owns ONE frame track.
+            ImGui.SetCursorScreenPos(new Vector2(origin.X + 6f, rulerY + 1f));
+            ImGui.BeginDisabled();
+            ImGui.Button("+ Track", new Vector2(TlmHeaderW - 16f, TlmRulerH - 3f));
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("A sprite clip has ONE frame track (its frame strip).\n"
+                    + "Rig tracks appear here for Skeleton clips.");
+
             ImGui.EndChild();
         }
 
@@ -1331,17 +1869,37 @@ public class AnimationEditorPanel
         if (count > 0)
         {
             _cursor = Math.Clamp(_cursor, 0, count - 1);
-            ImGui.Text($"Selected: local #{_cursor}  →  frame {frames[_cursor]}");
+            var selNow = SelectedList(count);
+            if (selNow.Count > 1)
+            {
+                var listTxt = new System.Text.StringBuilder();
+                for (int i = 0; i < selNow.Count && i < 8; i++)
+                {
+                    if (i > 0) listTxt.Append(", ");
+                    listTxt.Append('#').Append(selNow[i]);
+                }
+                if (selNow.Count > 8) listTxt.Append(", …");
+                ImGui.Text($"{selNow.Count} keys selected — {listTxt}   (active #{_cursor})");
+            }
+            else
+            {
+                ImGui.Text($"Selected: local #{_cursor}  →  frame {frames[_cursor]}");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Click a key to select it · Ctrl+click toggles · Shift+click selects a range.\nDuplicate/Remove/Insert apply to EVERY selected key.");
 
             ImGui.PushItemWidth(100);
             float hold = HoldOf(clip, _cursor);
-            if (ImGui.DragFloat("Hold", ref hold, 0.02f, 0.1f, 8f, "%.2fx"))
+            string holdLbl = selNow.Count > 1 ? $"Hold x{selNow.Count}###holdv" : "Hold###holdv";
+            if (ImGui.DragFloat(holdLbl, ref hold, 0.02f, 0.1f, 8f, "%.2fx"))
             {
                 EnsureHolds(clip, count);
-                clip.FrameHolds[_cursor] = MathF.Max(0.05f, hold);
+                foreach (int i in selNow) clip.FrameHolds[i] = MathF.Max(0.05f, hold);
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Duration multiplier for this frame (2 = twice as long).\nTiming is runtime data, so it applies immediately.");
+                ImGui.SetTooltip(selNow.Count > 1
+                    ? $"Sets the duration multiplier for ALL {selNow.Count} selected keys."
+                    : "Duration multiplier for this frame (2 = twice as long).\nTiming is runtime data, so it applies immediately.");
 
             // Do not reload the buffer while the field is focused: clicking another
             // timeline cell changes _cursor BEFORE ImGui reports the deactivation, so a
@@ -1374,15 +1932,34 @@ public class AnimationEditorPanel
             }
             ImGui.PopItemWidth();
 
-            if (ImGui.Button("Move <") && _cursor > 0) { MoveFrame(clip, _cursor, _cursor - 1); _cursor--; }
+            if (ImGui.Button("Move <") && _cursor > 0)
+            {
+                MoveFrame(clip, _cursor, _cursor - 1);
+                _cursor--;
+                SelectOnly(_cursor);
+            }
             ImGui.SameLine();
-            if (ImGui.Button("Move >") && _cursor < count - 1) { MoveFrame(clip, _cursor, _cursor + 1); _cursor++; }
+            if (ImGui.Button("Move >") && _cursor < count - 1)
+            {
+                MoveFrame(clip, _cursor, _cursor + 1);
+                _cursor++;
+                SelectOnly(_cursor);
+            }
             ImGui.SameLine();
-            if (ImGui.Button("Duplicate")) DuplicateFrame(clip);
+            if (ImGui.Button(selNow.Count > 1 ? $"Duplicate ({selNow.Count})###dupfr" : "Duplicate###dupfr"))
+                DuplicateFrames(clip, selNow);
             ImGui.SameLine();
             ImGui.BeginDisabled(count <= 1);
-            if (ImGui.Button("Remove")) RemoveFrame(clip);
+            if (ImGui.Button(selNow.Count > 1 ? $"Remove ({selNow.Count})###remfr" : "Remove###remfr"))
+                RemoveFrames(clip, selNow);
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            if (ImGui.Button("All###tlselall"))
+            {
+                _tlSel.Clear();
+                for (int i = 0; i < count; i++) _tlSel.Add(i);
+            }
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Select every key in this clip.");
 
             ImGui.SameLine();
             ImGui.SetNextItemWidth(90);
@@ -1393,9 +1970,178 @@ public class AnimationEditorPanel
                 var sheet = _spriteEditor.FindSourceSheetPublic(clip.SourceSheetName)
                     ?? _spriteEditor.FindBakedAtlasPublic(clip.SpriteSheetName);
                 int max = Math.Max(0, (sheet?.FrameCount ?? 1) - 1);
-                InsertFrame(clip, Math.Clamp(_insertFrameIndex, 0, max));
+                InsertFrames(clip, selNow, Math.Clamp(_insertFrameIndex, 0, max));
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Inserts this sprite frame after EVERY selected key.");
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Timeline selection + bulk frame editing
+    // ════════════════════════════════════════════════
+
+    /// <summary>The current timeline selection as an ASCENDING index list. An empty set
+    /// falls back to the cursor so single-key editing keeps working unchanged.</summary>
+    private List<int> SelectedList(int count)
+    {
+        var list = new List<int>();
+        if (_tlSel.Count == 0)
+        {
+            if (_cursor >= 0 && _cursor < count) list.Add(_cursor);
+            return list;
+        }
+        for (int i = 0; i < count; i++)
+            if (_tlSel.Contains(i)) list.Add(i);
+        return list;
+    }
+
+    private void SelectOnly(int index)
+    {
+        _tlSel.Clear();
+        _tlSel.Add(index);
+        _tlAnchor = index;
+    }
+
+    /// <summary>Bulk duplicate: every selected key is copied RIGHT AFTER itself, keeping
+    /// hold + event. One rebuild pass (no repeated index shifting), then the selection
+    /// collapses onto the last copy.</summary>
+    private void DuplicateFrames(AnimationClip2D clip, List<int> sel)
+    {
+        var frames = EditableFrames(clip);
+        int count = frames.Count;
+        if (count == 0 || sel.Count == 0) return;
+        EnsureHolds(clip, count);
+        var set = new HashSet<int>(sel);
+
+        var nf = new List<int>(count + set.Count);
+        var nh = new List<float>(count + set.Count);
+        var ne = new Dictionary<int, string>();
+        int lastCopy = -1;
+        for (int i = 0; i < count; i++)
+        {
+            nf.Add(frames[i]);
+            nh.Add(clip.FrameHolds[i]);
+            bool hasEv = clip.Events.TryGetValue(i, out string? ev);
+            if (hasEv) ne[nf.Count - 1] = ev!;
+            if (set.Contains(i))
+            {
+                nf.Add(frames[i]);
+                nh.Add(clip.FrameHolds[i]);
+                if (hasEv) ne[nf.Count - 1] = ev!;
+                lastCopy = nf.Count - 1;
             }
         }
+
+        frames.Clear();
+        frames.AddRange(nf);
+        clip.FrameHolds.Clear();
+        clip.FrameHolds.AddRange(nh);
+        clip.Events.Clear();
+        foreach (var kv in ne) clip.Events[kv.Key] = kv.Value;
+
+        MarkEdited(clip, true);
+        if (lastCopy >= 0) { _cursor = lastCopy; SelectOnly(lastCopy); }
+        _eventFrame = -1;
+        Status($"Duplicated {set.Count} frame key(s)");
+    }
+
+    /// <summary>Bulk remove. The strip never goes empty: if the selection covers every
+    /// key the highest indices are spared until one frame remains.</summary>
+    private void RemoveFrames(AnimationClip2D clip, List<int> sel)
+    {
+        var frames = EditableFrames(clip);
+        int count = frames.Count;
+        if (count <= 1 || sel.Count == 0) return;
+        EnsureHolds(clip, count);
+        var set = new HashSet<int>(sel);
+        set.RemoveWhere(i => i < 0 || i >= count);
+        while (set.Count >= count)
+        {
+            int max = -1;
+            foreach (int i in set) if (i > max) max = i;
+            if (max < 0) break;
+            set.Remove(max);
+        }
+        if (set.Count == 0) return;
+
+        int firstRemoved = int.MaxValue;
+        var nf = new List<int>(count - set.Count);
+        var nh = new List<float>(count - set.Count);
+        var ne = new Dictionary<int, string>();
+        for (int i = 0; i < count; i++)
+        {
+            if (set.Contains(i))
+            {
+                if (i < firstRemoved) firstRemoved = i;
+                continue;
+            }
+            nf.Add(frames[i]);
+            nh.Add(clip.FrameHolds[i]);
+            if (clip.Events.TryGetValue(i, out string? ev)) ne[nf.Count - 1] = ev;
+        }
+
+        frames.Clear();
+        frames.AddRange(nf);
+        clip.FrameHolds.Clear();
+        clip.FrameHolds.AddRange(nh);
+        clip.Events.Clear();
+        foreach (var kv in ne) clip.Events[kv.Key] = kv.Value;
+
+        MarkEdited(clip, true);
+        int nc = Math.Clamp(firstRemoved == int.MaxValue ? 0 : firstRemoved, 0, Math.Max(0, nf.Count - 1));
+        _cursor = nc;
+        SelectOnly(nc);
+        _eventFrame = -1;
+        Status($"Removed {set.Count} frame key(s)");
+    }
+
+    /// <summary>Bulk insert: the given sprite frame is added right after EVERY selected key
+    /// (holds reset to 1, no event copied). Selection collapses onto the last insert.</summary>
+    private void InsertFrames(AnimationClip2D clip, List<int> sel, int sourceFrame)
+    {
+        var frames = EditableFrames(clip);
+        int count = frames.Count;
+        EnsureHolds(clip, count);
+        if (count == 0)
+        {
+            frames.Add(sourceFrame);
+            clip.FrameHolds.Add(1f);
+            MarkEdited(clip, true);
+            _cursor = 0;
+            SelectOnly(0);
+            _eventFrame = -1;
+            return;
+        }
+        var set = new HashSet<int>(sel);
+        var nf = new List<int>(count + set.Count);
+        var nh = new List<float>(count + set.Count);
+        var ne = new Dictionary<int, string>();
+        int lastInsert = -1;
+        for (int i = 0; i < count; i++)
+        {
+            nf.Add(frames[i]);
+            nh.Add(clip.FrameHolds[i]);
+            if (clip.Events.TryGetValue(i, out string? ev)) ne[nf.Count - 1] = ev;
+            if (set.Contains(i))
+            {
+                nf.Add(sourceFrame);
+                nh.Add(1f);
+                lastInsert = nf.Count - 1;
+            }
+        }
+
+        frames.Clear();
+        frames.AddRange(nf);
+        clip.FrameHolds.Clear();
+        clip.FrameHolds.AddRange(nh);
+        clip.Events.Clear();
+        foreach (var kv in ne) clip.Events[kv.Key] = kv.Value;
+
+        MarkEdited(clip, true);
+        if (lastInsert >= 0) { _cursor = lastInsert; SelectOnly(lastInsert); }
+        _eventFrame = -1;
+        Status($"Inserted frame #{sourceFrame} after {set.Count} key(s)");
     }
 
     private void MoveFrame(AnimationClip2D clip, int from, int to)
@@ -1418,50 +2164,6 @@ public class AnimationEditorPanel
         _eventFrame = -1;
     }
 
-    private void DuplicateFrame(AnimationClip2D clip)
-    {
-        var frames = EditableFrames(clip);
-        int count = frames.Count;
-        if (count == 0) return;
-        EnsureHolds(clip, count);
-        int at = Math.Clamp(_cursor, 0, count - 1);
-        frames.Insert(at + 1, frames[at]);
-        clip.FrameHolds.Insert(at + 1, clip.FrameHolds[at]);
-        InsertEvent(clip.Events, at, count);
-        MarkEdited(clip, true);
-        _cursor = at + 1;
-        _eventFrame = -1;
-    }
-
-    private void InsertFrame(AnimationClip2D clip, int sourceFrame)
-    {
-        var frames = EditableFrames(clip);
-        int count = frames.Count;
-        EnsureHolds(clip, count);
-        int at = count == 0 ? 0 : Math.Clamp(_cursor + 1, 0, count);
-        frames.Insert(at, sourceFrame);
-        clip.FrameHolds.Insert(at, 1f);
-        InsertEventEmpty(clip.Events, at, count);
-        MarkEdited(clip, true);
-        _cursor = at;
-        _eventFrame = -1;
-    }
-
-    private void RemoveFrame(AnimationClip2D clip)
-    {
-        var frames = EditableFrames(clip);
-        int count = frames.Count;
-        if (count <= 1) return;
-        int at = Math.Clamp(_cursor, 0, count - 1);
-        frames.RemoveAt(at);
-        EnsureHolds(clip, count);
-        clip.FrameHolds.RemoveAt(Math.Min(at, clip.FrameHolds.Count - 1));
-        RemoveEvent(clip.Events, at, count);
-        MarkEdited(clip, true);
-        _cursor = Math.Clamp(at, 0, frames.Count - 1);
-        _eventFrame = -1;
-    }
-
     private static void MoveEvent(Dictionary<int, string> events, int from, int to, int count)
     {
         if (events.Count == 0) return;
@@ -1473,48 +2175,6 @@ public class AnimationEditorPanel
             else if (from < to && idx > from && idx <= to) idx--;
             else if (to < from && idx >= to && idx < from) idx++;
             if (idx >= 0 && idx < count) map[idx] = kv.Value;
-        }
-        events.Clear();
-        foreach (var kv in map) events[kv.Key] = kv.Value;
-    }
-
-    private static void InsertEvent(Dictionary<int, string> events, int at, int count)
-    {
-        if (events.Count == 0) return;
-        var map = new Dictionary<int, string>();
-        foreach (var kv in events)
-        {
-            int idx = kv.Key > at ? kv.Key + 1 : kv.Key;
-            if (idx < count + 1) map[idx] = kv.Value;
-        }
-        // Duplicate the source frame's event onto the new frame too.
-        if (events.TryGetValue(at, out string? ev)) map[at + 1] = ev;
-        events.Clear();
-        foreach (var kv in map) events[kv.Key] = kv.Value;
-    }
-
-    private static void InsertEventEmpty(Dictionary<int, string> events, int at, int count)
-    {
-        if (events.Count == 0) return;
-        var map = new Dictionary<int, string>();
-        foreach (var kv in events)
-        {
-            int idx = kv.Key >= at ? kv.Key + 1 : kv.Key;
-            if (idx < count + 1) map[idx] = kv.Value;
-        }
-        events.Clear();
-        foreach (var kv in map) events[kv.Key] = kv.Value;
-    }
-
-    private static void RemoveEvent(Dictionary<int, string> events, int at, int count)
-    {
-        if (events.Count == 0) return;
-        var map = new Dictionary<int, string>();
-        foreach (var kv in events)
-        {
-            if (kv.Key == at) continue;
-            int idx = kv.Key > at ? kv.Key - 1 : kv.Key;
-            if (idx >= 0 && idx < count - 1) map[idx] = kv.Value;
         }
         events.Clear();
         foreach (var kv in map) events[kv.Key] = kv.Value;
@@ -1565,7 +2225,10 @@ public class AnimationEditorPanel
             }
         }
 
-        string groupLabel = string.IsNullOrEmpty(clip.GroupPath) ? "(ungrouped)" : clip.GroupPath;
+        string autoName = DisplayGroupOf(clip);
+        string groupLabel = !string.IsNullOrEmpty(clip.GroupPath) ? clip.GroupPath
+            : autoName.Length > 0 ? $"(auto: {autoName})"
+            : "(ungrouped)";
         if (ImGui.BeginCombo("Group##clip", groupLabel))
         {
             if (ImGui.Selectable("(ungrouped)", string.IsNullOrEmpty(clip.GroupPath))) clip.GroupPath = "";
@@ -1574,6 +2237,9 @@ public class AnimationEditorPanel
                     clip.GroupPath = path;
             ImGui.EndCombo();
         }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("(auto: name) = display-only group derived from the clip's own name\n"
+                + "(`Male Skin1-idle` → `Male Skin1`). Pick a group here to STORE it on the clip.");
 
         float fps = clip.FPS;
         if (ImGui.SliderFloat("FPS##clip", ref fps, 1f, 60f, "%.0f", ImGuiSliderFlags.AlwaysClamp | ImGuiSliderFlags.Logarithmic))
@@ -1796,6 +2462,11 @@ public class AnimationEditorPanel
         bool dirty = _dirtyOnly;
         if (ImGui.Checkbox("Dirty only##lib", ref dirty)) _dirtyOnly = dirty;
         ImGui.SameLine();
+        if (ImGui.Checkbox("Auto-group##lib", ref _autoGroupByBase) && !_autoGroupByBase)
+            _groupFilter = "";
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Groups the list/column by sprite name (display only — no file is written).");
+        ImGui.SameLine();
         if (ImGui.Button("Bake Dirty")) BakeAllDirty();
         ImGui.SameLine();
         if (ImGui.Button("Save")) { _spriteEditor.SaveAllSheets(); Status("Saved clips + groups"); }
@@ -1854,7 +2525,16 @@ public class AnimationEditorPanel
                     }
                 }
 
-                ImGui.TableNextColumn(); ImGui.Text(string.IsNullOrEmpty(clip.GroupPath) ? "-" : clip.GroupPath);
+                ImGui.TableNextColumn();
+                {
+                    // Auto-group is display-only: a derived name is shown dimmed with a
+                    // prefix so it is never mistaken for a stored GroupPath.
+                    bool derived = string.IsNullOrEmpty(clip.GroupPath);
+                    string shownGroup = DisplayGroupOf(clip);
+                    if (shownGroup.Length == 0) ImGui.Text("-");
+                    else if (derived) ImGui.TextColored(ColDim, "~ " + shownGroup);
+                    else ImGui.Text(shownGroup);
+                }
                 ImGui.TableNextColumn(); ImGui.Text(clip.SpriteSheetName);
                 ImGui.TableNextColumn(); ImGui.Text($"{clip.FPS:0.#}");
                 int authoredFrames = EditableFrames(clip).Count;
@@ -2166,7 +2846,21 @@ public class AnimationEditorPanel
             if (start > max) { row.Enabled = false; row.Start = max; row.End = max; continue; }
             row.Start = start;
             row.End = Math.Min(end, max);
+            // Skip the sheet's blank trailing/leading cells and switch the row OFF when the
+            // whole row is empty, so a button-less action row never becomes a dead clip.
+            TrimEmptyCells(source, row);
         }
+    }
+
+    /// <summary>Shrink a New-Set row to its non-empty cells; disable it when fully blank.
+    /// Blank INTERIOR cells are dropped later, when the clip is actually built.</summary>
+    private void TrimEmptyCells(SpriteSheet source, SetRow row)
+    {
+        var empty = _spriteEditor.EmptySourceFramesPublic(source, row.Start, row.End);
+        if (empty == null || empty.Count == 0) return;
+        while (row.Start <= row.End && empty.Contains(row.Start)) row.Start++;
+        while (row.End >= row.Start && empty.Contains(row.End)) row.End--;
+        if (row.Start > row.End) row.Enabled = false;
     }
 
     private void FillSetFromPreview(SpriteSheet source)
@@ -2275,6 +2969,7 @@ public class AnimationEditorPanel
             }
 
             ImGui.Separator();
+            ImGui.TextDisabled("Empty sprite cells are skipped automatically — no keys with blank art.");
             bool valid = source != null && !string.IsNullOrWhiteSpace(_setGroup) &&
                 _setRows.Any(r => r.Enabled);
             ImGui.BeginDisabled(!valid);
@@ -2295,13 +2990,23 @@ public class AnimationEditorPanel
         _spriteEditor.EnsureAnimationGroup(group);
         int created = 0;
         int firstIdx = -1;
+        int skippedEmpty = 0;
         foreach (var row in _setRows.Where(r => r.Enabled))
         {
             int max = Math.Max(0, source.FrameCount - 1);
             int start = Math.Clamp(row.Start, 0, max);
             int end = Math.Clamp(row.End, start, max);
             if (end < start) continue;
-            var frames = Enumerable.Range(start, end - start + 1).ToList();
+
+            // AUTO-DROP EMPTY CELLS: a sprite grid usually pads shorter rows with blank
+            // cells; authoring keys for them makes a clip that blinks to nothing (and a
+            // "frame" strip full of invisible keys). Skip them instead.
+            var range = Enumerable.Range(start, end - start + 1).ToList();
+            var empty = _spriteEditor.EmptySourceFramesPublic(source, start, end);
+            var frames = empty == null ? range : range.Where(i => !empty.Contains(i)).ToList();
+            skippedEmpty += range.Count - frames.Count;
+            if (frames.Count == 0) continue;
+
             string name = $"{source.Name}-{row.Action}";
             var clip = BuildClip(source, name, frames, row.Fps, row.Loop, group,
                 string.IsNullOrWhiteSpace(row.EventName) ? null : row.EventName.Trim(), 0.6f);
@@ -2313,7 +3018,8 @@ public class AnimationEditorPanel
         _spriteEditor.ForceSynchronizeRegistry();
         if (_setBake) _spriteEditor.RequestAtlasRepackForEditor("animation set");
         if (firstIdx >= 0) SelectClip(firstIdx);
-        Status($"Created {created} clip(s) in '{group}'{( _setBake ? " and baked them" : "")}.");
+        Status($"Created {created} clip(s) in '{group}'{( _setBake ? " and baked them" : "")}"
+            + (skippedEmpty > 0 ? $" — skipped {skippedEmpty} empty cell(s)." : "."));
     }
 
     private AnimationClip2D BuildClip(SpriteSheet source, string name, List<int> frames,

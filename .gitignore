@@ -364,4 +364,7 @@ FodyWeavers.xsd
 # BinaryObjectCache sidecar cache (regenerable from JSON source of truth)
 .cache/
 
+# File-dialog last-folder memory (per-machine IDE state, like imgui.ini)
+file_dialog_history.json
+
 /nul

@@ -127,10 +127,10 @@ public sealed class AnimationSetPreset
         new("idle",       "Idle",       8f,  true),
         new("walk",       "Walk",       8f,  true),
         new("run",        "Run",       12f,  true),
-        new("attack",     "Attack",    12f, false, false, "Hit"),
-        new("dead",       "Dead",      10f, false, true),
         new("jump start", "Jump Start",12f, false),
         new("jump end",   "Jump End",  12f, false),
+        new("attack",     "Attack",    12f, false, false, "Hit"),
+        new("dead",       "Dead",      10f, false, true),
         new("hurt",       "Hurt",      10f, false),
         new("cast",       "Cast",      12f, false),
     ];

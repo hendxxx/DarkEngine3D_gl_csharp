@@ -174,7 +174,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Button($"⋯##{id}_browse"))
                 {
                     _dialogSlot = slot;
-                    _dialog.OpenForLoad("*.*", $"Select {SlotNames[i]} image");
+                    // Open at the texture that is already assigned (else the folder the user
+                    // last picked from — all PBR slots share one remembered folder).
+                    string? startDir = has ? Path.GetDirectoryName(PathHelpers.Resolve(path)) : null;
+                    _dialog.OpenForLoad("*.*", $"Select {SlotNames[i]} image", startDir, "pbr_texture");
                 }
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Browse for an image file");
 

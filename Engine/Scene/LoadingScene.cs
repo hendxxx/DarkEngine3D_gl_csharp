@@ -407,6 +407,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // ── Player2D sprite sizing + capsule collider (offset lives on the object) ──
                 obj.Player2DSpriteSheet = objData.Player2DSpriteSheet;
                 obj.Player2DAnimationClip = objData.Player2DAnimationClip;
+                obj.Player2DFlipFacing = objData.Player2DFlipFacing;
                 obj.Sprite2DWorldWidth = objData.Sprite2DWorldWidth;
                 obj.NpcDialogueId = objData.NpcDialogueId;
                 obj.NpcAlertImagePath = PathHelpers.Resolve(objData.NpcAlertImagePath);

@@ -572,12 +572,24 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             var sheets = IDEBridge.GetSpriteSheetNames();
             string[] sheetArr = sheets.Count > 0 ? sheets.ToArray() : [""];
             int sIdx = Array.IndexOf(sheetArr, sheet);
-            if (sIdx < 0) sIdx = 0;
-            if (ImGui.BeginCombo(idSheet, sheets.Count == 0 ? "(no sheets — import in Sprite Editor)" : sheetArr[sIdx]))
+            // HONEST LABEL (cascade rule): an EMPTY sheet means "no impact art". The combo
+            // used to display the first sheet as if it were assigned, so the Clip combo below
+            // stayed unusable until the sheet was clicked once. Now the label shows the real
+            // state and picking a sheet immediately fills the clip list.
+            string sheetLabel = !string.IsNullOrEmpty(sheet) ? sheet
+                : (sheets.Count == 0 ? "(no sheets — import in Sprite Editor)" : "(none)");
+            if (ImGui.BeginCombo(idSheet, sheetLabel))
             {
+                if (ImGui.Selectable("(none)", string.IsNullOrEmpty(sheet)))
+                {
+                    sheet = "";
+                    clip = "";
+                    changed = true;
+                }
+                if (string.IsNullOrEmpty(sheet)) ImGui.SetItemDefaultFocus();
                 for (int s = 0; s < sheetArr.Length; s++)
                 {
-                    bool sel = s == sIdx;
+                    bool sel = s == sIdx && !string.IsNullOrEmpty(sheet);
                     if (ImGui.Selectable(sheetArr[s], sel) && !sheetArr[s].Equals(sheet, StringComparison.Ordinal))
                     {
                         sheet = sheetArr[s];
@@ -593,12 +605,14 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 var clips = IDEBridge.GetClipNames(sheet);
                 string[] clipArr = clips.Count > 0 ? clips.ToArray() : [""];
                 int cIdx = Array.IndexOf(clipArr, clip);
-                if (cIdx < 0) cIdx = 0;
-                if (ImGui.BeginCombo(idClip, clipArr[cIdx]))
+                string clipLabel = string.IsNullOrEmpty(clip)
+                    ? (clips.Count > 0 ? "(sheet default)" : "(no clips — create in Sprite Editor)")
+                    : (cIdx >= 0 ? clipArr[cIdx] : clip);
+                if (ImGui.BeginCombo(idClip, clipLabel))
                 {
                     for (int c = 0; c < clipArr.Length; c++)
                     {
-                        bool sel = c == cIdx;
+                        bool sel = !string.IsNullOrEmpty(clip) && c == cIdx;
                         if (ImGui.Selectable(clipArr[c], sel))
                         {
                             clip = clipArr[c];

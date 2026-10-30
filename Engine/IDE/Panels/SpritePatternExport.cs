@@ -182,7 +182,9 @@ public static class SpritePatternExport
         try
         {
             var entry = sheet.ToData();
-            entry.ImagePath = PathHelpers.MakeProjectRelative(sheet.ImagePath);
+            // The export belongs to the SOURCE image: keep it exactly where the image lives
+            // (absolute local path = as imported). Only a dead path gets the portable form.
+            entry.ImagePath = SpriteSheet.KeepSourceImagePath(sheet.ImagePath);
             var data = new SpriteSheetsSaveData { Sheets = [entry] };
             File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
             BinaryObjectCache.TryWrite(path, data);

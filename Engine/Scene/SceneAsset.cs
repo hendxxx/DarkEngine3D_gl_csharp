@@ -283,6 +283,8 @@ public class EditorObjectData
     public float Player2DCapsuleOffsetX { get; set; } = 0f;
     public float Player2DCapsuleOffsetY { get; set; } = 0f;
     public bool Player2DShowCapsule { get; set; } = true;
+    /// <summary>Manual mirror on top of the runtime facing (Inspector "Flip Facing").</summary>
+    public bool Player2DFlipFacing { get; set; }
     public float Player2DGravity { get; set; } = 25f;
     // ── Player2D movement tuning (Inspector-editable, used by Player2DSystem) ──
     public float Player2DMoveSpeed { get; set; } = 5f;

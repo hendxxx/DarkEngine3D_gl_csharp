@@ -3,6 +3,58 @@ using System.Text.Json;
 namespace DarkEngine3D_gl_csharp.Engine.Visual;
 
 /// <summary>
+/// DISPLAY-ONLY grouping helpers for animation clips. The auto-group name is derived
+/// from the clip's own name (pattern exports are authored as `&lt;file name&gt;-&lt;action&gt;`,
+/// so `Male Skin1-idle` belongs to `Male Skin1`), which means NO extra field is stored:
+/// `AnimationClip2D.GroupPath` stays the only PERSISTED grouping and sprite-anim JSON
+/// files are never rewritten by this. The Animation Editor tree and the Sprite Editor
+/// clip list use it purely to render tidy one-level groups.
+/// </summary>
+public static class AnimationClipGroups
+{
+    /// <summary>Base sprite name: everything before the LAST '-' of the clip name
+    /// (`Male Skin1-walk` → `Male Skin1`, `hero-walk-cycle` → `hero-walk`).
+    /// A name without a usable prefix returns "" (no group derivable).</summary>
+    public static string BaseNameOf(string? clipName)
+    {
+        if (string.IsNullOrWhiteSpace(clipName)) return "";
+        int dash = clipName.LastIndexOf('-');
+        if (dash <= 0) return "";
+        return clipName[..dash].Trim();
+    }
+
+    /// <summary>Action label shown UNDER a derived group: everything after the LAST '-'.
+    /// Falls back to the clip name itself when no prefix exists.</summary>
+    public static string ActionLabelOf(string? clipName)
+    {
+        if (string.IsNullOrWhiteSpace(clipName)) return "";
+        int dash = clipName.LastIndexOf('-');
+        if (dash < 0 || dash >= clipName.Length - 1) return clipName;
+        return clipName[(dash + 1)..].Trim();
+    }
+
+    /// <summary>PARENT segment of a group path: "Male Skin1/Idle" → "Male Skin1". The
+    /// Inspector's Animation Group picker only ever shows parents; leaf paths remain
+    /// visible in the Animation Editor tree. Empty stays empty.</summary>
+    public static string RootGroupOf(string? groupPath)
+    {
+        if (string.IsNullOrWhiteSpace(groupPath)) return "";
+        int slash = groupPath.IndexOf('/');
+        return (slash > 0 ? groupPath[..slash] : groupPath).Trim();
+    }
+
+    /// <summary>The group a clip is DISPLAYED under. A manually assigned GroupPath always
+    /// wins; with auto-group off (or no derivable base) the clip stays ungrouped ("").
+    /// Never mutates the clip.</summary>
+    public static string DisplayGroupOf(AnimationClip2D clip, bool autoGroupByBase)
+    {
+        if (clip == null) return "";
+        if (!string.IsNullOrEmpty(clip.GroupPath)) return clip.GroupPath;
+        return autoGroupByBase ? BaseNameOf(clip.Name) : "";
+    }
+}
+
+/// <summary>
 /// Animation clip for 2D sprites.
 /// Defines a sequence of frames from a sprite sheet with timing and events.
 /// </summary>

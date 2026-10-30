@@ -1027,6 +1027,7 @@ public class SceneManagerPanel
                         Player2DHeight = obj.Player2DHeight,
 
                         Player2DShowCapsule = obj.Player2DShowCapsule,
+                        Player2DFlipFacing = obj.Player2DFlipFacing,
                         Player2DGravity = obj.Player2DGravity,
                         Player2DMoveSpeed = obj.Player2DMoveSpeed,
                         Player2DRunSpeed = obj.Player2DRunSpeed,
@@ -1728,6 +1729,7 @@ public class SceneManagerPanel
                         obj.Player2DCapsuleOffsetY = objData.Player2DCapsuleOffsetY;
 
                         obj.Player2DShowCapsule = objData.Player2DShowCapsule;
+                        obj.Player2DFlipFacing = objData.Player2DFlipFacing;
                         obj.Player2DGravity = objData.Player2DGravity;
                         obj.Player2DMoveSpeed = objData.Player2DMoveSpeed;
                         obj.Player2DRunSpeed = objData.Player2DRunSpeed;
@@ -2167,6 +2169,7 @@ public class SceneManagerPanel
                             Player2DCapsuleHeight = obj.Player2DCapsuleHeight,
                             Player2DCapsuleOffsetX = obj.Player2DCapsuleOffsetX,
                             Player2DCapsuleOffsetY = obj.Player2DCapsuleOffsetY,
+                            Player2DFlipFacing = obj.Player2DFlipFacing,
                         });
                     }
                 }

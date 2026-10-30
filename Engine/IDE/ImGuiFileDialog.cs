@@ -51,12 +51,99 @@ public class ImGuiFileDialog
     /// that want one code path.</summary>
     public IReadOnlyList<string>? SelectedPaths { get; private set; }
 
+    // ════════════════ LAST-FOLDER MEMORY (open-last folder) ════════════════
+    /// <summary>Remembered folder PER DIALOG PURPOSE (key = explicit dirKey, else the
+    /// title). Written when the user CONFIRMS a choice and read the next time the same
+    /// dialog opens — re-importing sheets or re-picking a texture never forces the user to
+    /// navigate back from the project root again. Persisted per project in
+    /// `file_dialog_history.json` (IDE-local state, like settings.json / imgui.ini).</summary>
+    private static readonly Dictionary<string, string> _lastDirs = new(StringComparer.OrdinalIgnoreCase);
+    private static string _historyPath = "";
+    private string _dirKey = "";
+
+    private static string HistoryPath()
+    {
+        string dir = Engine.Project.ProjectManager.IsProjectLoaded &&
+            !string.IsNullOrEmpty(Engine.Project.ProjectManager.ProjectRoot)
+            ? Engine.Project.ProjectManager.ProjectRoot!
+            : AppDomain.CurrentDomain.BaseDirectory;
+        return Path.Combine(dir, "file_dialog_history.json");
+    }
+
+    /// <summary>Load the remembered folders once per project (a project switch swaps the
+    /// file, so the cache reloads instead of leaking the previous project's folders).</summary>
+    private static void EnsureHistoryLoaded()
+    {
+        string path = HistoryPath();
+        if (string.Equals(path, _historyPath, StringComparison.OrdinalIgnoreCase)) return;
+        _lastDirs.Clear();
+        _historyPath = path;
+        try
+        {
+            if (!File.Exists(path)) return;
+            var loaded = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(
+                File.ReadAllText(path));
+            if (loaded == null) return;
+            foreach (var kv in loaded)
+                if (!string.IsNullOrWhiteSpace(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value))
+                    _lastDirs[kv.Key] = kv.Value;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileDialog] history read failed: {ex.Message}");
+        }
+    }
+
+    private static void SaveHistory()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_historyPath)) return;
+            var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(_historyPath, System.Text.Json.JsonSerializer.Serialize(_lastDirs, opts));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileDialog] history write failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Remember the folder of a confirmed choice for this dialog purpose.
+    /// <paramref name="isFile"/> = the value is a FILE (remember its parent folder) rather
+    /// than a folder itself.</summary>
+    private void RememberDir(string? dirOrFile, bool isFile)
+    {
+        if (string.IsNullOrWhiteSpace(dirOrFile) || string.IsNullOrEmpty(_dirKey)) return;
+        string? dir = isFile ? Path.GetDirectoryName(dirOrFile) : dirOrFile;
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+        _lastDirs[_dirKey] = dir;
+        SaveHistory();
+    }
+
+    /// <summary>Folder the dialog opens in: the REMEMBERED one first, then the caller's
+    /// start folder (folder of the value being edited), then the project root.</summary>
+    private string ResolveStartDir(string? startDir)
+    {
+        EnsureHistoryLoaded();
+        if (!string.IsNullOrEmpty(_dirKey) &&
+            _lastDirs.TryGetValue(_dirKey, out var remembered) &&
+            !string.IsNullOrEmpty(remembered) && Directory.Exists(remembered))
+            return remembered;
+        if (!string.IsNullOrEmpty(startDir) && Directory.Exists(startDir))
+            return startDir!;
+        if (Engine.Project.ProjectManager.IsProjectLoaded &&
+            !string.IsNullOrEmpty(Engine.Project.ProjectManager.ProjectRoot))
+            return Engine.Project.ProjectManager.ProjectRoot!;
+        return AppDomain.CurrentDomain.BaseDirectory;
+    }
+
     /// <summary>Open an Open-mode dialog with MULTI file selection. Filter syntax is
     /// the same as OpenForLoad ("*.png;*.jpg"). Click = select one, Ctrl+Click =
     /// toggle, Shift+Click = extend the range; Open confirms every selected file.</summary>
-    public void OpenForLoadMulti(string filter, string title = "Open files")
+    public void OpenForLoadMulti(string filter, string title = "Open files",
+        string? startDir = null, string? dirKey = null)
     {
-        OpenForLoad(filter, title);
+        OpenForLoad(filter, title, startDir, dirKey);
         _multiSelect = true;
         _selectedFiles.Clear();
         _lastMultiIdx = -1;
@@ -77,10 +164,16 @@ public class ImGuiFileDialog
     /// <summary>True if the dialog is in Save mode (vs Open mode).</summary>
     public bool IsSaveMode => _mode == DialogMode.Save;
 
-    public void OpenForLoad(string filter = "*.ing", string title = "Open .ing file")
+    /// <param name="startDir">Optional folder when there is no remembered one yet — pass the
+    /// folder of the value being edited so re-picking starts where the asset lives.</param>
+    /// <param name="dirKey">Optional stable key for the remembered folder (default = title),
+    /// so several dialogs that pick the same kind of asset share one memory.</param>
+    public void OpenForLoad(string filter = "*.ing", string title = "Open .ing file",
+        string? startDir = null, string? dirKey = null)
     {
         _mode = DialogMode.Open;
         Title = title;
+        _dirKey = dirKey ?? title;
         _filter = filter;
         _customFilters = filter.Contains(';') ? filter.Split(';', StringSplitOptions.RemoveEmptyEntries) : [filter];
         _fileNameBuffer = "";
@@ -90,8 +183,7 @@ public class ImGuiFileDialog
         _multiSelect = false;
         _selectedFiles.Clear();
         IsConfirmed = false;
-        if (Engine.Project.ProjectManager.IsProjectLoaded)
-            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
+        _currentDir = ResolveStartDir(startDir);
         Refresh();
     }
 
@@ -101,10 +193,11 @@ public class ImGuiFileDialog
     /// <param name="startDir">Optional starting folder (falls back to project root).
     /// Lets "Save As" open in the folder of the file being saved.</param>
     public void OpenForSave(string defaultName = "game.ing", string? filter = null,
-        string? title = null, string? startDir = null)
+        string? title = null, string? startDir = null, string? dirKey = null)
     {
         _mode = DialogMode.Save;
         Title = title ?? "Save .ing file";
+        _dirKey = dirKey ?? Title;
         if (filter != null)
         {
             _filter = filter;
@@ -114,23 +207,20 @@ public class ImGuiFileDialog
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
-        if (!string.IsNullOrEmpty(startDir) && Directory.Exists(startDir))
-            _currentDir = startDir;
-        else if (Engine.Project.ProjectManager.IsProjectLoaded)
-            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
+        _currentDir = ResolveStartDir(startDir);
         Refresh();
     }
 
-    public void OpenForPickFolder(string title = "Select Folder")
+    public void OpenForPickFolder(string title = "Select Folder", string? startDir = null)
     {
         _mode = DialogMode.PickFolder;
         Title = title;
+        _dirKey = title;
         _fileNameBuffer = "";
         _selectedIdx = -1;
         SelectedPath = null;
         IsConfirmed = false;
-        if (Engine.Project.ProjectManager.IsProjectLoaded)
-            _currentDir = Engine.Project.ProjectManager.ProjectRoot!;
+        _currentDir = ResolveStartDir(startDir);
         Refresh();
     }
 
@@ -352,6 +442,7 @@ public class ImGuiFileDialog
                 {
                     SelectedPath = _currentDir;
                     IsConfirmed = true;
+                    RememberDir(_currentDir, isFile: false);
                     _mode = DialogMode.None;
                 }
                 ImGui.SameLine();
@@ -412,6 +503,7 @@ public class ImGuiFileDialog
                 SelectedPaths = paths;
                 SelectedPath = paths[0];
                 IsConfirmed = true;
+                RememberDir(_currentDir, isFile: false);   // next open starts here
                 Console.WriteLine($"[FileDialog] Multi-selected: {paths.Count} file(s)");
                 return;
             }
@@ -438,6 +530,7 @@ public class ImGuiFileDialog
 
         SelectedPath = Path.Combine(_currentDir, fileName);
         IsConfirmed = true;
+        RememberDir(SelectedPath, isFile: true);   // next open starts in this folder
         // NOTE: keep _mode as-is (Save/Open) so the caller can still read
         // IsSaveMode after confirmation. Close() resets it to None.
 

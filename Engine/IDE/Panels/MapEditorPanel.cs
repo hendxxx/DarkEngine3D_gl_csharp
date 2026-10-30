@@ -341,6 +341,16 @@ public class MapEditorPanel
         }
     }
 
+    /// <summary>Folder of the active map's tileset image (null when there is none) — the
+    /// tileset picker opens there, so changing a tileset never restarts at the project root.</summary>
+    private string? TilesetImageFolder()
+    {
+        if (ActiveTilemap == null || string.IsNullOrEmpty(ActiveTilemap.TilesetImagePath)) return null;
+        string abs = Engine.Helpers.PathHelpers.ResolveProjectAsset(ActiveTilemap.TilesetImagePath);
+        string? dir = Path.GetDirectoryName(abs);
+        return !string.IsNullOrEmpty(dir) && Directory.Exists(dir) ? dir : null;
+    }
+
     private void RenderTileset()
     {
         if (ActiveTilemap == null) return;
@@ -350,14 +360,16 @@ public class MapEditorPanel
             ImGui.TextDisabled("No tileset loaded.");
             ImGui.SameLine();
             if (ImGui.Button("Load Tileset"))
-                _tilesetDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Tileset Image");
+                _tilesetDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Tileset Image",
+                    TilesetImageFolder(), "tileset_image");
         }
         else
         {
             ImGui.Text($"Tileset: {Path.GetFileName(ActiveTilemap.TilesetImagePath)}");
             ImGui.SameLine();
             if (ImGui.Button("Change"))
-                _tilesetDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Tileset Image");
+                _tilesetDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Tileset Image",
+                    TilesetImageFolder(), "tileset_image");
             ImGui.SameLine();
             if (ImGui.Button("Clear"))
             {
@@ -2866,9 +2878,14 @@ public class MapEditorPanel
                 sel.TopPx = topPx;
             ImGui.TextDisabled("0 = flush with grid top; negative = extend above grid");
 
-            // Load image
+            // Load image — open at the layer's current image (else the last parallax folder).
             if (ImGui.Button("Load Image##plx"))
-                _parallaxDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Parallax Image");
+            {
+                string? plxStart = string.IsNullOrEmpty(sel.ImagePath) ? null
+                    : Path.GetDirectoryName(Engine.Helpers.PathHelpers.ResolveProjectAsset(sel.ImagePath));
+                _parallaxDialog.OpenForLoad("*.png;*.jpg;*.bmp", "Select Parallax Image",
+                    plxStart, "parallax_image");
+            }
 
             if (!string.IsNullOrEmpty(sel.ImagePath))
             {

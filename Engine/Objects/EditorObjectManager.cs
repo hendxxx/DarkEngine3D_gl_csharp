@@ -537,6 +537,7 @@ public unsafe class EditorObjectManager
                 Player2DJumpBuffer = source.Player2DJumpBuffer,
                 Player2DJumpCutMultiplier = source.Player2DJumpCutMultiplier,
                 Player2DFacingRight = source.Player2DFacingRight,
+                Player2DFlipFacing = source.Player2DFlipFacing,
                 Player2DRenderLayer = source.Player2DRenderLayer,
                 NpcDialogueId = source.NpcDialogueId,
                 NpcAlertImagePath = source.NpcAlertImagePath,

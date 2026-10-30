@@ -188,7 +188,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             if (ImGui.Button("⋯##terrain_hm_browse"))
             {
                 _dialogTerrain = true;
-                _dialog.OpenForLoad("*.*", "Select terrain heightmap image");
+                // Open at the heightmap already loaded (else the last folder used for one).
+                string? hmStart = string.IsNullOrEmpty(obj.TerrainHeightPath)
+                    ? null : Path.GetDirectoryName(PathHelpers.Resolve(obj.TerrainHeightPath));
+                _dialog.OpenForLoad("*.*", "Select terrain heightmap image", hmStart, "terrain_heightmap");
             }
             if (ImGui.IsItemHovered()) ImGui.SetTooltip("Browse for a grayscale heightmap (white = peaks)");
             ImGui.SameLine();

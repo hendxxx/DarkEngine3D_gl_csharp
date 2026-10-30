@@ -378,6 +378,10 @@ public unsafe class EditorObject
     /// <summary>Runtime facing: true = sprite drawn normally (assumes right-facing art),
     /// false = mirrored horizontally so the character faces LEFT. Set by Player2DSystem.</summary>
     public bool Player2DFacingRight { get; set; } = true;
+    /// <summary>Manual horizontal mirror ON TOP of the runtime facing. Movement still flips
+    /// <see cref="Player2DFacingRight"/> left/right; this flag inverts the FINAL mirror, so an
+    /// authored left-facing pose stays flipped. Persisted with the object.</summary>
+    public bool Player2DFlipFacing { get; set; }
     /// <summary>Runtime physics velocity (Y only — sidescroller).</summary>
     public float Player2DVelocityY { get; set; }
     /// <summary>Current horizontal velocity (world units/s) — drives facing + walk/run anims.</summary>
@@ -5326,7 +5330,7 @@ public unsafe class EditorObject
         // mirrors horizontally (per-object runtime state, never saved to disk).
         // This is the ONLY mirror — do not swap U again at the vertex build below,
         // a second swap cancels this one and the sprite would never face left.
-        if (!Player2DFacingRight)
+        if (!(Player2DFacingRight ^ Player2DFlipFacing))
             (su0, su1) = (su1, su0);
 
         // ── Sizing: SAVED-CLIP snapshot only — sheet values never reach the viewport ──
@@ -5359,7 +5363,7 @@ public unsafe class EditorObject
             pxToWorld = Player2DHeight / cellH; // unsaved clip → native proportions
         float w = MathF.Max(0.05f, cellW * pxToWorld);   // frame as-is (native px)
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = (Player2DFacingRight ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
+        float mirror = ((Player2DFacingRight ^ Player2DFlipFacing) ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
         // Base offsets come from the clip snapshot only; sheet offsets don't apply here.
         float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
@@ -5459,7 +5463,7 @@ public unsafe class EditorObject
         // ── Equipment layers: composite equipped item art over the base sprite ──
         // (session player renders the session paperdoll; NPC/editor preview renders
         // the scene-authored Equipment — see CollectEquipmentLayersForDraw).
-        DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Player2DFacingRight, 1,
+        DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Player2DFacingRight ^ Player2DFlipFacing, 1,
             actionActive ? Player2DActionTime : Player2DAnimTime, baseFrameIdx,
             baseClipName, baseClipLocalFrame);
 
@@ -6243,7 +6247,7 @@ public unsafe class EditorObject
         if (drawSheet.FlipX)
             (su0, su1) = (su1, su0);
 
-        if (!Player2DFacingRight)
+        if (!(Player2DFacingRight ^ Player2DFlipFacing))
             (su0, su1) = (su1, su0);
 
         float cellH = drawSheet.FrameHeight > 0 ? drawSheet.FrameHeight : drawSheet.ImageHeight;
@@ -6264,7 +6268,7 @@ public unsafe class EditorObject
         float pxToWorld = normalized ? Player2DHeight / snapH : Player2DHeight / cellH;
         float w = MathF.Max(0.05f, cellW * pxToWorld);
         float h = MathF.Max(0.05f, cellH * pxToWorld);
-        float mirror = (Player2DFacingRight ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
+        float mirror = ((Player2DFacingRight ^ Player2DFlipFacing) ? 1f : -1f) * (drawSheet.FlipX ? -1f : 1f);
         float offX = ((sizingClip?.SpriteOffsetX ?? 0f) + (drawFrame?.RenderOffsetX ?? 0f)) * pxToWorld * mirror;
         float offY = ((sizingClip?.SpriteOffsetY ?? 0f) + (drawFrame?.RenderOffsetY ?? 0f)) * pxToWorld;
 

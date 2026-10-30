@@ -1,0 +1,34 @@
+[QualitySettings] Preset LOW - MSAA 1x, shadow 2048/1024/512, filter 0
+[Glfw] Init: 2560x1351, fullscreen=False, borderless=False
+Versi OpenGL aktif: 4.6.0 Compatibility Profile Context 26.10.1.261008
+[IDE] Creating ImGuiController...
+[ImGui] Step 1: CreateContext...
+[ImGui] Step 1 OK
+[ImGui] imgui.ini: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\imgui.ini
+[ImGui] Default font: segoeui.ttf @ 20px
+[ImGui] Merged Segoe UI Symbol for symbol glyphs
+[ImGui] Step 2: BuildKeyMap...
+[ImGui] Step 2 OK
+[ImGui] Step 3: CreateDeviceResources...
+[ImGui] Step 3 OK
+[ImGui] Step 4: UpdateFontTexture (if not already built)...
+[ImGui] Step 4 OK
+[ImGui] Char callback installed.
+[ImGuiController] Initialized.
+[IDE] ImGuiController OK
+[MapEditor] Loaded grid/palette prefs from settings.
+[HUD] Created font slot 0: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 13px
+[HUD] Created font slot 1: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 26px
+[HUD] Created font slot 2: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 16px
+[HUD] Created font slot 3: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 24px
+[HUD] Created font slot 4: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 15px
+[HUD] Created font slot 5: C:\Users\hend_\source\repos\DarkEngine3D_gl_csharp\bin\Debug\net9.0\Artifacts\fonts\Worldstar.ttf @ 22px
+[IDE] Initialized.
+[SceneManager] Shared MSAA FBO incomplete: 0x8CD6
+[SceneManager] Shared FBO created (2560x1351, MSAA off)
+[IDE] Restored panel focus: Render Time
+Exiting via File > Exit
+[ImGuiController] Shutdown.
+Engine Shutdown.
+[ImGuiController] Shutdown.
+Program Shutdown.
