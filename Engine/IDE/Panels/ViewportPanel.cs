@@ -3196,16 +3196,37 @@ public unsafe class ViewportPanel
             windowFlags |= ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
                            ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoNavFocus;
 
+        // Begin() returns false for a window whose items are SKIPPED — e.g. this tab
+        // sitting BEHIND the Animation Editor in the same dock node.
+        bool tabShown;
         if (_fullscreenMode)
         {
             // Fullscreen: no close button (no ref _visible)
-            ImGui.Begin("Viewport", windowFlags);
+            tabShown = ImGui.Begin("Viewport", windowFlags);
         }
         else
         {
-            ImGui.Begin("Viewport", ref _visible, windowFlags);
+            tabShown = ImGui.Begin("Viewport", ref _visible, windowFlags);
         }
         ImGui.PopStyleVar();
+
+        // ── HIDDEN DOCK TAB = INERT PANEL ──
+        // When another panel (Animation Editor, Map Editor, ...) is the front tab of
+        // this dock node, ImGui hides this window but still runs this method. The
+        // hit tests below are hand-rolled: they read the GLOBAL mouse state and compare
+        // it against screen rects, and a hidden tab shares the node's rect — so every
+        // click/drag in the panel in front used to select, drag, paint and pan through
+        // the viewport behind it. Only the visible tab may touch input: drop focus,
+        // freeze scene/camera input and skip the body (a hidden tab draws nothing).
+        if (!tabShown)
+        {
+            _bridge.IsViewportFocused = false;
+            _bridge.SuppressViewportInput = true;   // camera + scene input stay frozen
+            _bridge.ScrollCapturedByUI = true;      // wheel belongs to the panel in front
+            ImGui.End();
+            return;
+        }
+
         IDE.PanelFocus.Notify("Viewport");
 
         // Track whether the viewport is focused
