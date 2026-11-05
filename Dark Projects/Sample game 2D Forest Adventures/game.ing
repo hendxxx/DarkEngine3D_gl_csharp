@@ -3543,8 +3543,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 20,
-          "posY": 7,
+          "posX": 32.66784,
+          "posY": 6.4,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -3564,7 +3564,7 @@
           "npcBadgeLift": 0,
           "npcPromptPos": 1,
           "player2DSpriteSheet": "mainsprite1",
-          "player2DAnimationClip": "Male Skin1-idle",
+          "player2DAnimationClip": "Armored Corset-attack",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 16,
@@ -3605,6 +3605,17 @@
           "effect2DWindFactor": -1,
           "effect2DOffsetY": 0,
           "effect2DEnabled": true,
+          "directEquipLayers": [
+            {
+              "sheet": "mainsprite1",
+              "clip": "Male-Hair1-idle",
+              "layer": 0,
+              "offsetX": 0,
+              "offsetY": 0,
+              "worldHeight": 0,
+              "syncFrame": true
+            }
+          ],
           "sprite2DRenderLayer": 0,
           "sprite2DWorldWidth": 0,
           "player2DRenderLayer": 0,
@@ -6269,6 +6280,17 @@
           "effect2DWindFactor": -1,
           "effect2DOffsetY": 0,
           "effect2DEnabled": true,
+          "directEquipLayers": [
+            {
+              "sheet": "mainsprite1",
+              "clip": "Male-Hair1-idle",
+              "layer": 0,
+              "offsetX": 0,
+              "offsetY": 0,
+              "worldHeight": 0,
+              "syncFrame": true
+            }
+          ],
           "sprite2DRenderLayer": -1,
           "sprite2DWorldWidth": 0,
           "player2DRenderLayer": 0,
@@ -6910,7 +6932,7 @@
           "npcBadgeLift": 0,
           "npcPromptPos": 1,
           "player2DSpriteSheet": "mainsprite1",
-          "player2DAnimationClip": "Male Skin1-idle",
+          "player2DAnimationClip": "Female Skin1-idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 67.6,
@@ -6951,6 +6973,17 @@
           "effect2DWindFactor": -1,
           "effect2DOffsetY": 0,
           "effect2DEnabled": true,
+          "directEquipLayers": [
+            {
+              "sheet": "mainsprite1",
+              "clip": "Male-Hair1-idle",
+              "layer": 0,
+              "offsetX": 0,
+              "offsetY": 0,
+              "worldHeight": 0,
+              "syncFrame": true
+            }
+          ],
           "sprite2DRenderLayer": 0,
           "sprite2DWorldWidth": 0,
           "player2DRenderLayer": 0,

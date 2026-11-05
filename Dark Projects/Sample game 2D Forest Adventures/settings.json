@@ -39,7 +39,7 @@
   "MapEditorPaletteGridColorA": 0.25,
   "MapEditorPaletteCols": 18,
   "MapEditorPaletteCell": 32,
-  "LastFocusedPanel": "Sprite Editor",
+  "LastFocusedPanel": "Scene Manager",
   "OrthoZoomMin": 2,
   "OrthoZoomMax": 200,
   "OrthoZoomDisabled": false,
