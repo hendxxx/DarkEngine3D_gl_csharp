@@ -173,6 +173,10 @@ public class IDEBridge
     // base art (log said success, sprite never changed).
     private static readonly Dictionary<string, (SpriteSheet sheet, uint texId, int imgW, int imgH)> _spriteSheets = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<(string sheet, string clip), AnimationClip2D> _spriteClips = new();
+    /// <summary>Baked-atlas names ("mainspriteN") the editor pushed in the last
+    /// SyncSpriteRegistry — the bake OUTPUT is never an overlay-layer candidate.
+    /// Kept as a set refreshed per sync; reads are O(1).</summary>
+    private static readonly HashSet<string> _bakedSheetNames = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Bumped on every SyncSpriteRegistry — sprite-data caches (e.g. the
     /// equipment auto-clip match) invalidate themselves by comparing this.</summary>
@@ -201,12 +205,55 @@ public class IDEBridge
     /// renderer asks per layer per FRAME, so the scan must not re-run every frame.</summary>
     private static readonly Dictionary<(string sheet, string baseName), (AnimationClip2D? clip, int ver)> _autoClipMatchCache = new();
 
+    /// <summary>Live Role of every SOURCE sheet in the editor (Name → "Accessories" /
+    /// "Base Character"), refreshed by SyncSpriteRegistry. Clips are baked onto an atlas
+    /// (mainspriteN), so the atlas itself carries no role: "is this clip accessory art?"
+    /// is answered by the role of the sheet the clip was baked FROM (clip.SourceSheetName).</summary>
+    private static readonly Dictionary<string, string> _sheetRoles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Bumped whenever a sheet's Role changes — the accessory-clip list caches key
+    /// on it so flipping Role in the Sprite Editor reaches the pickers on the next frame
+    /// (a role edit does not touch the clip/texture signature gate).</summary>
+    private static int _sheetRoleVersion;
+
+    /// <summary>Record the current roles of the editor's source sheets (cheap: a few
+    /// entries, filled in place). Runs before the change-detection gate so a Role flip is
+    /// never swallowed by "nothing else changed".</summary>
+    private static void RefreshSheetRoles(IEnumerable<SpriteSheet>? sourceSheets)
+    {
+        if (sourceSheets == null) return;
+        var next = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in sourceSheets)
+            if (s != null && !string.IsNullOrWhiteSpace(s.Name))
+                next[s.Name] = DarkEngine3D_gl_csharp.Engine.Visual.SpriteSheet.NormalizeRole(s.Role);
+
+        bool changed = next.Count != _sheetRoles.Count;
+        if (!changed)
+            foreach (var kv in next)
+                if (!_sheetRoles.TryGetValue(kv.Key, out var old) ||
+                    !string.Equals(old, kv.Value, StringComparison.OrdinalIgnoreCase))
+                { changed = true; break; }
+        if (!changed) return;
+
+        _sheetRoles.Clear();
+        foreach (var kv in next) _sheetRoles[kv.Key] = kv.Value;
+        _sheetRoleVersion++;
+    }
+
     /// <summary>Replace the static registry contents (called by SpriteEditorPanel every
     /// frame with its live sheet/clip lists + preview textures).</summary>
     public static void SyncSpriteRegistry(
         IEnumerable<SpriteSheet> sheets, Dictionary<string, uint> textures,
-        IEnumerable<AnimationClip2D> clips)
+        IEnumerable<AnimationClip2D> clips,
+        IEnumerable<string>? bakedAtlasNames = null,
+        IEnumerable<SpriteSheet>? sourceSheets = null)
     {
+        _bakedSheetNames.Clear();
+        if (bakedAtlasNames != null)
+            foreach (var n in bakedAtlasNames)
+                if (!string.IsNullOrWhiteSpace(n)) _bakedSheetNames.Add(n);
+        // Roles are refreshed BEFORE the gate below (see RefreshSheetRoles).
+        RefreshSheetRoles(sourceSheets);
         // ── CHANGE-DTECTION GATE (per-frame sync fix) ──
         // SyncRegistry() runs EVERY frame (even with the Sprite Editor hidden), and the
         // old code unconditionally cleared + rebuilt the dictionaries, invalidated the
@@ -257,8 +304,9 @@ public class IDEBridge
         _spriteClips.Clear();
         foreach (var c in clips)
             _spriteClips[(c.SpriteSheetName, c.Name)] = c;
-        _autoClipMatchCache.Clear(); // sheet/clip lists changed — cached matches are stale
-        _clipNamesCache.Clear();     // per-sheet name lists are stale too
+        _autoClipMatchCache.Clear();       // sheet/clip lists changed — cached matches are stale
+        _clipNamesCache.Clear();           // per-sheet name lists are stale too
+        _accessoryClipNamesCache.Clear();  // and so are the accessory-only subsets
         SpriteRegistryVersion++;
     }
 
@@ -396,6 +444,80 @@ public class IDEBridge
 
     public static List<string> GetSpriteSheetNames()
         => _spriteSheets.Keys.OrderBy(k => k).ToList();
+
+    /// <summary>Names of the ACTIVE sheets usable as a DIRECT overlay/equipment layer:
+    /// live sheets whose Role is "Accessories" (the sheet's type, set per sheet in the
+    /// Sprite Editor → Sheet Settings), excluding the baked atlases (mainspriteN — they
+    /// are the bake OUTPUT, not overlay art). The registry stores the editor's live
+    /// SpriteSheet objects, so a role flip shows up on the next sync. Fallback: when no
+    /// sheet qualifies the full list is returned so a picker never goes empty.</summary>
+    public static List<string> GetAccessoriesSheetNames()
+    {
+        var names = _spriteSheets.Values
+            .Where(e => !_bakedSheetNames.Contains(e.sheet.Name))
+            .Where(e => !string.Equals(e.sheet.Role,
+                DarkEngine3D_gl_csharp.Engine.Visual.SpriteSheet.RoleBaseCharacter,
+                StringComparison.OrdinalIgnoreCase))
+            .Select(e => e.sheet.Name)
+            .OrderBy(n => n).ToList();
+        return names.Count > 0 ? names : GetSpriteSheetNames();
+    }
+
+    /// <summary>Role of a live source sheet ("Accessories" / "Base Character"); "" when
+    /// the sheet is unknown. See <see cref="GetAccessoryClipNames"/>.</summary>
+    public static string GetSheetRole(string? sheetName)
+        => !string.IsNullOrEmpty(sheetName) && _sheetRoles.TryGetValue(sheetName, out var role)
+            ? role : "";
+
+    /// <summary>The role that governs a clip's ART: the source sheet it was baked from
+    /// (`Male Hair1` → Accessories) when known, otherwise the sheet the clip lives on.
+    /// A baked atlas is untyped, so without the source sheet every clip would look equal.</summary>
+    public static string GetClipRole(AnimationClip2D? clip)
+    {
+        if (clip == null) return "";
+        string role = GetSheetRole(clip.SourceSheetName);
+        if (role.Length > 0) return role;
+        role = GetSheetRole(clip.SpriteSheetName);
+        if (role.Length > 0) return role;
+        return _spriteSheets.TryGetValue(clip.SpriteSheetName ?? "", out var entry)
+            ? DarkEngine3D_gl_csharp.Engine.Visual.SpriteSheet.NormalizeRole(entry.sheet.Role) : "";
+    }
+
+    /// <summary>True when the clip's art is typed "Accessories" — the only clips a direct
+    /// equipment layer may pick. A "Base Character" skin is what the layers dress.</summary>
+    public static bool IsAccessoryClip(AnimationClip2D? clip)
+        => string.Equals(GetClipRole(clip),
+            DarkEngine3D_gl_csharp.Engine.Visual.SpriteSheet.RoleAccessories,
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Per-sheet accessory-clip list cache (keyed on the clip registry version AND
+    /// the sheet-role version, so editing a Role refreshes it immediately).</summary>
+    private static readonly Dictionary<string, (List<string> names, int ver, int roleVer)> _accessoryClipNamesCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Clip names on <paramref name="sheetName"/> whose ART is typed "Accessories"
+    /// (see <see cref="GetClipRole"/>), sorted by name so the caller can group them by their
+    /// base name in one pass (`Male-Hair1-idle` / `-walk` / `-run` … → one `Male-Hair1`
+    /// header). Base Character skins are excluded — a heat/armor layer must never offer
+    /// `Male Skin1-run` as its art. Fallback: when the sheet has no accessory clip at all
+    /// (roles not configured yet) the full clip list is returned so a picker never goes empty.</summary>
+    public static List<string> GetAccessoryClipNames(string sheetName)
+    {
+        if (string.IsNullOrEmpty(sheetName)) return [];
+        if (_accessoryClipNamesCache.TryGetValue(sheetName, out var hit)
+            && hit.ver == SpriteRegistryVersion && hit.roleVer == _sheetRoleVersion)
+            return hit.names;
+
+        var names = _spriteClips
+            .Where(kv => string.Equals(kv.Key.sheet, sheetName, StringComparison.OrdinalIgnoreCase))
+            .Where(kv => IsAccessoryClip(kv.Value))
+            .Select(kv => string.IsNullOrEmpty(kv.Value.Name) ? kv.Key.clip : kv.Value.Name)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (names.Count == 0) names = GetClipNames(sheetName);
+
+        _accessoryClipNamesCache[sheetName] = (names, SpriteRegistryVersion, _sheetRoleVersion);
+        return names;
+    }
 
     /// <summary>Number of animation clips currently registered by the Sprite Editor
     /// (used by the Asset Browser to decide whether to show the clip boxes).</summary>

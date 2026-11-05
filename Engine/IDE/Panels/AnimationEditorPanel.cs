@@ -74,6 +74,11 @@ public class AnimationEditorPanel
     /// <summary>Session-only loadout for UNGROUPED clips (no group to persist it on).</summary>
     private readonly List<PreviewLoadoutEntry> _ungroupedLoadout = new();
     private string _loadoutFilter = "";
+    /// <summary>Filter for the "+ Layer" atlas picker.</summary>
+    private string _atlasFilter = "";
+    /// <summary>Index of the loadout layer selected in the layers list (-1 = none) —
+    /// the properties block below edits THIS layer.</summary>
+    private int _loadoutSel = -1;
 
     // ── Timeline (Unity-style track view) ──
     /// <summary>Track-header column width (name + "frame" sub-track labels).</summary>
@@ -1021,17 +1026,19 @@ public class AnimationEditorPanel
         Status($"Added '{def.Name}' to the preview loadout (equip layer {def.EquipLayer}).");
     }
 
-    private void AddLoadoutSheet(string sheetName)
+    /// <param name="allowDuplicate">"+ Layer" passes true: the same atlas can dress two
+    /// layers (hair + bangs) because each entry carries its own clip, order and offsets.</param>
+    private void AddLoadoutSheet(string sheetName, bool allowDuplicate = false)
     {
         var list = ActiveLoadout();
-        if (list.Any(e => string.IsNullOrEmpty(e.ItemId) &&
+        if (!allowDuplicate && list.Any(e => string.IsNullOrEmpty(e.ItemId) &&
                           string.Equals(e.Sheet, sheetName, StringComparison.OrdinalIgnoreCase)))
         {
             Status($"Sheet '{sheetName}' is already on the preview.");
             return;
         }
         list.Add(new PreviewLoadoutEntry { Sheet = sheetName, Layer = 1 });
-        Status($"Added sheet '{sheetName}' to the preview loadout.");
+        Status($"Added layer from atlas '{sheetName}'.");
     }
 
     /// <summary>Accept either palette payload — used by BOTH drop targets (the preview
@@ -1074,11 +1081,38 @@ public class AnimationEditorPanel
         public string Problem = "";
     }
 
+    private AnimationClip2D? PreviewBaseClip => _boundClip;
+
+    /// <summary>The equipped base-attachments sheet the preview uses as its "character".
+    /// Empty until a clip explicitly declares one (preview base-only mode); when set,
+    /// the preview draws that sheet's frames as the dressed base and its loadout layers
+    /// attach onto IT (e.g. hair/hat on Male Hair1 + Male Body) instead of the selected
+    /// animation clip's frame.</summary>
+    private string? PreviewBaseSheetName;
+    //private AnimationClip2D? PreviewBaseClip;
+
     private List<ResolvedLoadoutLayer> ResolveLoadoutLayers(string baseClipName, int baseLocalFrame, int baseFrameIdx)
     {
         var result = new List<ResolvedLoadoutLayer>();
         var entries = ActiveLoadout();
         if (entries.Count == 0) return result;
+
+        // When a preview base is set, the selected animation clip is NOT the dressed base;
+        // the base sheet+clip on PreviewBaseSheetName provides the frame everyone attaches to.
+        // The baseClipName passed in for the attacher's auto-clip-match is still the action
+        // being previewed (so 'hair-run' follows 'run'), but the framed base art comes from
+        // the preview base if present.
+        AnimationClip2D? effectiveBaseClip = PreviewBaseSheetName != null && PreviewBaseClip != null
+            ? PreviewBaseClip
+            : null;
+        int effectiveBaseLocalFrame = effectiveBaseClip != null ? baseLocalFrame : baseLocalFrame;
+        int effectiveBaseFrameIdx = effectiveBaseClip != null
+            ? effectiveBaseClip.SourceFrameIndices.Count > 0
+                ? effectiveBaseClip.SourceFrameIndices[Math.Clamp(baseLocalFrame, 0,
+                    effectiveBaseClip.SourceFrameIndices.Count - 1)]
+                : effectiveBaseClip.FrameIndices[Math.Clamp(baseLocalFrame, 0,
+                    effectiveBaseClip.FrameIndices.Count - 1)]
+            : baseFrameIdx;
 
         foreach (var entry in entries)
         {
@@ -1171,6 +1205,15 @@ public class AnimationEditorPanel
     }
 
     private void DrawLoadoutLayer(ResolvedLoadoutLayer l, Vector2 cursorPos, float previewSize, ImDrawListPtr drawList)
+        => DrawLoadoutLayerInRect(l, cursorPos.X, cursorPos.Y, previewSize, previewSize, drawList);
+
+    /// <summary>Draw one resolved layer inside a character box — the preview square or
+    /// a timeline key thumbnail. World-unit offsets/height scale with the box, feet on
+    /// its bottom edge, horizontally centered: the SAME mapping for both, so a key
+    /// thumbnail shows exactly what the preview (and the bake) composites.</summary>
+    private void DrawLoadoutLayerInRect(ResolvedLoadoutLayer l,
+        float rectX, float rectY, float rectW, float rectH, ImDrawListPtr drawList,
+        uint tint = 0xFFFFFFFFu)
     {
         if (!l.Visible || l.Problem.Length > 0 || l.Sheet == null || l.Tex == 0) return;
         var sheet = l.Sheet;
@@ -1192,13 +1235,13 @@ public class AnimationEditorPanel
         // Size: EquipWorldHeight in world units (0 = the character's own height; width
         // keeps the art's aspect). The preview treats the character as 1 world unit tall —
         // in-game the scene object's real height wins.
-        float oh = (l.WorldHeight > 0f ? l.WorldHeight : 1f) * previewSize;
+        float oh = (l.WorldHeight > 0f ? l.WorldHeight : 1f) * rectH;
         float ow = oh * (ocellW / MathF.Max(1f, ocellH));
 
-        float tileBottom = cursorPos.Y + previewSize;          // the feet line (master-box bottom)
-        float tileCenterX = cursorPos.X + previewSize * 0.5f;  // master-box center
-        float cx = tileCenterX + l.OffsetX * previewSize;
-        float bottom = tileBottom - l.OffsetY * previewSize;
+        float tileBottom = rectY + rectH;            // the feet line (character-box bottom)
+        float tileCenterX = rectX + rectW * 0.5f;    // character-box center
+        float cx = tileCenterX + l.OffsetX * rectW;
+        float bottom = tileBottom - l.OffsetY * rectH;
         float x0 = cx - ow * 0.5f;
 
         var (ouvMin, ouvMax) = sheet.GetFrameUV(l.FrameIdx);
@@ -1209,7 +1252,7 @@ public class AnimationEditorPanel
         if (sheet.FlipX) (u0, u1) = (u1, u0);
 
         drawList.AddImage((nint)l.Tex, new Vector2(x0, bottom - oh),
-            new Vector2(x0 + ow, bottom), new Vector2(u0, vTop), new Vector2(u1, vBot));
+            new Vector2(x0 + ow, bottom), new Vector2(u0, vTop), new Vector2(u1, vBot), tint);
     }
 
     /// <summary>Layers list (left, drop target) + palette (right, drag sources) below the
@@ -1218,7 +1261,13 @@ public class AnimationEditorPanel
     {
         ImGui.TextDisabled("PREVIEW LOADOUT");
         ImGui.SameLine();
-        ImGui.TextDisabled("— drag an item or a sheet onto the preview (or the list) to dress the character");
+        if (ImGui.Button("+ Layer"))
+            ImGui.OpenPopup("##addlayer");
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Add a layer and pick WHICH image atlas it uses\n(hair, hat, weapon…). The layer draws over the character\nand can be offset/scaled below.");
+        DrawAddLayerPopup();
+        ImGui.SameLine();
+        ImGui.TextDisabled("— or drag an item / sheet onto the preview (or the list)");
         if (string.IsNullOrEmpty(clip.GroupPath))
             ImGui.TextColored(ColDim,
                 "Ungrouped clip: this loadout is session-only — assign a Group in CLIP properties to keep it.");
@@ -1231,6 +1280,12 @@ public class AnimationEditorPanel
             new Vector2(MathF.Max(240f, ImGui.GetContentRegionAvail().X - palW - 8f), h),
             ImGuiChildFlags.Borders);
         int removeIdx = -1;
+        int moveUpIdx = -1, moveDnIdx = -1;
+        // Right-edge button column (▲ ▼ X) — the Selectable's width is shrunk by
+        // this so it NEVER overlaps the buttons: an overlapping earlier-submitted
+        // widget swallows their hover and the X silently looked dead.
+        const float RTextW = 22f, RGap = 6f;
+        float reservedBtns = 3 * RTextW + 2 * RGap;
         for (int i = 0; i < list.Count; i++)
         {
             var e = list[i];
@@ -1257,21 +1312,49 @@ public class AnimationEditorPanel
             if (!string.IsNullOrEmpty(e.ItemId) && InventorySystem.Find(e.ItemId) is { IsEquipment: false })
                 info = "item has no equip art";
 
-            ImGui.Text(name);
+            if (ImGui.Selectable($"{name}##losel{i}", _loadoutSel == i,
+                    ImGuiSelectableFlags.None,
+                    new Vector2(MathF.Max(40f, ImGui.GetContentRegionAvail().X - reservedBtns), 0)))
+                _loadoutSel = i;
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(e.ItemId.Length > 0
                     ? "Equipment item layer — sheet/clip/layer/offsets resolve LIVE from the item.\n"
                       + "Edit it in the Item Editor; the preview follows."
-                    : "Direct sheet layer — no item behind it.");
+                    : "Direct sheet layer — click to edit its atlas/clip/offset/height below.");
+
+            // ▲ ▼ X — right-aligned action column.
             ImGui.SameLine();
+            var btnSize = new Vector2(RTextW, ImGui.GetFrameHeight());
+            if (ImGui.ArrowButton("##mvup", ImGuiDir.Up) && i > 0) moveUpIdx = i;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move layer up");
+            ImGui.SameLine(0, RGap);
+            if (ImGui.ArrowButton("##mvdn", ImGuiDir.Down) && i < list.Count - 1) moveDnIdx = i;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move layer down");
+            ImGui.SameLine(0, RGap);
+            if (ImGui.Button("X##rmlayer", btnSize)) removeIdx = i;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove this layer");
+
             ImGui.TextDisabled(info);
-            ImGui.SameLine();
-            if (ImGui.Button("X##rmlayer")) removeIdx = i;
             ImGui.PopID();
         }
-        if (removeIdx >= 0) list.RemoveAt(removeIdx);
+        if (removeIdx >= 0)
+        {
+            list.RemoveAt(removeIdx);
+            if (_loadoutSel == removeIdx) _loadoutSel = -1;
+            else if (_loadoutSel > removeIdx) _loadoutSel--;
+        }
+        if (moveUpIdx >= 0 && moveUpIdx > 0 && moveUpIdx < list.Count)
+        {
+            (list[moveUpIdx - 1], list[moveUpIdx]) = (list[moveUpIdx], list[moveUpIdx - 1]);
+            if (_loadoutSel == moveUpIdx) _loadoutSel--;
+        }
+        if (moveDnIdx >= 0 && moveDnIdx >= 0 && moveDnIdx + 1 < list.Count)
+        {
+            (list[moveDnIdx], list[moveDnIdx + 1]) = (list[moveDnIdx + 1], list[moveDnIdx]);
+            if (_loadoutSel == moveDnIdx) _loadoutSel++;
+        }
         if (list.Count == 0)
-            ImGui.TextDisabled("(empty — drop an item or a sheet here)");
+            ImGui.TextDisabled("(empty — use + Layer, or drop an item / sheet here)");
 
         // Drop zone (second target besides the preview canvas itself).
         Vector2 zonePos = ImGui.GetCursorScreenPos();
@@ -1335,6 +1418,151 @@ public class AnimationEditorPanel
                 ? "(no equipment items in the catalog, no sheets loaded)"
  : "(nothing matches the filter)");
         ImGui.EndChild();
+
+        DrawLoadoutLayerProps();
+    }
+
+    /// <summary>Every atlas the layer pickers can use: the Sprite Editor's source sheets
+    /// first (the imports), then baked atlases that are not already listed.</summary>
+    private List<SpriteSheet> AllAtlasSheets()
+    {
+        var list = new List<SpriteSheet>(_spriteEditor.SpriteSheets);
+        foreach (var b in _spriteEditor.BakedAtlasSheetsPublic)
+            if (!list.Any(s => string.Equals(s.Name, b.Name, StringComparison.OrdinalIgnoreCase)))
+                list.Add(b);
+        return list;
+    }
+
+    /// <summary>Active source sheets usable as a direct overlay/equipment layer in the
+    /// Animation Editor's "+ Layer" and layer-property atlas pickers. Mirrors
+    /// IDEBridge.GetAccessoriesSheetNames (Role == Accessories, exclude baked atlases)
+    /// but returns the SpriteSheet objects themselves so the picker can show frame counts
+    /// from the SOURCE sheets (not the baked atlases).
+    ///
+    /// When no source sheet is typed Accessories, the full source-sheet list is returned
+    /// as a fallback so a fresh project that has not configured roles yet still has options.</summary>
+    private List<SpriteSheet> AccessorySourceSheets()
+    {
+        var list = new List<SpriteSheet>();
+        foreach (var s in _spriteEditor.SpriteSheets)
+            if (string.Equals(SpriteSheet.NormalizeRole(s.Role), SpriteSheet.RoleAccessories,
+                    StringComparison.OrdinalIgnoreCase))
+                list.Add(s);
+        if (list.Count == 0)
+            list.AddRange(_spriteEditor.SpriteSheets);
+        return list;
+    }
+
+    /// <summary>"+ Layer" picker: choose WHICH image atlas the new layer comes from, then
+    /// add it as a direct sheet layer (resolved like any other overlay, with its own
+    /// clip / draw order / offsets / height in the properties block below).</summary>
+    private void DrawAddLayerPopup()
+    {
+        if (!ImGui.BeginPopup("##addlayer")) return;
+
+        ImGui.TextDisabled("Add layer from an image atlas");
+        ImGui.PushItemWidth(280f);
+        ImGui.InputTextWithHint("##atlasfilter", "filter atlas…", ref _atlasFilter, 64);
+        ImGui.PopItemWidth();
+        ImGui.Separator();
+
+        ImGui.BeginChild("##atlaslist", new Vector2(320f, 240f));
+        string filter = _atlasFilter.Trim();
+        int shown = 0;
+        foreach (var s in AccessorySourceSheets())
+        {
+            if (filter.Length > 0 && !s.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+            int cells = Math.Max(0, s.Columns) * Math.Max(0, s.Rows);
+            string label = cells > 0
+                ? $"{s.Name}  ({cells} frame{(cells == 1 ? "" : "s")})##atlas{s.Name}"
+                : $"{s.Name}##atlas{s.Name}";
+            if (ImGui.Selectable(label))
+            {
+                AddLoadoutSheet(s.Name, allowDuplicate: true);
+                _loadoutSel = ActiveLoadout().Count - 1;
+                ImGui.CloseCurrentPopup();
+            }
+            shown++;
+        }
+        if (shown == 0 && AccessorySourceSheets().Count == 0)
+            ImGui.TextDisabled("(no atlases loaded — import a sheet in the Sprite Editor)");
+        else if (shown == 0)
+            ImGui.TextDisabled("(nothing matches the filter)");
+        ImGui.EndChild();
+        ImGui.EndPopup();
+    }
+
+    /// <summary>Properties of the selected layer. Item layers resolve LIVE from the item
+    /// catalog (nothing to edit here); direct sheet layers — the ones added with
+    /// "+ Layer" — own their atlas, clip, draw order, offsets and height.</summary>
+    private void DrawLoadoutLayerProps()
+    {
+        var list = ActiveLoadout();
+        if (_loadoutSel < 0 || _loadoutSel >= list.Count)
+        {
+            if (list.Count > 0)
+                ImGui.TextDisabled("Click a layer above to edit its atlas, clip, offset and height.");
+            return;
+        }
+        var e = list[_loadoutSel];
+        if (!string.IsNullOrEmpty(e.ItemId))
+        {
+            ImGui.TextDisabled("Item layer — its art comes from the Item Editor (Equip Art).");
+            return;
+        }
+
+        ImGui.TextDisabled($"LAYER \"{(string.IsNullOrEmpty(e.Sheet) ? "(none)" : e.Sheet)}\"");
+        ImGui.SameLine();
+        ImGui.TextDisabled("· atlas / clip / draw order / placement");
+
+        // ── Atlas ──
+        ImGui.SetNextItemWidth(300f);
+        if (ImGui.BeginCombo("Atlas##layprop", string.IsNullOrEmpty(e.Sheet) ? "(pick atlas)" : e.Sheet))
+        {
+            foreach (var s in AccessorySourceSheets())
+                if (ImGui.Selectable(s.Name, string.Equals(s.Name, e.Sheet, StringComparison.OrdinalIgnoreCase)))
+                {
+                    e.Sheet = s.Name;
+                    e.Clip = ""; // clip names belong to the previous atlas
+                }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Which image atlas this layer draws from.");
+
+        // ── Clip (empty = auto-match the base clip's action) ──
+        var clipNames = string.IsNullOrEmpty(e.Sheet) ? new List<string>() : IDEBridge.GetClipNames(e.Sheet);
+        string clipPreview = string.IsNullOrEmpty(e.Clip) ? "(auto: match base action)" : e.Clip;
+        ImGui.SetNextItemWidth(300f);
+        if (ImGui.BeginCombo("Clip##layprop", clipPreview))
+        {
+            if (ImGui.Selectable("(auto: match base action)", e.Clip.Length == 0)) e.Clip = "";
+            foreach (var c in clipNames)
+                if (ImGui.Selectable(c, string.Equals(c, e.Clip, StringComparison.OrdinalIgnoreCase)))
+                    e.Clip = c;
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Overlay animation. Auto = reuse the base clip's action (idle→idle, walk→walk).");
+
+        // ── Draw order + placement ──
+        int layerNo = e.Layer;
+        if (ImGui.DragInt("Draw order##layprop", ref layerNo, 0.1f, -20, 20))
+            e.Layer = Math.Clamp(layerNo, -20, 20);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Negative draws BEHIND the character, positive draws over it.\nHigher values draw last (on top).");
+
+        float ox = e.OffsetX, oy = e.OffsetY, wh = e.WorldHeight;
+        if (ImGui.DragFloat("Offset X##layprop", ref ox, 0.005f)) e.OffsetX = ox;
+        if (ImGui.DragFloat("Offset Y##layprop", ref oy, 0.005f)) e.OffsetY = oy;
+        if (ImGui.DragFloat("Height##layprop", ref wh, 0.01f, 0f, 4f)) e.WorldHeight = MathF.Max(0f, wh);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("0 = same height as the character; smaller = a shorter overlay (a hat).");
+
+        bool sync = e.SyncFrame;
+        if (ImGui.Checkbox("Sync frame with base##layprop", ref sync)) e.SyncFrame = sync;
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("ON = clothing follows the base clip's frame position.\nOFF = animates on the overlay's own FPS (auras/fire).");
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1650,7 +1878,12 @@ public class AnimationEditorPanel
                 return (c & 0x00FFFFFFu) | (na << 24);
             }
 
-            // One key card: background, frame thumbnail, border, frame/local labels.
+            // Resolve per-key loadout layers once per key (thumbnails are re-drawn every
+            // frame; the resolve is pure lookup work, so memoise it per DrawTimeline pass).
+            var tlLayerCache = new Dictionary<int, List<ResolvedLoadoutLayer>>();
+
+            // One key card: background, frame thumbnail (+ loadout layer composite),
+            // border, frame/local labels.
             void DrawKey(float x0, float x1, float y0, float y1, int fi, int li,
                          bool selected, bool active, bool hot, bool ghost)
             {
@@ -1667,25 +1900,45 @@ public class AnimationEditorPanel
                 tl.AddRectFilled(new Vector2(x0, y0), new Vector2(x1, y1), Alpha(bg, a), 4f);
 
                 // Thumbnail of the frame's own art, bottom-aligned inside the key.
+                // The fitted art rect doubles as the CHARACTER BOX for the loadout
+                // layers, so a hair/hat key thumbnail sits exactly where the preview
+                // (and the bake) puts it.
                 float thumbBot = y1 - 14f;
-                if (artTex != 0 && artSheet != null && artCellW > 0f && artCellH > 0f
-                    && thumbBot - y0 > 8f)
+                float boxH = MathF.Max(2f, thumbBot - (y0 + 2f));
+                float fitW = MathF.Max(2f, (x1 - x0) - 8f);
+                float ix = x0 + ((x1 - x0) - fitW) * 0.5f;
+                float iy = thumbBot - boxH;
+                float iw = fitW, ih = boxH;
+                bool haveBaseArt = artTex != 0 && artSheet != null && artCellW > 0f
+                    && artCellH > 0f && boxH > 8f;
+
+                // Painter's order identical to the preview and the bake: behind-layers
+                // (Layer < 0) → base art → front layers (Layer ≥ 0).
+                if (!tlLayerCache.TryGetValue(li, out var keyLayers))
+                    keyLayers = tlLayerCache[li] = ResolveLoadoutLayers(clip.Name, li, fi);
+                foreach (var ov in keyLayers)
+                    if (ov.Layer < 0)
+                        DrawLoadoutLayerInRect(ov, ix, iy, iw, ih, tl, Alpha(0xFFFFFFFFu, a));
+
+                if (haveBaseArt)
                 {
-                    var (uvMin, uvMax) = artSheet.GetFrameUV(fi);
+                    var (uvMin, uvMax) = artSheet!.GetFrameUV(fi);
                     float tu0 = uvMin.X, tu1 = uvMax.X;
                     float tvTop = 1f - uvMax.Y, tvBot = 1f - uvMin.Y;
                     if (artSheet.FlipY) (tvTop, tvBot) = (tvBot, tvTop);
                     if (artSheet.FlipX) (tu0, tu1) = (tu1, tu0);
 
-                    float availW = MathF.Max(2f, (x1 - x0) - 8f);
-                    float availH = MathF.Max(2f, thumbBot - (y0 + 2f));
-                    float fit = MathF.Min(availW / artCellW, availH / artCellH);
-                    float iw = MathF.Max(2f, artCellW * fit), ih = MathF.Max(2f, artCellH * fit);
-                    float ix = x0 + ((x1 - x0) - iw) * 0.5f;
-                    float iy = thumbBot - ih;
+                    float fit = MathF.Min(fitW / artCellW, boxH / artCellH);
+                    iw = MathF.Max(2f, artCellW * fit); ih = MathF.Max(2f, artCellH * fit);
+                    ix = x0 + ((x1 - x0) - iw) * 0.5f;
+                    iy = thumbBot - ih;
                     tl.AddImage((nint)artTex, new Vector2(ix, iy), new Vector2(ix + iw, iy + ih),
                         new Vector2(tu0, tvTop), new Vector2(tu1, tvBot), Alpha(0xFFFFFFFFu, a));
                 }
+
+                foreach (var ov in keyLayers)
+                    if (ov.Layer >= 0)
+                        DrawLoadoutLayerInRect(ov, ix, iy, iw, ih, tl, Alpha(0xFFFFFFFFu, a));
 
                 if (selected || ghost)
                     tl.AddRect(new Vector2(x0, y0), new Vector2(x1, y1),

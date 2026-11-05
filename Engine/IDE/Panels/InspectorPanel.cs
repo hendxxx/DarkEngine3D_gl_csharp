@@ -3960,6 +3960,25 @@ public class InspectorPanel
         ImGui.Unindent();
     }
 
+    /// <summary>One picker row per clip FAMILY — the name before the last '-' — carrying the
+    /// real clip stored for that row: the family's `-idle` member when it exists (the pose
+    /// Frame sync starts from), else the family's first clip. A name without an `-action`
+    /// suffix is its own single-clip row, so one-off art keeps its own entry.</summary>
+    private static List<(string Family, string Anchor)> BuildClipFamilies(List<string> clips)
+    {
+        var families = new List<(string Family, string Anchor)>();
+        foreach (string c in clips)
+        {
+            string family = AnimationClipGroups.BaseNameOf(c);
+            if (family.Length == 0) { families.Add((c, c)); continue; }
+            int at = families.FindIndex(f => string.Equals(f.Family, family, StringComparison.OrdinalIgnoreCase));
+            if (at < 0) families.Add((family, c));
+            else if (string.Equals(AnimationClipGroups.ActionLabelOf(c), "idle", StringComparison.OrdinalIgnoreCase))
+                families[at] = (family, c);
+        }
+        return families;
+    }
+
     private void RenderEquipmentLayersInspector(EditorObject editorObj)
     {
         if (!ImGui.CollapsingHeader("Equipment Layers"))
@@ -4015,9 +4034,17 @@ public class InspectorPanel
         ImGui.Separator();
         ImGui.TextDisabled("Direct layers (attach sheet/clip tanpa item):");
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Art layers attached directly to this object — WITHOUT registering items in the Item Editor.\nWorks in the editor AND in-game, merged with paperdoll items (sorted by Layer).\nSheets/clips come from the Sprite Editor (including *-sprite-anim.json auto-loads).\nStored in the scene file.");
+            ImGui.SetTooltip("Art layers attached directly to this object — WITHOUT registering items in the Item Editor.\nWorks in the editor AND in-game, merged with paperdoll items (sorted by Layer).\nSheets = the ACTIVE sheets typed \"Accessories\" in the Sprite Editor\n(Role combo in Sheet Settings; \'Base Character\' skins and baked atlases are excluded).\nStored in the scene file.");
 
-        var sheets = IDEBridge.GetSpriteSheetNames();
+        // Only ACTIVE sheets typed "Accessories" qualify as overlay art — a
+        // "Base Character" skin is the sheet the layers dress, never a layer itself;
+        // baked atlases (mainspriteN) are the bake output and are excluded too.
+        var sheets = IDEBridge.GetAccessoriesSheetNames();
+        if (sheets.Count == 0)
+        {
+            ImGui.TextColored(new System.Numerics.Vector4(1f, 0.75f, 0.4f, 1f),
+                "(no sheets typed Accessories — load a sheet in the Sprite Editor)");
+        }
         int removeIdx = -1;
         for (int i = 0; i < editorObj.DirectEquipment.Count; i++)
         {
@@ -4035,9 +4062,9 @@ public class InspectorPanel
                     if (ImGui.Selectable(sheets[s], sel))
                     {
                         layer.Sheet = sheets[s];
-                        // Auto-select the first clip of the new sheet (dropdown rule).
-                        var newClips = IDEBridge.GetClipNames(layer.Sheet);
-                        layer.Clip = newClips.Count > 0 ? newClips[0] : "";
+                        // Auto-select the first clip FAMILY of the new sheet (dropdown rule).
+                        var newFamilies = BuildClipFamilies(IDEBridge.GetAccessoryClipNames(layer.Sheet));
+                        layer.Clip = newFamilies.Count > 0 ? newFamilies[0].Anchor : "";
                     }
                     if (sel) ImGui.SetItemDefaultFocus();
                 }
@@ -4046,21 +4073,39 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Sheet from the Sprite Editor (including *-sprite-anim.json auto-loads)");
 
-            // Clip combo (empty = sheet's implicit grid animates at 8 FPS).
-            var clips = IDEBridge.GetClipNames(layer.Sheet);
-            string clipShown = !string.IsNullOrEmpty(layer.Clip) ? layer.Clip : "(grid 8 fps)";
+            // Clip picker — ONE row per clip FAMILY ("Male-Hair1"), never one per pose:
+            // Frame sync already resolves the pose that matches the base character's action
+            // (FindAnimationClipForAction: idle → idle, run → run, Jump → jump start …), so
+            // picking "Male-Hair1-idle" vs "Male-Hair1-run" changed nothing.
+            // The family's real `-idle` clip (else its first clip) is what gets stored in
+            // layer.Clip — the ANCHOR — so every render path (frame sync, bake, own-FPS
+            // auras) keeps resolving an actual clip. Only clips whose ART is typed
+            // "Accessories" are offered: a "Base Character" skin is what the layers dress.
+            var clips = IDEBridge.GetAccessoryClipNames(layer.Sheet);
+            var families = BuildClipFamilies(clips);
+            string storedFamily = AnimationClipGroups.BaseNameOf(layer.Clip);
+            if (storedFamily.Length == 0) storedFamily = layer.Clip;
+            string clipShown = string.IsNullOrEmpty(layer.Clip) ? "(grid 8 fps)" : storedFamily;
             if (ImGui.BeginCombo("Clip", clipShown))
             {
                 if (ImGui.Selectable("(grid 8 fps)", string.IsNullOrEmpty(layer.Clip)))
                     layer.Clip = "";
-                for (int s = 0; s < clips.Count; s++)
+                foreach (var (family, anchor) in families)
                 {
-                    bool sel = clips[s] == layer.Clip;
-                    if (ImGui.Selectable(clips[s], sel)) layer.Clip = clips[s];
+                    bool sel = !string.IsNullOrEmpty(layer.Clip)
+                        && string.Equals(storedFamily, family, StringComparison.OrdinalIgnoreCase);
+                    if (ImGui.Selectable($"{family}##dlfam{anchor}", sel)) layer.Clip = anchor;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip($"{family}\nPoses follow the base action automatically (idle / walk / run / jump…).\n" +
+                            $"Anchor clip stored: {anchor}");
                     if (sel) ImGui.SetItemDefaultFocus();
                 }
                 ImGui.EndCombo();
             }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Clip family this layer plays — one row per family (Male-Hair1), not per pose.\n" +
+                    "With Frame sync ON the pose matches the base character's action; only sheets\n" +
+                    "typed \"Accessories\" are listed (a \'Base Character\' skin is the body being dressed).");
 
             int lyr = layer.Layer;
             if (ImGui.InputInt("Layer", ref lyr)) layer.Layer = lyr;
@@ -4093,7 +4138,7 @@ public class InspectorPanel
             else if (layer.SyncFrame)
             {
                 if (!string.IsNullOrEmpty(layer.Clip))
-                    ImGui.TextDisabled($"Frame sync uses matching action in: {layer.Clip}");
+                    ImGui.TextDisabled($"Frame sync: {storedFamily} follows the base action (anchor {layer.Clip})");
                 else
                     RenderEquipmentClipMatch(editorObj, layer.Sheet);
             }
@@ -4108,11 +4153,11 @@ public class InspectorPanel
         if (ImGui.Button("+ Add layer"))
         {
             string firstSheet = sheets.Count > 0 ? sheets[0] : "";
-            var firstClips = firstSheet.Length > 0 ? IDEBridge.GetClipNames(firstSheet) : new List<string>();
+            var firstFamilies = firstSheet.Length > 0 ? BuildClipFamilies(IDEBridge.GetAccessoryClipNames(firstSheet)) : [];
             editorObj.DirectEquipment.Add(new DirectEquipLayerData
             {
                 Sheet = firstSheet,
-                Clip = firstClips.Count > 0 ? firstClips[0] : ""
+                Clip = firstFamilies.Count > 0 ? firstFamilies[0].Anchor : ""
             });
         }
         if (ImGui.IsItemHovered())

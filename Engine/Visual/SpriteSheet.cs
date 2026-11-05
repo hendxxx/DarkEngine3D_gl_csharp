@@ -77,6 +77,22 @@ public class SpriteSheet
     /// Persisted in the save data (GroupName).</summary>
     public string GroupName { get; set; } = "";
 
+    // ── Sheet ROLE (persisted) ──
+    /// <summary>"Accessories" (default) = overlay art — offered as a direct equipment
+    /// layer in the pickers (hair, hats, clothes…). "Base Character" = a full character
+    /// skin (idle/walk/… grids): the base the overlays dress, never offered as an
+    /// overlay layer. Persisted through SpriteSheetData.Role; an unknown/missing
+    /// value in old saves normalizes to Accessories.</summary>
+    public const string RoleAccessories = "Accessories";
+    public const string RoleBaseCharacter = "Base Character";
+    /// <summary>This sheet's role — always one of RoleAccessories / RoleBaseCharacter.</summary>
+    public string Role { get; set; } = RoleAccessories;
+    /// <summary>Map any stored/typed value onto the two valid roles (old saves, typos).
+    /// null/empty → Accessories (the default).</summary>
+    public static string NormalizeRole(string? role)
+        => string.Equals(role?.Trim(), RoleBaseCharacter, StringComparison.OrdinalIgnoreCase)
+            ? RoleBaseCharacter : RoleAccessories;
+
     /// <summary>Custom frame regions (non-uniform mode). Null = use uniform grid.</summary>
     public List<SpriteFrame>? CustomFrames;
 
@@ -213,6 +229,7 @@ public class SpriteSheet
         FlipX = FlipX,
         NormalMapVersion = NormalMapVersion,
         GroupName = GroupName,
+        Role = Role,
         CustomFrames = CustomFrames?.Select(f => new SpriteFrameData
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -253,6 +270,7 @@ public class SpriteSheet
         FlipX = data.FlipX,
         NormalMapVersion = data.NormalMapVersion,
         GroupName = data.GroupName,
+        Role = NormalizeRole(data.Role),
         CustomFrames = data.CustomFrames?.Select(f => new SpriteFrame
         {
             X = f.X, Y = f.Y, Width = f.Width, Height = f.Height,
@@ -329,6 +347,10 @@ public class SpriteSheetData
     /// <summary>Sprite Sheets TREE GROUP name (empty = tree root). Saved with the
     /// sheet; the Sprite Editor's tree groups sheets by it.</summary>
     public string GroupName { get; set; } = "";
+    /// <summary>Sheet ROLE — "Accessories" (default) or "Base Character". Persisted as
+    /// a string so old saves (missing field) stay Accessories and no enum converter can
+    /// kill the whole sheets-file parse. Parsed leniently via SpriteSheet.NormalizeRole.</summary>
+    public string Role { get; set; } = "";
     public List<SpriteFrameData>? CustomFrames { get; set; }
 }
 

@@ -61,6 +61,9 @@ public class SpriteEditorPanel
     /// sheet (empty = tree root). Assigning the same name to several sheets groups
     /// them under one tree node.</summary>
     private string _newGroupName = "";
+    /// <summary>Buffer for the Sheet Settings "Role" combo target value applied to
+    /// the selected sheet(s): "Accessories" (default) or "Base Character".</summary>
+    private string _sheetRoleBuffer = SpriteSheet.RoleAccessories;
 
     // ── Auto Load All Files (async pipeline) ──
     // Scanning *-sprite-anim.json (recursive enumeration + JSON parse) runs on a
@@ -181,6 +184,9 @@ public class SpriteEditorPanel
     // ── Preview ──
     private float _previewZoom = 1f;
     private readonly Dictionary<string, uint> _previewTextures = new();
+    // Overlay cell pixel cache for bake-time loadout compositing (path → decoded PNG).
+    // Nullable values: a failed decode is cached too so one bad file never loops.
+    private readonly Dictionary<string, ImageResult?> _overlayImageCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _showPreview = true;
     private float _previewMaxWidth = 600f;
 
@@ -326,7 +332,8 @@ public class SpriteEditorPanel
         _lastSheetCount = sc; _lastClipCount = cc; _lastTextureCount = tc;
         var legacyRuntimeSheets = SpriteSheets.Where(sheet => AnimationClips.Any(clip =>
             string.Equals(clip.SpriteSheetName, sheet.Name, StringComparison.OrdinalIgnoreCase)));
-        IDEBridge.SyncSpriteRegistry(legacyRuntimeSheets.Concat(_bakedAtlasSheets), _previewTextures, AnimationClips);
+        IDEBridge.SyncSpriteRegistry(legacyRuntimeSheets.Concat(_bakedAtlasSheets), _previewTextures, AnimationClips,
+            _bakedAtlasSheets.Select(b => b.Name), SpriteSheets);
     }
 
     public void Render()
@@ -554,6 +561,43 @@ public class SpriteEditorPanel
                             applied++;
                         }
                         Console.WriteLine($"[SpriteEditor] Group '{(trimmed.Length == 0 ? "(root)" : trimmed)}' assigned to {applied} sheet(s)");
+                    }
+
+                    // ── Sheet Role (Accessories / Base Character) ──
+                    // Dictates WHERE the sheet is offered: "Accessories" (default) can be
+                    // picked as a direct overlay/equipment layer (hair, hats, clothes); a
+                    // "Base Character" skin is never offered there.
+                    bool roleChanged = false;
+                    string roleShown = SpriteSheet.NormalizeRole(SelectedSheet.Role);
+                    if (ImGui.BeginCombo("Role##sheetrole", roleShown))
+                    {
+                        if (ImGui.Selectable(SpriteSheet.RoleAccessories,
+                                string.Equals(roleShown, SpriteSheet.RoleAccessories, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _sheetRoleBuffer = SpriteSheet.RoleAccessories;
+                            roleChanged = true;
+                        }
+                        if (ImGui.Selectable(SpriteSheet.RoleBaseCharacter,
+                                string.Equals(roleShown, SpriteSheet.RoleBaseCharacter, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _sheetRoleBuffer = SpriteSheet.RoleBaseCharacter;
+                            roleChanged = true;
+                        }
+                        ImGui.EndCombo();
+                    }
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("What this sheet IS.\nAccessories (default) = overlay art, offered as a direct layer\nin the Equipment Layers picker (hair, hat, weapon…).\nBase Character = a full character skin — the sheet the overlays dress;\nnever offered as an overlay layer.");
+                    if (roleChanged)
+                    {
+                        _sheetRoleBuffer = SpriteSheet.NormalizeRole(_sheetRoleBuffer);
+                        // Apply to EVERY selected sheet (multi-select) — bulk re-role.
+                        int applied = 0;
+                        foreach (int idx in MultiSelectedSheetIndexes())
+                        {
+                            SpriteSheets[idx].Role = _sheetRoleBuffer;
+                            applied++;
+                        }
+                        Console.WriteLine($"[SpriteEditor] Role '{_sheetRoleBuffer}' assigned to {applied} sheet(s)");
                     }
 
                     ImGui.Separator();
@@ -2053,11 +2097,10 @@ public class SpriteEditorPanel
         {
             Sheets = _bakedAtlasSheets.Select(s => s.ToData()).ToList(),
             // Source sheets are bake inputs — this is what the Sprite Editor lists as
-            // its sheet list, groups and pickers. We save them from _loadSourceSheets
-            // (the file's declared SourceSheets), NOT from the live list, because the
-            // live list may be empty on project open and writing an empty SourceSheets
-            // would clobber the file and force a re-import on every reload.
-            SourceSheets = _loadSourceSheets?.Select(s => s.ToData()).ToList() ?? new List<SpriteSheetData>(),
+            // its sheet list, groups and pickers. CaptureSourceSheets() keeps the file's
+            // declared entries when the live list is empty (project open) and uses the
+            // live list otherwise, so sheets imported THIS SESSION persist too.
+            SourceSheets = CaptureSourceSheets(),
             AnimationClips = AnimationClips.Select(c => c.ToData()).ToList(),
             AnimationGroups = AnimationGroups.Select(g => g.Clone()).ToList(),
             Rigs = AnimationRigs.Select(r => r.Clone()).ToList(),
@@ -2074,6 +2117,22 @@ public class SpriteEditorPanel
             data.PreviewLoop = _animLoop;
         }
         return data;
+    }
+
+    /// <summary>What to persist as the file's <c>SourceSheets</c> (bake inputs).
+    /// The LIVE sheet list is authoritative whenever it is non-empty — it contains
+    /// everything the file carried PLUS sheets imported this session; earlier code
+    /// wrote only the file's entries here, so a sheet imported mid-session vanished
+    /// from the list after save/open. When the live list is empty (project open,
+    /// before the lazy restore) keep the file's declared entries instead of writing
+    /// an empty list that would clobber the file.</summary>
+    private List<SpriteSheetData> CaptureSourceSheets()
+    {
+        if (SpriteSheets.Count > 0)
+            return SpriteSheets.Where(s => !IsBakedAtlas(s.Name))
+                .Select(s => s.ToData()).ToList();
+        return _loadSourceSheets?.Select(s => s.ToData()).ToList()
+               ?? new List<SpriteSheetData>();
     }
 
     private SpriteSheetsSaveData CaptureUndoData()
@@ -2274,11 +2333,11 @@ public class SpriteEditorPanel
     }
 
     /// <summary>Bake a clip's selected source frames and return its runtime-ready
-    /// atlas reference. A same-name clip is excluded from occupancy so its old slots
-    /// can be reused rather than duplicated.</summary>
+    /// atlas reference. Loadout layers (see CompositeLoadoutOntoFrames) and a same
+    /// name clip exclusion (its old slots are reused rather than duplicated) apply.</summary>
     private bool TryBakeClip(SpriteSheet source, AnimationClip2D clip, out AnimationClip2D baked)
     {
-        baked = clip;
+        baked = null!;
         string directory = GetProjectSpriteDirectory();
         if (directory.Length == 0)
         {
@@ -2295,6 +2354,9 @@ public class SpriteEditorPanel
                 : clip.FrameIndices.ToList();
             var frames = ExtractBakedFrames(source, sourceIndices);
             if (frames == null || frames.Count == 0) return false;
+            // BAKE-TIME compositing: stamp the group's Preview Loadout layers (hair,
+            // hats…) onto the strip before packing — see CompositeLoadoutOntoFrames.
+            CompositeLoadoutOntoFrames(clip, frames);
             var keep = AnimationClips.Where(c => !string.Equals(c.Name, clip.Name,
                 StringComparison.OrdinalIgnoreCase)).ToList();
             var result = SpriteAtlasBaker.BakeClip(directory, clip.Name, frames,
@@ -2360,6 +2422,304 @@ public class SpriteEditorPanel
         }
         AnimationClips[index] = clip;
         return index;
+    }
+
+    // ── BAKE-TIME LOADOUT COMPOSITING ──
+    // The Animation Editor's Preview Loadout (hair, hats, auras…) was preview-only:
+    // a Bake still packed the bare base strip, so the runtime atlas lost the layers.
+    // These helpers stamp the group's loadout ONTO the extracted frames before packing,
+    // using the SAME resolution rules and painter's order as the preview:
+    // behind-layers (Layer < 0) → base → front layers (Layer ≥ 0).
+    // Mapping mirrors DrawLoadoutLayer: bottom-center anchored at the feet line,
+    // offsets/height in world units with 1 world unit == base frame height.
+
+    internal sealed class LoadoutBakeLayer
+    {
+        public required SpriteSheet Sheet { get; init; }
+        /// <summary>Overlay frame index per base frame (one entry per frame in the strip).</summary>
+        public required int[] PerBaseFrame { get; init; }
+        public required int LayerNo { get; init; }
+        public required float OffsetX { get; init; }
+        public required float OffsetY { get; init; }
+        public required float WorldHeight { get; init; }
+    }
+
+    /// <summary>Resolve a clip's group Preview Loadout into bake-ready layers, mapping
+    /// every base frame onto the overlay frame it must show. Item entries resolve live
+    /// through InventorySystem (same as the preview); synced layers shift with the base
+    /// clip position (frame index i first, with the action-matched overlay clip's frame
+    /// list when the runtime finds one); non-synced layers use the overlay clip's FIRST
+    /// frame so a bake is deterministic. Unresolvable layers are skipped with a note —
+    /// they must not break the bake.</summary>
+    internal List<LoadoutBakeLayer> CollectLoadoutBakeLayers(AnimationClip2D clip, int baseCount)
+    {
+        var layers = new List<LoadoutBakeLayer>();
+        if (baseCount <= 0 || string.IsNullOrEmpty(clip.GroupPath)) return layers;
+        var group = AnimationGroups.FirstOrDefault(g => string.Equals(g.Path, clip.GroupPath,
+            StringComparison.OrdinalIgnoreCase));
+        if (group == null || group.PreviewLoadout.Count == 0) return layers;
+
+        foreach (var e in group.PreviewLoadout)
+        {
+            string sheetName, clipName;
+            int layerNo;
+            float offsetX, offsetY, worldHeight;
+            bool sync;
+            if (!string.IsNullOrEmpty(e.ItemId))
+            {
+                var def = InventorySystem.Find(e.ItemId);
+                if (def == null)
+                { Console.WriteLine($"[SpriteEditor] Bake layer '{e.ItemId}': item not in catalog — skipped."); continue; }
+                if (!def.IsEquipment || string.IsNullOrEmpty(def.EquipSheet))
+                { Console.WriteLine($"[SpriteEditor] Bake layer '{def.Name}': item has no equip art — skipped."); continue; }
+                sheetName = def.EquipSheet;
+                clipName = def.EquipClip;
+                layerNo = def.EquipLayer;
+                offsetX = def.EquipOffsetX;
+                offsetY = def.EquipOffsetY;
+                worldHeight = def.EquipWorldHeight;
+                sync = def.EquipSyncFrame;
+            }
+            else
+            {
+                sheetName = e.Sheet;
+                clipName = e.Clip;
+                layerNo = e.Layer;
+                offsetX = e.OffsetX;
+                offsetY = e.OffsetY;
+                worldHeight = e.WorldHeight;
+                sync = e.SyncFrame;
+                if (string.IsNullOrEmpty(sheetName)) continue;
+            }
+
+            // Registry first (runtime-resolved), the editor's sheet lists as fallback —
+            // identical precedence to ResolveLoadoutLayers.
+            if (!IDEBridge.TryGetSpriteSheet(sheetName, out var osheet) || osheet == null)
+                osheet = FindSourceSheetPublic(sheetName) ?? FindBakedAtlasPublic(sheetName);
+            if (osheet == null)
+            {
+                Console.WriteLine($"[SpriteEditor] Bake layer '{(e.ItemId.Length > 0 ? e.ItemId : e.Sheet)}': sheet '{sheetName}' not loaded — skipped.");
+                continue;
+            }
+
+            AnimationClip2D? oclip = null;
+            if (!string.IsNullOrEmpty(clipName)
+                && IDEBridge.TryGetSpriteClip(sheetName, clipName, out _, out var found)
+                && found != null && found.FrameIndices.Count > 0)
+                oclip = found;
+
+            AnimationClip2D? syncClip = null;
+            if (sync)
+                syncClip = oclip != null
+                    ? IDEBridge.FindAnimationClipForAction(sheetName, oclip.Name, clip.Name) ?? oclip
+                    : IDEBridge.FindAnimationClipForBase(sheetName, clip.Name);
+
+            int count = oclip != null ? oclip.FrameIndices.Count
+                : osheet.Columns > 0 && osheet.Rows > 0 ? osheet.Columns * osheet.Rows : 1;
+            if (count <= 0) { Console.WriteLine($"[SpriteEditor] Bake layer '{sheetName}': overlay has no frames — skipped."); continue; }
+
+            var perBase = new int[baseCount];
+            for (int i = 0; i < baseCount; i++)
+            {
+                if (syncClip != null && syncClip.FrameIndices.Count > 0)
+                    perBase[i] = syncClip.FrameIndices[Math.Clamp(i, 0, syncClip.FrameIndices.Count - 1)];
+                else if (sync)
+                    perBase[i] = Math.Clamp(i, 0, count - 1);
+                else if (oclip != null)
+                    perBase[i] = oclip.FrameIndices[0]; // deterministic first frame
+                else
+                    perBase[i] = 0;
+            }
+            layers.Add(new LoadoutBakeLayer
+            {
+                Sheet = osheet,
+                PerBaseFrame = perBase,
+                LayerNo = layerNo,
+                OffsetX = offsetX,
+                OffsetY = offsetY,
+                WorldHeight = worldHeight
+            });
+        }
+        layers.Sort((a, b) => a.LayerNo.CompareTo(b.LayerNo));
+        return layers;
+    }
+
+    /// <summary>Stamp one layer's frame for base frame <paramref name="i"/> onto the
+    /// bake canvas. Returns true when any pixel was painted.</summary>
+    internal bool BlitOverlayCell(LoadoutBakeLayer l, int i, byte[] canvas, int fw, int fh)
+    {
+        int oi = l.PerBaseFrame[i];
+        if (oi < 0) return false;
+        string path = Engine.Helpers.PathHelpers.ResolveProjectAsset(l.Sheet.ImagePath);
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+        if (!TryLoadOverlayCell(path, l.Sheet, oi, out var cell)) return false;
+
+        float hWorld = l.WorldHeight > 0f ? l.WorldHeight : 1f;
+        int dstH = Math.Clamp((int)MathF.Round(hWorld * fh), 1, fh);
+        int dstW = Math.Clamp((int)MathF.Round(dstH * (float)cell.Width / Math.Max(1, cell.Height)), 1, fw);
+        int x0 = (int)MathF.Round(fw * 0.5f + l.OffsetX * fw - dstW * 0.5f);
+        int y0 = (int)MathF.Round(fh - l.OffsetY * fh - dstH); // bottom edge = feet line
+        bool painted = false;
+        for (int ty = 0; ty < dstH; ty++)
+        {
+            int dy = y0 + ty;
+            if (dy < 0 || dy >= fh) continue;
+            int sy = Math.Min((int)(ty * cell.Height / (float)dstH), cell.Height - 1);
+            int srcRow = sy * cell.Width * 4;
+            int dstRow = dy * fw * 4;
+            for (int tx = 0; tx < dstW; tx++)
+            {
+                int dx = x0 + tx;
+                if (dx < 0 || dx >= fw) continue;
+                int sx = Math.Min((int)(tx * cell.Width / (float)dstW), cell.Width - 1);
+                int s = srcRow + sx * 4;
+                int a = cell.Pixels[s + 3];
+                if (a == 0) continue;
+                painted = true;
+                int d = dstRow + dx * 4;
+                if (a >= 250)
+                {
+                    canvas[d] = cell.Pixels[s];
+                    canvas[d + 1] = cell.Pixels[s + 1];
+                    canvas[d + 2] = cell.Pixels[s + 2];
+                    canvas[d + 3] = 255;
+                    continue;
+                }
+                float sa = a / 255f, da = canvas[d + 3] / 255f;
+                float oa = sa + da * (1f - sa);
+                if (oa <= 0f) continue;
+                canvas[d]     = (byte)Math.Clamp((int)MathF.Round((cell.Pixels[s] * sa + canvas[d] * da * (1f - sa)) / oa), 0, 255);
+                canvas[d + 1] = (byte)Math.Clamp((int)MathF.Round((cell.Pixels[s + 1] * sa + canvas[d + 1] * da * (1f - sa)) / oa), 0, 255);
+                canvas[d + 2] = (byte)Math.Clamp((int)MathF.Round((cell.Pixels[s + 2] * sa + canvas[d + 2] * da * (1f - sa)) / oa), 0, 255);
+                canvas[d + 3] = (byte)Math.Clamp((int)MathF.Round(oa * 255f), 0, 255);
+            }
+        }
+        return painted;
+    }
+
+    /// <summary>Load one overlay frame cell as RGBA pixels (cached decoded image).
+    /// Coordinates/flip follow ExtractBakedFrames exactly.</summary>
+    private bool TryLoadOverlayCell(string path, SpriteSheet sheet, int frameIdx,
+        out (byte[] Pixels, int Width, int Height) cell)
+    {
+        cell = default;
+        if (!_overlayImageCache.TryGetValue(path, out var image))
+        {
+            try
+            {
+                using var stream = File.OpenRead(path);
+                image = ImageResult.FromStream(stream, ColorComponents.RedGreenBlueAlpha);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SpriteEditor] Bake overlay: cannot read '{path}': {ex.Message}");
+                image = null;
+            }
+            _overlayImageCache[path] = image;
+        }
+        if (image == null) return false;
+
+        SpriteFrame frame;
+        if (sheet.CustomFrames != null)
+        {
+            if (frameIdx < 0 || frameIdx >= sheet.CustomFrames.Count) return false;
+            frame = sheet.CustomFrames[frameIdx];
+        }
+        else
+        {
+            if (frameIdx < 0 || frameIdx >= sheet.FrameCount) return false;
+            int col = frameIdx % Math.Max(1, sheet.Columns);
+            int row = frameIdx / Math.Max(1, sheet.Columns);
+            frame = new SpriteFrame
+            {
+                X = sheet.OffsetX + sheet.ColOffset * (sheet.FrameWidth + sheet.PaddingX)
+                    + col * (sheet.FrameWidth + sheet.PaddingX),
+                Y = sheet.OffsetY + row * (sheet.FrameHeight + sheet.PaddingY),
+                Width = sheet.FrameWidth,
+                Height = sheet.FrameHeight,
+                Name = $"{sheet.Name}_{frameIdx}"
+            };
+        }
+        if (frame.Width <= 0 || frame.Height <= 0 || frame.X < 0 || frame.Y < 0 ||
+            frame.X + frame.Width > image.Width || frame.Y + frame.Height > image.Height) return false;
+
+        byte[] pixels = new byte[checked(frame.Width * frame.Height * 4)];
+        for (int y = 0; y < frame.Height; y++)
+        {
+            int sourceY = sheet.FlipY ? frame.Y + frame.Height - 1 - y : frame.Y + y;
+            for (int x = 0; x < frame.Width; x++)
+            {
+                int sourceX = sheet.FlipX ? frame.X + frame.Width - 1 - x : frame.X + x;
+                int src = (sourceY * image.Width + sourceX) * 4;
+                int dst = (y * frame.Width + x) * 4;
+                Buffer.BlockCopy(image.Data, src, pixels, dst, 4);
+            }
+        }
+        cell = (pixels, frame.Width, frame.Height);
+        return true;
+    }
+
+    /// <summary>Straight-alpha src-over of the base frame onto the bake canvas
+    /// (backdrop pixels show through transparent base pixels).</summary>
+    private static void BlendFrameOver(byte[] basePixels, byte[] canvas)
+    {
+        for (int p = 0; p < canvas.Length; p += 4)
+        {
+            int a = basePixels[p + 3];
+            if (a == 0) continue; // backdrop shows through
+            if (a >= 250)
+            {
+                canvas[p] = basePixels[p];
+                canvas[p + 1] = basePixels[p + 1];
+                canvas[p + 2] = basePixels[p + 2];
+                canvas[p + 3] = 255;
+                continue;
+            }
+            float sa = a / 255f, da = canvas[p + 3] / 255f;
+            float oa = sa + da * (1f - sa);
+            if (oa <= 0f) continue;
+            canvas[p]     = (byte)Math.Clamp((int)MathF.Round((basePixels[p] * sa + canvas[p] * da * (1f - sa)) / oa), 0, 255);
+            canvas[p + 1] = (byte)Math.Clamp((int)MathF.Round((basePixels[p + 1] * sa + canvas[p + 1] * da * (1f - sa)) / oa), 0, 255);
+            canvas[p + 2] = (byte)Math.Clamp((int)MathF.Round((basePixels[p + 2] * sa + canvas[p + 2] * da * (1f - sa)) / oa), 0, 255);
+            canvas[p + 3] = (byte)Math.Clamp((int)MathF.Round(oa * 255f), 0, 255);
+        }
+    }
+
+    /// <summary>BAKE-TIME compositing — stamp resolved loadout layers onto the extracted
+    /// strip before packing. Painter's order per frame matches the preview exactly:
+    /// behind-layers (Layer &lt; 0), then the base, then front layers (Layer &gt;= 0).
+    /// A previsto frame is only replaced when at least one layer actually painted.</summary>
+    private void CompositeLoadoutOntoFrames(AnimationClip2D clip, List<BakedSpriteFrame> frames)
+    {
+        if (frames.Count == 0) return;
+        var layers = CollectLoadoutBakeLayers(clip, frames.Count);
+        if (layers.Count == 0) return;
+
+        int composited = 0;
+        for (int i = 0; i < frames.Count; i++)
+        {
+            var frame = frames[i];
+            int fw = frame.Width, fh = frame.Height;
+            byte[] canvas = new byte[frame.Pixels.Length];
+
+            bool behind = false;
+            foreach (var l in layers)
+                if (l.LayerNo < 0) behind |= BlitOverlayCell(l, i, canvas, fw, fh);
+
+            if (behind) BlendFrameOver(frame.Pixels, canvas); // base over the behind art
+            else frame.Pixels.CopyTo(canvas, 0);
+
+            bool front = false;
+            foreach (var l in layers)
+                if (l.LayerNo >= 0) front |= BlitOverlayCell(l, i, canvas, fw, fh);
+
+            if (behind || front)
+            {
+                frames[i] = new BakedSpriteFrame { Pixels = canvas, Width = fw, Height = fh, Metadata = frame.Metadata };
+                composited++;
+            }
+        }
+        Console.WriteLine($"[SpriteEditor] Bake: composited {layers.Count} loadout layer(s) into '{clip.Name}' ({composited}/{frames.Count} frames).");
     }
 
     // ── CONTENT-AWARE AUTO DETECT (per image) ──
@@ -3337,6 +3697,7 @@ public class SpriteEditorPanel
         _groupEditOld = "";
         _groupEditBuffer = "";
         _newGroupName = "";
+        _sheetRoleBuffer = SpriteSheet.RoleAccessories;
 
         if (!string.IsNullOrEmpty(projectRoot))
         {
