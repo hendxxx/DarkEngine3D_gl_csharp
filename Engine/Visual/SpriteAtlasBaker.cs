@@ -19,9 +19,12 @@ public sealed class SpriteAtlasBakeResult
     public required List<int> FrameIndices { get; init; }
 }
 
-/// <summary>One existing atlas frame to preserve during a full repack.</summary>
+/// <summary>One frame to pack during a full repack: either an existing atlas frame to
+/// preserve, or — when <paramref name="InMemory"/> is set — freshly baked pixels (loadout
+/// already composited) that go straight into the new atlas.</summary>
 public sealed record SpriteAtlasRepackFrameInput(
-    string SourceSheetName, int SourceFrameIndex, int Width, int Height, SpriteFrame Metadata);
+    string SourceSheetName, int SourceFrameIndex, int Width, int Height, SpriteFrame Metadata,
+    BakedSpriteFrame? InMemory = null);
 
 /// <summary>All frame references used by one clip. A clip is packed atomically into
 /// one atlas because AnimationClip2D stores a single SpriteSheetName.</summary>
@@ -64,103 +67,48 @@ public static class SpriteAtlasBaker
 
     private sealed record Placement(int X, int Y, int Width, int Height);
 
-    private sealed record FreeRect(int X, int Y, int Width, int Height);
-    private sealed record MaxRectsPlacement(int X, int Y, int Width, int Height);
 
-    /// <summary>MaxRects bin using Best Short Side Fit. Mutated only by the caller's
-    /// packing worker; Clone supports transactional placement of all frames in a clip.</summary>
-    private sealed class MaxRectsBin
+    /// <summary>Row-major packing cursor: frames go LEFT→RIGHT along a row and wrap to
+    /// the next one, so a baked atlas reads like a timeline instead of being scattered into
+    /// whatever free-rect hole a best-fit search finds (user: "harusnya animasinya dari kiri
+    /// ke kanan dst… sekarang ada bolong di tengah"). A row is as tall as its tallest frame.
+    /// A struct, so a copy trial-places a whole clip atomically.</summary>
+    private struct ShelfCursor
     {
-        private readonly List<FreeRect> _free;
-
-        public MaxRectsBin() => _free = [new FreeRect(0, 0, AtlasSize, AtlasSize)];
-        private MaxRectsBin(List<FreeRect> free) => _free = free;
-
-        public MaxRectsBin Clone() => new(new List<FreeRect>(_free));
-
-        public bool TryInsert(int width, int height, out MaxRectsPlacement placement)
-        {
-            placement = default!;
-            int bestShort = int.MaxValue, bestLong = int.MaxValue;
-            int bestX = 0, bestY = 0, bestW = 0, bestH = 0;
-            foreach (var free in _free)
-            {
-                if (width > free.Width || height > free.Height) continue;
-                int leftoverH = free.Height - height;
-                int leftoverW = free.Width - width;
-                int shortSide = Math.Min(leftoverW, leftoverH);
-                int longSide = Math.Max(leftoverW, leftoverH);
-                if (shortSide < bestShort ||
-                    (shortSide == bestShort && (longSide < bestLong ||
-                    (longSide == bestLong && (free.Y < bestY || (free.Y == bestY && free.X < bestX))))))
-                {
-                    bestShort = shortSide;
-                    bestLong = longSide;
-                    bestX = free.X;
-                    bestY = free.Y;
-                    bestW = width;
-                    bestH = height;
-                }
-            }
-
-            if (bestShort == int.MaxValue) return false;
-            placement = new MaxRectsPlacement(bestX, bestY, bestW, bestH);
-            SplitFreeRects(placement);
-            return true;
-        }
-
-        private void SplitFreeRects(MaxRectsPlacement used)
-        {
-            for (int i = _free.Count - 1; i >= 0; i--)
-            {
-                var free = _free[i];
-                if (used.X >= free.X + free.Width || used.X + used.Width <= free.X ||
-                    used.Y >= free.Y + free.Height || used.Y + used.Height <= free.Y)
-                    continue;
-
-                _free.RemoveAt(i);
-                if (used.X > free.X)
-                    _free.Add(new FreeRect(free.X, free.Y, used.X - free.X, free.Height));
-                if (used.X + used.Width < free.X + free.Width)
-                    _free.Add(new FreeRect(used.X + used.Width, free.Y,
-                        free.X + free.Width - (used.X + used.Width), free.Height));
-                if (used.Y > free.Y)
-                    _free.Add(new FreeRect(free.X, free.Y, free.Width, used.Y - free.Y));
-                if (used.Y + used.Height < free.Y + free.Height)
-                    _free.Add(new FreeRect(free.X, used.Y + used.Height, free.Width,
-                        free.Y + free.Height - (used.Y + used.Height)));
-            }
-
-            for (int i = 0; i < _free.Count; i++)
-            {
-                for (int j = i + 1; j < _free.Count;)
-                {
-                    if (Contains(_free[i], _free[j]))
-                    {
-                        _free.RemoveAt(j);
-                        continue;
-                    }
-                    if (Contains(_free[j], _free[i]))
-                    {
-                        _free.RemoveAt(i);
-                        i--;
-                        break;
-                    }
-                    j++;
-                }
-            }
-        }
-
-        private static bool Contains(FreeRect outer, FreeRect inner)
-            => inner.X >= outer.X && inner.Y >= outer.Y
-                && inner.X + inner.Width <= outer.X + outer.Width
-                && inner.Y + inner.Height <= outer.Y + outer.Height;
+        public int X;
+        public int Y;
+        public int RowHeight;
     }
 
-    /// <summary>Build a deterministic MaxRects BSSF plan from scratch. Frames are
-    /// sorted by descending area/height, and every clip is trial-packed as a unit so
-    /// its ordered frame indices always refer to one atlas. Progress callbacks run on
-    /// the calling thread; callers should invoke this method from a worker thread.</summary>
+    /// <summary>Place one gutter-padded frame at the cursor, wrapping to the next row (or
+    /// failing when the page is full). <paramref name="width"/>/<paramref name="height"/>
+    /// already include the gutter ring; the caller shifts the final rect by
+    /// <see cref="Gutter"/> so the art sits inside it.</summary>
+    private static bool TryPlaceShelf(ref ShelfCursor cursor, int width, int height, out int x, out int y)
+    {
+        x = 0;
+        y = 0;
+        if (width <= 0 || height <= 0 || width > AtlasSize || height > AtlasSize) return false;
+        if (cursor.X + width > AtlasSize)
+        {
+            cursor.Y += cursor.RowHeight;   // wrap: next row starts under the tallest frame
+            cursor.X = 0;
+            cursor.RowHeight = 0;
+        }
+        if (cursor.Y + height > AtlasSize) return false;
+        x = cursor.X;
+        y = cursor.Y;
+        cursor.X += width;
+        cursor.RowHeight = Math.Max(cursor.RowHeight, height);
+        return true;
+    }
+
+    /// <summary>Build a deterministic ROW-MAJOR plan from scratch: each clip's frames are
+    /// written LEFT→RIGHT and wrap to the next row only when the atlas width runs out, and
+    /// frames keep their ANIMATION order (frame i = atlas slot i on that page). Clips are
+    /// still trial-placed as a unit so a clip's frame indices never straddle two atlases
+    /// (AnimationClip2D stores a single SpriteSheetName). Progress callbacks run on the
+    /// calling thread; callers should invoke this method from a worker thread.</summary>
     public static SpriteAtlasRepackPlan CreateFullRepackPlan(
         IReadOnlyList<SpriteAtlasRepackClipInput> clips,
         CancellationToken cancellationToken = default,
@@ -169,6 +117,8 @@ public static class SpriteAtlasBaker
         int total = clips.Sum(c => c.Frames.Count);
         if (total == 0) return new SpriteAtlasRepackPlan(Array.Empty<SpriteAtlasRepackClipPlacement>(), 0);
 
+        // Biggest clips first keeps the page count down; equal-area clips (the common case —
+        // one uniform grid per sheet) fall back to name order, so the layout is reproducible.
         var groups = clips
             .Where(c => c.Frames.Count > 0)
             .Select(c => new
@@ -182,80 +132,67 @@ public static class SpriteAtlasBaker
             .ThenBy(c => c.Clip.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var bins = new List<MaxRectsBin>();
+        var shelves = new List<ShelfCursor>();
         var nextFrameIndices = new List<int>();
         var output = new List<SpriteAtlasRepackClipPlacement>(groups.Count);
         int completed = 0;
         foreach (var group in groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var sortedFrames = group.Clip.Frames
-                .Select((frame, index) => (Frame: frame, Index: index))
-                .OrderByDescending(item => (long)item.Frame.Width * item.Frame.Height)
-                .ThenByDescending(item => item.Frame.Height)
-                .ThenBy(item => item.Index)
-                .ToList();
 
-            MaxRectsBin? selectedBin = null;
+            // Trial-place the WHOLE clip on an existing page (the cursor copy is transactional).
             int page = -1;
-            List<(int Index, MaxRectsPlacement Placement)>? packed = null;
-            for (int binIndex = 0; binIndex < bins.Count && selectedBin == null; binIndex++)
+            List<(int Index, int X, int Y)>? packed = null;
+            for (int pageIndex = 0; pageIndex < shelves.Count && packed == null; pageIndex++)
             {
-                var trial = bins[binIndex].Clone();
-                var trialPlacements = new List<(int, MaxRectsPlacement)>(sortedFrames.Count);
+                var trial = shelves[pageIndex];
+                var trialFrames = new List<(int, int, int)>(group.Clip.Frames.Count);
                 bool fits = true;
-                foreach (var item in sortedFrames)
+                for (int index = 0; index < group.Clip.Frames.Count; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    int width = checked(item.Frame.Width + Gutter * 2);
-                    int height = checked(item.Frame.Height + Gutter * 2);
-                    if (item.Frame.Width <= 0 || item.Frame.Height <= 0 ||
-                        !trial.TryInsert(width, height, out var place))
+                    var frame = group.Clip.Frames[index];
+                    if (!TryPlaceShelf(ref trial, frame.Width + Gutter * 2, frame.Height + Gutter * 2,
+                            out int x, out int y))
                     {
                         fits = false;
                         break;
                     }
-                    trialPlacements.Add((item.Index, place));
+                    trialFrames.Add((index, x, y));
                 }
                 if (!fits) continue;
-                selectedBin = trial;
-                packed = trialPlacements;
-                page = binIndex;
+                shelves[pageIndex] = trial;
+                packed = trialFrames;
+                page = pageIndex;
             }
 
-            if (selectedBin == null)
+            if (packed == null)
             {
-                var fresh = new MaxRectsBin();
-                var freshPlacements = new List<(int, MaxRectsPlacement)>(sortedFrames.Count);
-                foreach (var item in sortedFrames)
+                var fresh = default(ShelfCursor);
+                var freshFrames = new List<(int, int, int)>(group.Clip.Frames.Count);
+                for (int index = 0; index < group.Clip.Frames.Count; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    int width = checked(item.Frame.Width + Gutter * 2);
-                    int height = checked(item.Frame.Height + Gutter * 2);
-                    if (item.Frame.Width <= 0 || item.Frame.Height <= 0 ||
-                        !fresh.TryInsert(width, height, out var place))
+                    var frame = group.Clip.Frames[index];
+                    if (!TryPlaceShelf(ref fresh, frame.Width + Gutter * 2, frame.Height + Gutter * 2,
+                            out int x, out int y))
                         throw new InvalidDataException($"Clip '{group.Clip.Name}' cannot fit atomically in a {AtlasSize}x{AtlasSize} atlas.");
-                    freshPlacements.Add((item.Index, place));
+                    freshFrames.Add((index, x, y));
                 }
-                selectedBin = fresh;
-                packed = freshPlacements;
-                page = bins.Count;
-                bins.Add(fresh);
+                shelves.Add(fresh);
                 nextFrameIndices.Add(0);
-            }
-            else
-            {
-                bins[page] = selectedBin;
+                packed = freshFrames;
+                page = shelves.Count - 1;
             }
 
             var ordered = new SpriteAtlasRepackFramePlacement[group.Clip.Frames.Count];
-            foreach (var (index, place) in packed!)
+            foreach (var (index, x, y) in packed)
             {
                 var frame = group.Clip.Frames[index];
                 int atlasFrameIndex = nextFrameIndices[page]++;
                 ordered[index] = new SpriteAtlasRepackFramePlacement(
                     frame.SourceSheetName, frame.SourceFrameIndex, atlasFrameIndex,
-                    place.X + Gutter, place.Y + Gutter, frame.Width, frame.Height,
+                    x + Gutter, y + Gutter, frame.Width, frame.Height,
                     CloneMetadata(frame.Metadata));
             }
             output.Add(new SpriteAtlasRepackClipPlacement(group.Clip.Name, page + 1, ordered));
@@ -263,13 +200,16 @@ public static class SpriteAtlasBaker
             progress?.Report((completed, total, $"Packing clip {output.Count} of {groups.Count}: {group.Clip.Name}"));
         }
 
-        return new SpriteAtlasRepackPlan(output, bins.Count);
+        return new SpriteAtlasRepackPlan(output, shelves.Count);
     }
 
     /// <summary>Run a full CPU-only repack on a worker thread and write complete
     /// replacement atlas files into a unique staging directory. This method does not
     /// touch live atlas files, editor objects, ImGui, or OpenGL; callers commit only
     /// after the task succeeds.</summary>
+    /// <remarks>Clip inputs may mix preserved atlas references with in-memory baked frames
+    /// (<see cref="SpriteAtlasRepackFrameInput.InMemory"/>), which is how a Bake All packs
+    /// every clip in one worker pass instead of rewriting the atlas per clip.</remarks>
     public static Task<SpriteAtlasRepackStagedResult> RepackAllAsync(
         string spriteDirectory,
         IReadOnlyList<SpriteAtlasRepackSource> sources,
@@ -295,12 +235,16 @@ public static class SpriteAtlasBaker
         foreach (var frame in clip.Frames)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (frame.Width <= 0 || frame.Height <= 0 ||
+                frame.Width + Gutter * 2 > AtlasSize || frame.Height + Gutter * 2 > AtlasSize)
+                throw new InvalidDataException($"Clip '{clip.Name}' has invalid/out-of-limit frame dimensions. Repack cancelled; current atlases are unchanged.");
+            // Frames baked from memory (Bake All) have no atlas source to validate against.
+            if (frame.InMemory != null) continue;
             if (!sourceByName.TryGetValue(frame.SourceSheetName, out var source) ||
                 frame.SourceFrameIndex < 0 || frame.SourceFrameIndex >= source.Frames.Count)
                 throw new InvalidDataException($"Clip '{clip.Name}' references missing frame {frame.SourceSheetName}[{frame.SourceFrameIndex}]. Repack cancelled; current atlases are unchanged.");
             var metadata = source.Frames[frame.SourceFrameIndex];
-            if (metadata.Width != frame.Width || metadata.Height != frame.Height ||
-                frame.Width <= 0 || frame.Height <= 0 || frame.Width + Gutter * 2 > AtlasSize || frame.Height + Gutter * 2 > AtlasSize)
+            if (metadata.Width != frame.Width || metadata.Height != frame.Height)
                 throw new InvalidDataException($"Clip '{clip.Name}' has invalid/out-of-limit frame dimensions. Repack cancelled; current atlases are unchanged.");
         }
 
@@ -332,42 +276,58 @@ public static class SpriteAtlasBaker
                     if (!clipByName.TryGetValue(clipPlacement.ClipName, out var clipInput))
                         throw new InvalidDataException($"Repack plan lost clip '{clipPlacement.ClipName}'.");
 
-                    foreach (var placement in clipPlacement.FramePlacements)
+                    var placements = clipPlacement.FramePlacements;
+                    for (int framePos = 0; framePos < placements.Count; framePos++)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        if (!string.Equals(cachedSourceName, placement.SourceSheetName, StringComparison.OrdinalIgnoreCase))
+                        var placement = placements[framePos];
+                        // Bake All feeds freshly composited pixels; a plain repack feeds atlas
+                        // references. Both land in the same staged atlas in one pass, so a rebake
+                        // of every clip writes the 4096² atlas ONCE instead of once per clip.
+                        var memory = framePos < clipInput.Frames.Count
+                            ? clipInput.Frames[framePos].InMemory : null;
+                        if (memory != null)
                         {
-                            sourceColor = null;
-                            sourceNormal = null;
-                            sourceNormalIsGenerated = false;
-                            cachedSourceName = placement.SourceSheetName;
-                            var source = sourceByName[placement.SourceSheetName];
-                            using (var input = File.OpenRead(source.ColorPath))
-                                sourceColor = ImageResult.FromStream(input, ColorComponents.RedGreenBlueAlpha);
-                            if (sourceColor.Width != AtlasSize || sourceColor.Height != AtlasSize)
-                                throw new InvalidDataException($"Source atlas '{source.Name}' is not {AtlasSize}x{AtlasSize}; refusing to alter optimized clip frames.");
-                            if (File.Exists(source.NormalPath))
-                            {
-                                using var input = File.OpenRead(source.NormalPath);
-                                sourceNormal = ImageResult.FromStream(input, ColorComponents.RedGreenBlueAlpha);
-                                if (sourceNormal.Width != AtlasSize || sourceNormal.Height != AtlasSize)
-                                    throw new InvalidDataException($"Normal atlas for '{source.Name}' is not {AtlasSize}x{AtlasSize}; repack aborted safely.");
-                            }
-                            else
-                            {
-                                sourceNormalIsGenerated = true;
-                            }
-                        }
-
-                        var srcMetadata = sourceByName[placement.SourceSheetName].Frames[placement.SourceFrameIndex];
-                        CopyRect(sourceColor!.Data, color, srcMetadata.X, srcMetadata.Y,
-                            placement.X, placement.Y, placement.Width, placement.Height);
-                        if (sourceNormal != null)
-                            CopyRect(sourceNormal.Data, normal, srcMetadata.X, srcMetadata.Y,
-                                placement.X, placement.Y, placement.Width, placement.Height);
-                        else if (sourceNormalIsGenerated)
+                            CopyFrame(memory, color, placement.X, placement.Y);
                             GenerateFrameNormals(color, normal, placement.X, placement.Y,
                                 placement.Width, placement.Height);
+                        }
+                        else
+                        {
+                            if (!string.Equals(cachedSourceName, placement.SourceSheetName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                sourceColor = null;
+                                sourceNormal = null;
+                                sourceNormalIsGenerated = false;
+                                cachedSourceName = placement.SourceSheetName;
+                                var source = sourceByName[placement.SourceSheetName];
+                                using (var input = File.OpenRead(source.ColorPath))
+                                    sourceColor = ImageResult.FromStream(input, ColorComponents.RedGreenBlueAlpha);
+                                if (sourceColor.Width != AtlasSize || sourceColor.Height != AtlasSize)
+                                    throw new InvalidDataException($"Source atlas '{source.Name}' is not {AtlasSize}x{AtlasSize}; refusing to alter optimized clip frames.");
+                                if (File.Exists(source.NormalPath))
+                                {
+                                    using var input = File.OpenRead(source.NormalPath);
+                                    sourceNormal = ImageResult.FromStream(input, ColorComponents.RedGreenBlueAlpha);
+                                    if (sourceNormal.Width != AtlasSize || sourceNormal.Height != AtlasSize)
+                                        throw new InvalidDataException($"Normal atlas for '{source.Name}' is not {AtlasSize}x{AtlasSize}; repack aborted safely.");
+                                }
+                                else
+                                {
+                                    sourceNormalIsGenerated = true;
+                                }
+                            }
+
+                            var srcMetadata = sourceByName[placement.SourceSheetName].Frames[placement.SourceFrameIndex];
+                            CopyRect(sourceColor!.Data, color, srcMetadata.X, srcMetadata.Y,
+                                placement.X, placement.Y, placement.Width, placement.Height);
+                            if (sourceNormal != null)
+                                CopyRect(sourceNormal.Data, normal, srcMetadata.X, srcMetadata.Y,
+                                    placement.X, placement.Y, placement.Width, placement.Height);
+                            else if (sourceNormalIsGenerated)
+                                GenerateFrameNormals(color, normal, placement.X, placement.Y,
+                                    placement.Width, placement.Height);
+                        }
 
                         var metadata = CloneMetadata(placement.Metadata);
                         metadata.X = placement.X;

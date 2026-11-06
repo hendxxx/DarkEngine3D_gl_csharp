@@ -199,6 +199,9 @@ public class SpriteEditorPanel
     private float _repackPercent;
     private string _repackStatus = "";
     private string _repackError = "";
+    /// <summary>Clips rebuilt by the running bake batch; their dirty flags clear only
+    /// after the staged atlases commit successfully.</summary>
+    private readonly List<string> _bakeBatchClipNames = new();
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
     {
@@ -266,6 +269,16 @@ public class SpriteEditorPanel
     public int AddOrReplaceClipForEditor(AnimationClip2D clip) => AddOrReplaceClip(clip);
 
     public void RequestAtlasRepackForEditor(string reason) => RequestFullAtlasRepack(reason);
+
+    /// <summary>True while a bake batch or an atlas repack worker is running. Bake buttons
+    /// disable themselves on this instead of stacking a second writer on the same atlases.</summary>
+    internal bool IsAtlasRepackRunning => _repackTask != null;
+
+    /// <summary>Live progress of the running bake/repack, empty when idle. Shown next to the
+    /// bake buttons so a long rebake reads as "working", never as a frozen editor.</summary>
+    internal string AtlasRepackStatus => _repackTask != null || _repackRequested
+        ? $"{_repackPercent:0}%  {_repackStatus}"
+        : "";
 
     /// <summary>Ensure the preview texture for <paramref name="imagePath"/> is loaded and
     /// return its GL id (0 = missing). Used by the Animation Editor preview.</summary>
@@ -780,9 +793,12 @@ public class SpriteEditorPanel
                 _repackPercent = 100f;
                 _repackStatus = "Repack complete";
                 _repackError = "";
+                CompleteBakeBatch();
             }
             catch (Exception ex)
             {
+                // A failed batch keeps every clip dirty so it can simply be retried.
+                _bakeBatchClipNames.Clear();
                 _repackError = ex.GetBaseException().Message;
                 _repackStatus = "Repack failed; existing atlas data was retained";
                 Console.WriteLine($"[SpriteEditor] Full atlas repack failed safely: {ex}");
@@ -821,6 +837,19 @@ public class SpriteEditorPanel
             _repackStatus = "Could not start repack";
             Console.WriteLine($"[SpriteEditor] Could not start atlas repack: {ex}");
         }
+    }
+
+    /// <summary>After a bake batch commits: clear the dirty flags of the clips that were
+    /// actually rebuilt (success only) and refresh the runtime registry.</summary>
+    private void CompleteBakeBatch()
+    {
+        if (_bakeBatchClipNames.Count == 0) return;
+        var baked = new HashSet<string>(_bakeBatchClipNames, StringComparer.OrdinalIgnoreCase);
+        foreach (var clip in AnimationClips)
+            if (baked.Contains(clip.Name)) clip.BakeDirty = false;
+        _bakeBatchClipNames.Clear();
+        ForceSynchronizeRegistry();
+        _repackStatus = $"Bake complete — {baked.Count} clip(s) rebaked";
     }
 
     private (List<SpriteAtlasRepackSource> Sources, List<SpriteAtlasRepackClipInput> Clips)
@@ -2332,6 +2361,119 @@ public class SpriteEditorPanel
         return result;
     }
 
+    /// <summary>Decode one clip's authored strip and stamp its loadout layers on top — the
+    /// frames come back ready to pack, without touching an atlas. Shared by the immediate
+    /// Bake (one clip, written synchronously) and Bake All (every clip, packed ONCE on the
+    /// repack worker so the editor never freezes mid-bake).<br/>
+    /// Master-size defaults are applied to the clip here because the pack snapshot is taken
+    /// from live clip state when the batch starts.</summary>
+    internal bool TryPrepareBakeFramesForEditor(SpriteSheet source, AnimationClip2D clip,
+        out List<BakedSpriteFrame> frames, out List<int> sourceIndices)
+    {
+        // The authored strip is SourceFrameIndices when the clip was rebaked before; legacy
+        // clips only know their FrameIndices. The baked result goes into FrameIndices, so the
+        // authored list stays intact for the next rebake.
+        sourceIndices = clip.SourceFrameIndices.Count > 0
+            ? clip.SourceFrameIndices.ToList()
+            : clip.FrameIndices.ToList();
+        frames = new List<BakedSpriteFrame>();
+        if (clip.MasterWidth <= 0f) clip.MasterWidth = source.MasterWidth;
+        if (clip.MasterHeight <= 0f)
+        {
+            clip.MasterHeight = source.MasterHeight;
+            clip.SpriteOffsetX = source.SpriteOffsetX;
+            clip.SpriteOffsetY = source.SpriteOffsetY;
+        }
+        try
+        {
+            var extracted = ExtractBakedFrames(source, sourceIndices);
+            if (extracted == null || extracted.Count == 0) return false;
+            // BAKE-TIME compositing: stamp the group's Preview Loadout layers (hair,
+            // hats…) onto the strip before packing — see CompositeLoadoutOntoFrames.
+            CompositeLoadoutOntoFrames(clip, extracted, sourceIndices);
+            frames = extracted;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Could not prepare bake frames for '{clip.Name}': {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Pack several prepared clips into ONE complete staged atlas set on the repack
+    /// worker and commit it transactionally. Replaces the old per-clip bake loop, which
+    /// rewrote the 4096² atlas (color + normal) for every clip on the UI thread — that is
+    /// what made a rebake look hung (user: "pastikan ketika rebake, tidak buat hang"). Clips
+    /// that were not prepared keep their existing atlas frames, so the rebuild is lossless.</summary>
+    internal bool TryStartBakeBatch(
+        IReadOnlyList<(AnimationClip2D Clip, List<BakedSpriteFrame> Frames)> baked, string reason)
+    {
+        string directory = GetProjectSpriteDirectory();
+        if (directory.Length == 0 || baked.Count == 0) return false;
+        if (_repackTask != null)
+        {
+            _repackStatus = "A bake is already running";
+            return false;
+        }
+
+        var fresh = new Dictionary<string, List<BakedSpriteFrame>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (clip, frames) in baked)
+            if (frames.Count > 0) fresh[clip.Name] = frames;
+
+        try
+        {
+            var (sources, preserved) = CaptureFullRepackInputs();
+            var preservedByName = preserved.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+            var clips = new List<SpriteAtlasRepackClipInput>(AnimationClips.Count);
+            var batchNames = new List<string>();
+            // Clip order is kept so the atlas reads like the clip list (row-major timeline).
+            foreach (var clip in AnimationClips)
+            {
+                if (fresh.TryGetValue(clip.Name, out var frames))
+                {
+                    var inputs = new List<SpriteAtlasRepackFrameInput>(frames.Count);
+                    for (int i = 0; i < frames.Count; i++)
+                        inputs.Add(new SpriteAtlasRepackFrameInput(clip.SourceSheetName, i,
+                            frames[i].Width, frames[i].Height, frames[i].Metadata, frames[i]));
+                    clips.Add(new SpriteAtlasRepackClipInput(clip.Name, inputs));
+                    batchNames.Add(clip.Name);
+                }
+                else if (preservedByName.TryGetValue(clip.Name, out var keep) && keep.Frames.Count > 0)
+                {
+                    clips.Add(keep);
+                }
+            }
+            if (batchNames.Count == 0) return false;
+
+            _bakeBatchClipNames.Clear();
+            _bakeBatchClipNames.AddRange(batchNames);
+            _repackCancellation = new CancellationTokenSource();
+            var progress = new InlineProgress<(int Completed, int Total, string Status)>(
+                value => _repackProgress.Enqueue(value));
+            _repackError = "";
+            _repackPercent = 0f;
+            _repackStatus = $"Baking {batchNames.Count} clip(s)";
+            _repackRequested = false;
+            _repackTask = SpriteAtlasBaker.RepackAllAsync(directory, sources, clips,
+                progress, _repackCancellation.Token);
+            Console.WriteLine($"[SpriteEditor] Bake started ({reason}): {batchNames.Count} clip(s) "
+                + $"packed with {clips.Count - batchNames.Count} preserved clip(s).");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _bakeBatchClipNames.Clear();
+            _repackCancellation?.Dispose();
+            _repackCancellation = null;
+            _repackTask = null;
+            _repackError = ex.GetBaseException().Message;
+            _repackStatus = "Bake failed; existing atlas data was retained";
+            Console.WriteLine($"[SpriteEditor] Could not start the bake: {ex}");
+            return false;
+        }
+    }
+
     /// <summary>Bake a clip's selected source frames and return its runtime-ready
     /// atlas reference. Loadout layers (see CompositeLoadoutOntoFrames) and a same
     /// name clip exclusion (its old slots are reused rather than duplicated) apply.</summary>
@@ -2346,17 +2488,9 @@ public class SpriteEditorPanel
         }
         try
         {
-            // The authored strip is SourceFrameIndices when the clip was rebaked before;
-            // legacy clips only know their FrameIndices. The baked result goes into
-            // FrameIndices, so keep the authored list intact for the next rebake.
-            var sourceIndices = clip.SourceFrameIndices.Count > 0
-                ? clip.SourceFrameIndices.ToList()
-                : clip.FrameIndices.ToList();
-            var frames = ExtractBakedFrames(source, sourceIndices);
-            if (frames == null || frames.Count == 0) return false;
-            // BAKE-TIME compositing: stamp the group's Preview Loadout layers (hair,
-            // hats…) onto the strip before packing — see CompositeLoadoutOntoFrames.
-            CompositeLoadoutOntoFrames(clip, frames);
+            // Same decode + loadout compositing the batch path uses.
+            if (!TryPrepareBakeFramesForEditor(source, clip, out var frames, out var sourceIndices))
+                return false;
             var keep = AnimationClips.Where(c => !string.Equals(c.Name, clip.Name,
                 StringComparison.OrdinalIgnoreCase)).ToList();
             var result = SpriteAtlasBaker.BakeClip(directory, clip.Name, frames,
@@ -2447,13 +2581,16 @@ public class SpriteEditorPanel
     /// <summary>Resolve a clip's group Preview Loadout into bake-ready layers, mapping
     /// every base frame onto the overlay frame it must show. Item entries resolve live
     /// through InventorySystem (same as the preview); synced layers shift with the base
-    /// clip position (frame index i first, with the action-matched overlay clip's frame
-    /// list when the runtime finds one); non-synced layers use the overlay clip's FIRST
-    /// frame so a bake is deterministic. Unresolvable layers are skipped with a note —
-    /// they must not break the bake.</summary>
-    internal List<LoadoutBakeLayer> CollectLoadoutBakeLayers(AnimationClip2D clip, int baseCount)
+    /// clip position (action-matched overlay clip first, sampled by position-in-clip; with
+    /// no match it samples the BASE frame's own SHEET INDEX so same-grid clothing follows
+    /// every pose 1:1 — user: "ketika sync frame with base = true pastikan layernya ikut sync
+    /// ke spritenya"); non-synced layers use the overlay clip's FIRST frame so a bake is
+    /// deterministic. Unresolvable layers are skipped with a note — they must not break the
+    /// bake.</summary>
+    internal List<LoadoutBakeLayer> CollectLoadoutBakeLayers(AnimationClip2D clip, IReadOnlyList<int> baseSheetFrames)
     {
         var layers = new List<LoadoutBakeLayer>();
+        int baseCount = baseSheetFrames.Count;
         if (baseCount <= 0 || string.IsNullOrEmpty(clip.GroupPath)) return layers;
         var group = AnimationGroups.FirstOrDefault(g => string.Equals(g.Path, clip.GroupPath,
             StringComparison.OrdinalIgnoreCase));
@@ -2461,6 +2598,9 @@ public class SpriteEditorPanel
 
         foreach (var e in group.PreviewLoadout)
         {
+            // Hidden layers are not drawn by the preview, so they must not be stamped
+            // into the baked strip either (bake must show exactly what the preview shows).
+            if (!e.Visible) continue;
             string sheetName, clipName;
             int layerNo;
             float offsetX, offsetY, worldHeight;
@@ -2524,7 +2664,15 @@ public class SpriteEditorPanel
                 if (syncClip != null && syncClip.FrameIndices.Count > 0)
                     perBase[i] = syncClip.FrameIndices[Math.Clamp(i, 0, syncClip.FrameIndices.Count - 1)];
                 else if (sync)
-                    perBase[i] = Math.Clamp(i, 0, count - 1);
+                {
+                    // Same-grid sync: sample the overlay sheet at the BASE frame's OWN sheet
+                    // index (60..69 for '-dead'), exactly like the preview and the runtime do.
+                    // The strip position (0..9) used to be passed here instead, which picked
+                    // the overlay's first row — a different action — and that baked out as a
+                    // visibly misplaced hair/hat layer.
+                    int baseFrame = baseSheetFrames[Math.Min(i, baseSheetFrames.Count - 1)];
+                    perBase[i] = Math.Clamp(baseFrame, 0, count - 1);
+                }
                 else if (oclip != null)
                     perBase[i] = oclip.FrameIndices[0]; // deterministic first frame
                 else
@@ -2689,14 +2837,16 @@ public class SpriteEditorPanel
     /// strip before packing. Painter's order per frame matches the preview exactly:
     /// behind-layers (Layer &lt; 0), then the base, then front layers (Layer &gt;= 0).
     /// A previsto frame is only replaced when at least one layer actually painted.</summary>
-    private void CompositeLoadoutOntoFrames(AnimationClip2D clip, List<BakedSpriteFrame> frames)
+    private void CompositeLoadoutOntoFrames(AnimationClip2D clip, List<BakedSpriteFrame> frames,
+        IReadOnlyList<int> baseSheetFrames)
     {
         if (frames.Count == 0) return;
-        var layers = CollectLoadoutBakeLayers(clip, frames.Count);
+        var layers = CollectLoadoutBakeLayers(clip, baseSheetFrames);
         if (layers.Count == 0) return;
 
         int composited = 0;
-        for (int i = 0; i < frames.Count; i++)
+        int count = Math.Min(frames.Count, baseSheetFrames.Count);
+        for (int i = 0; i < count; i++)
         {
             var frame = frames[i];
             int fw = frame.Width, fh = frame.Height;

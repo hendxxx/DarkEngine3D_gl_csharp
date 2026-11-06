@@ -491,16 +491,34 @@ public class AnimationEditorPanel
         ImGui.SameLine();
 
         var clip = SelectedClip;
-        ImGui.BeginDisabled(clip == null || !clip.CanRebake);
+        // Every bake button is disabled while the batch worker runs: a second writer on the
+        // same atlases would lose frames, and the editor must stay responsive (no hang).
+        bool baking = _spriteEditor.IsAtlasRepackRunning;
+        ImGui.BeginDisabled(clip == null || !clip.CanRebake || baking);
         if (ImGui.Button("Bake")) { if (clip != null) BakeClip(clip); }
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Bake the selected clip's authored frame strip into its atlas.\nNeeds a source sheet (clips created here always carry one).");
         ImGui.SameLine();
         int dirty = _spriteEditor.AnimationClips.Count(c => c.BakeDirty && c.CanRebake);
-        ImGui.BeginDisabled(dirty == 0);
+        ImGui.BeginDisabled(dirty == 0 || baking);
         if (ImGui.Button($"Bake Dirty ({dirty})")) BakeAllDirty();
         ImGui.EndDisabled();
+        ImGui.SameLine();
+        int rebakeable = _spriteEditor.AnimationClips.Count(c => c.CanRebake);
+        ImGui.BeginDisabled(rebakeable == 0 || baking);
+        if (ImGui.Button("Bake All")) BakeAllClips();
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Rebake EVERY clip from its source sheet and pack the atlas once.\n"
+                + "Clips that were already baked are rebuilt from scratch — their old atlas frames are\n"
+                + "dropped by the repack, so nothing is duplicated.\n"
+                + "Runs on a background worker: the editor keeps rendering while it packs.");
+        if (baking)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), _spriteEditor.AtlasRepackStatus);
+        }
 
         ImGui.SameLine();
         ImGui.BeginDisabled(!_spriteEditor.CanUndo);
@@ -2522,7 +2540,7 @@ public class AnimationEditorPanel
 
         ImGui.Separator();
 
-        ImGui.BeginDisabled(!clip.CanRebake);
+        ImGui.BeginDisabled(!clip.CanRebake || _spriteEditor.IsAtlasRepackRunning);
         if (ImGui.Button("Bake Clip")) BakeClip(clip);
         ImGui.EndDisabled();
         ImGui.SameLine();
@@ -2720,7 +2738,17 @@ public class AnimationEditorPanel
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Groups the list/column by sprite name (display only — no file is written).");
         ImGui.SameLine();
+        bool baking = _spriteEditor.IsAtlasRepackRunning;
+        ImGui.BeginDisabled(baking);
         if (ImGui.Button("Bake Dirty")) BakeAllDirty();
+        ImGui.SameLine();
+        if (ImGui.Button("Bake All")) BakeAllClips();
+        ImGui.EndDisabled();
+        if (baking)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new Vector4(0.4f, 0.8f, 1f, 1f), _spriteEditor.AtlasRepackStatus);
+        }
         ImGui.SameLine();
         if (ImGui.Button("Save")) { _spriteEditor.SaveAllSheets(); Status("Saved clips + groups"); }
 
@@ -2878,25 +2906,64 @@ public class AnimationEditorPanel
         return true;
     }
 
+    /// <summary>Rebake every requested clip through ONE background pack. Preparing the frames
+    /// (decode the source sheet + stamp loadout layers) is cheap and stays on the UI thread;
+    /// the 4096² atlas build and PNG writes go to the repack worker, so the editor never
+    /// freezes mid-bake (user: "pastikan ketika rebake, tidak buat hang"). The staged atlas
+    /// replaces the live one transactionally, so a failed run leaves the old bake untouched.
+    /// Returns the number of clips queued.</summary>
+    private int StartBakeBatch(IEnumerable<AnimationClip2D> candidates, string reason)
+    {
+        if (_spriteEditor.IsAtlasRepackRunning)
+        {
+            Status("A bake/repack is already running — wait for it to finish.");
+            return 0;
+        }
+
+        var prepared = new List<(AnimationClip2D Clip, List<BakedSpriteFrame> Frames)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int skipped = 0, failed = 0;
+        foreach (var clip in candidates)
+        {
+            if (!seen.Add(clip.Name)) continue;
+            if (!clip.CanRebake) { skipped++; continue; }
+            var source = _spriteEditor.FindSourceSheetPublic(clip.SourceSheetName);
+            if (source == null) { skipped++; continue; }
+            if (!_spriteEditor.TryPrepareBakeFramesForEditor(source, clip, out var frames, out _))
+            {
+                failed++;
+                continue;
+            }
+            // Holds follow the authored strip, exactly like a single Bake.
+            if (clip.FrameHolds.Count > frames.Count)
+                clip.FrameHolds = clip.FrameHolds.Take(frames.Count).ToList();
+            prepared.Add((clip, frames));
+        }
+
+        if (prepared.Count == 0)
+        {
+            Status(failed == 0
+                ? $"Nothing to bake — {skipped} clip(s) have no source sheet."
+                : $"Could not prepare {failed} clip(s) for baking — see Console.");
+            return 0;
+        }
+        if (!_spriteEditor.TryStartBakeBatch(prepared, reason))
+        {
+            Status("Could not start the bake — see Console.");
+            return 0;
+        }
+
+        Status($"Baking {prepared.Count} clip(s) in the background — the editor stays responsive"
+            + (failed > 0 ? $", {failed} failed" : "")
+            + (skipped > 0 ? $", {skipped} skipped without a source sheet." : "."));
+        return prepared.Count;
+    }
+
+    private void BakeAllClips() => StartBakeBatch(_spriteEditor.AnimationClips, "bake all");
+
     private void BakeAllDirty()
     {
-        var names = _spriteEditor.AnimationClips
-            .Where(c => c.BakeDirty && c.CanRebake)
-            .Select(c => c.Name)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        int ok = 0, failed = 0;
-        foreach (string name in names)
-        {
-            var clip = _spriteEditor.AnimationClips.FirstOrDefault(
-                c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (clip == null) continue;
-            if (BakeClip(clip)) ok++; else failed++;
-        }
-        Status(failed == 0
-            ? $"Baked {ok} dirty clip(s)."
-            : $"Baked {ok} clip(s), {failed} failed — see Console.");
+        StartBakeBatch(_spriteEditor.AnimationClips.Where(c => c.BakeDirty), "bake dirty");
     }
 
     // ═══════════════════════════════════════════════════════════════
