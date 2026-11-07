@@ -41,6 +41,36 @@ public static class AnimationCurve
         return last.Value;
     }
 
+    /// <summary>Second channel (<c>Value2</c>) of the same keys — translation Y, scale Y.
+    /// Shares the interpolation/segment rules of <see cref="Evaluate"/> so both channels of
+    /// a Move/Scale track always move together.</summary>
+    public static float EvaluateSecond(AnimationTrack track, float time)
+    {
+        if (track == null || track.Keys.Count == 0) return 0f;
+        var keys = track.Keys;
+        if (time <= keys[0].Time) return keys[0].Value2;
+        var last = keys[^1];
+        if (time >= last.Time) return last.Value2;
+
+        for (int i = 1; i < keys.Count; i++)
+        {
+            var prev = keys[i - 1];
+            var next = keys[i];
+            if (time > next.Time) continue;
+            float span = next.Time - prev.Time;
+            if (span <= 0f) return next.Value2;
+            float u = (time - prev.Time) / span;
+            float eased = prev.Interp switch
+            {
+                AnimationKeyInterp.Stepped => 0f,
+                AnimationKeyInterp.Bezier => BezierEase(u, prev.BezierOut, next.BezierIn),
+                _ => u,
+            };
+            return prev.Value2 + (next.Value2 - prev.Value2) * eased;
+        }
+        return last.Value2;
+    }
+
     /// <summary>Normalized cubic Bezier easing. Bisection (16 steps) instead of Newton:
     /// deterministic, no division-by-zero edge cases, and the bake cost is irrelevant
     /// next to rasterization.</summary>
@@ -120,7 +150,7 @@ public static class SkeletonPoseEvaluator
         var pose = new SkeletonPose();
         if (rig == null) return pose;
 
-        // ── animated channel values ──
+        // ── animated channel values (second channels share AnimationCurve) ──
         var rotate = new Dictionary<string, float>(StringComparer.Ordinal);
         var translateX = new Dictionary<string, float>(StringComparer.Ordinal);
         var translateY = new Dictionary<string, float>(StringComparer.Ordinal);
@@ -142,11 +172,11 @@ public static class SkeletonPoseEvaluator
                     case AnimationTrackKind.BoneTranslate:
                         // Same keys, two channels: X on Value, Y on Value2.
                         Add(translateX, track.Target, AnimationCurve.Evaluate(track, time));
-                        Add(translateY, track.Target, EvaluateChannelTwo(track, time));
+                        Add(translateY, track.Target, AnimationCurve.EvaluateSecond(track, time));
                         break;
                     case AnimationTrackKind.BoneScale:
                         Add(scaleX, track.Target, AnimationCurve.Evaluate(track, time));
-                        Add(scaleY, track.Target, EvaluateChannelTwo(track, time));
+                        Add(scaleY, track.Target, AnimationCurve.EvaluateSecond(track, time));
                         break;
                     case AnimationTrackKind.SlotColor:
                         slotAlpha[track.Target] = AnimationCurve.Evaluate(track, time);
@@ -253,32 +283,6 @@ public static class SkeletonPoseEvaluator
 
     private static void Add(Dictionary<string, float> map, string key, float value)
         => map[key] = map.TryGetValue(key, out var existing) ? existing + value : value;
-
-    /// <summary>Evaluate the secondary channel (<c>Value2</c>) of a translate/scale track
-    /// with the same keys and interpolation as the primary value.</summary>
-    private static float EvaluateChannelTwo(AnimationTrack track, float time)
-    {
-        if (time <= track.Keys[0].Time) return track.Keys[0].Value2;
-        var last = track.Keys[^1];
-        if (time >= last.Time) return last.Value2;
-        for (int i = 1; i < track.Keys.Count; i++)
-        {
-            var prev = track.Keys[i - 1];
-            var next = track.Keys[i];
-            if (time > next.Time) continue;
-            float span = next.Time - prev.Time;
-            if (span <= 0f) return next.Value2;
-            float u = (time - prev.Time) / span;
-            float eased = prev.Interp switch
-            {
-                AnimationKeyInterp.Stepped => 0f,
-                AnimationKeyInterp.Bezier => AnimationCurve.BezierEase(u, prev.BezierOut, next.BezierIn),
-                _ => u,
-            };
-            return prev.Value2 + (next.Value2 - prev.Value2) * eased;
-        }
-        return last.Value2;
-    }
 
     private static string ResolveAttachmentName(Slot2D slot, Skin2D? skin)
     {

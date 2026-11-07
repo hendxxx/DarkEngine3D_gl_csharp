@@ -127,6 +127,15 @@ public class AnimationClip2D
     /// <summary>True when this clip can be rebaked from its source sheet.</summary>
     public bool CanRebake => !string.IsNullOrEmpty(SourceSheetName) && SourceFrameIndices.Count > 0;
 
+    /// <summary>True when this clip is authored from a rig (<see cref="Mode"/> Skeleton +
+    /// a rig id). Such a clip has NO source sheet strip: it is baked by sampling the rig,
+    /// so <see cref="CanRebake"/> stays false while the clip is still perfectly bakeable.</summary>
+    public bool IsSkeleton => Mode == AnimationClipMode.Skeleton && !string.IsNullOrEmpty(RigId);
+
+    /// <summary>True when a Bake can produce frames for this clip — from its authored
+    /// source strip (sprite clip) or from its rig + tracks (skeleton clip).</summary>
+    public bool CanBake => CanRebake || IsSkeleton;
+
     /// <summary>Frame hold multiplier (1 = normal).</summary>
     public float GetHold(int frameIndex)
         => frameIndex >= 0 && frameIndex < FrameHolds.Count

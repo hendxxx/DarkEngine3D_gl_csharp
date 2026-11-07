@@ -232,6 +232,14 @@ public sealed class BakeSettings
     public int TargetAtlas { get; set; }
     /// <summary>Hash of rig + tracks + settings at the last bake — dirty badge source.</summary>
     public string LastBakeHash { get; set; } = "";
+    /// <summary>Explicit clip length in SECONDS for a skeleton clip (0 = derive it from the
+    /// last key of the timeline). A looping cycle needs a length even when its keys stop
+    /// early, so the bake knows how many samples one loop covers.</summary>
+    public float DurationSeconds { get; set; }
+    /// <summary>Skeleton clips only: skin to composite while baking ("" = the rig's
+    /// <see cref="AnimationRig.DefaultSkin"/>). Equipment/skin variants therefore bake as
+    /// separate clips rather than changing the rig.</summary>
+    public string Skin { get; set; } = "";
 
     public BakeSettings Clone() => (BakeSettings)MemberwiseClone();
 }

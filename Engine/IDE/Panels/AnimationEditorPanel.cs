@@ -2,6 +2,8 @@ using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Visual.Skeleton;
 using ImGuiNET;
 using System.Numerics;
+using System.Text;
+using System.Text.Json;
 
 namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels;
 
@@ -188,6 +190,19 @@ public class AnimationEditorPanel
     private int _rigSlotIdx = -1;
     private int _rigAttachIdx = -1;
     private float _rigPreviewZoom = 1f;
+    /// <summary>Rig page sub-mode: 0 = Setup (setup pose), 1 = Animate (timeline keys).</summary>
+    private int _rigPageMode;
+    /// <summary>Clip whose timeline the Animate page edits (must animate the selected rig).</summary>
+    private int _rigAnimClipIdx = -1;
+    private bool _rigPlaying;
+    private float _rigTime;
+    /// <summary>Auto-key: editing a bone/slot transform at the playhead writes a key.</summary>
+    private bool _rigAutoKey = true;
+    private int _rigTrackIdx = -1;
+    private string _rigEventName = "Hit";
+    /// <summary>Last known fingerprint per rig id — a change means "a clip using this rig is
+    /// dirty", so the bake badge updates while the author drags a value.</summary>
+    private readonly Dictionary<string, long> _rigFingerprints = new();
     /// <summary>Per-field inline rename buffers, keyed by field id. One buffer per KIND is not
     /// enough: the bone, slot and attachment fields all draw in the same frame, so a shared
     /// buffer would be reset by each of them and the text would never survive a frame. Names
@@ -518,18 +533,18 @@ public class AnimationEditorPanel
         // Every bake button is disabled while the batch worker runs: a second writer on the
         // same atlases would lose frames, and the editor must stay responsive (no hang).
         bool baking = _spriteEditor.IsAtlasRepackRunning;
-        ImGui.BeginDisabled(clip == null || !clip.CanRebake || baking);
+        ImGui.BeginDisabled(clip == null || !clip.CanBake || baking);
         if (ImGui.Button("Bake")) { if (clip != null) BakeClip(clip); }
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Bake the selected clip's authored frame strip into its atlas.\nNeeds a source sheet (clips created here always carry one).");
         ImGui.SameLine();
-        int dirty = _spriteEditor.AnimationClips.Count(c => c.BakeDirty && c.CanRebake);
+        int dirty = _spriteEditor.AnimationClips.Count(c => c.BakeDirty && c.CanBake);
         ImGui.BeginDisabled(dirty == 0 || baking);
         if (ImGui.Button($"Bake Dirty ({dirty})")) BakeAllDirty();
         ImGui.EndDisabled();
         ImGui.SameLine();
-        int rebakeable = _spriteEditor.AnimationClips.Count(c => c.CanRebake);
+        int rebakeable = _spriteEditor.AnimationClips.Count(c => c.CanBake);
         ImGui.BeginDisabled(rebakeable == 0 || baking);
         if (ImGui.Button("Bake All")) BakeAllClips();
         ImGui.EndDisabled();
@@ -745,6 +760,28 @@ public class AnimationEditorPanel
             + " no game path reads it until a bake turns the pose into atlas frames.");
         ImGui.Separator();
 
+        ImGui.PushStyleColor(ImGuiCol.Button,
+            _rigPageMode == 0 ? new Vector4(0.24f, 0.34f, 0.52f, 1f) : new Vector4(0.16f, 0.16f, 0.2f, 1f));
+        if (ImGui.Button("Setup", new Vector2(90, 0))) _rigPageMode = 0;
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Bones, slots and attachments at their SETUP pose.");
+        ImGui.SameLine();
+        ImGui.PushStyleColor(ImGuiCol.Button,
+            _rigPageMode == 1 ? new Vector4(0.24f, 0.34f, 0.52f, 1f) : new Vector4(0.16f, 0.16f, 0.2f, 1f));
+        if (ImGui.Button("Animate", new Vector2(90, 0))) _rigPageMode = 1;
+        ImGui.PopStyleColor();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Timeline keys on top of the setup pose.\nKeys are added at the playhead; the bake samples this timeline.");
+        ImGui.Separator();
+
+        if (_rigPageMode == 1)
+        {
+            DrawRigAnimate(rig);
+            DetectRigEdits(rig);
+            return;
+        }
+
         float avail = ImGui.GetContentRegionAvail().X;
         float bonesW = 250f;
         float slotsW = 300f;
@@ -768,6 +805,516 @@ public class AnimationEditorPanel
         ImGui.BeginChild("##rigattach", new Vector2(rightW, 0), ImGuiChildFlags.Borders);
         DrawRigAttachments(rig);
         ImGui.EndChild();
+
+        DetectRigEdits(rig);
+    }
+
+    /// <summary>
+    /// Animate mode: keys on top of the setup pose. The clip's tracks drive the preview and
+    /// the bake; editing a transform at the playhead writes/updates a key there (auto-key),
+    /// or only on the explicit K button. Nothing here touches the setup pose, so animating
+    /// never moves the rig's rest pose.
+    /// </summary>
+    private void DrawRigAnimate(AnimationRig rig)
+    {
+        var bound = _spriteEditor.AnimationClips
+            .Where(c => string.Equals(c.RigId, rig.Id, StringComparison.Ordinal))
+            .ToList();
+        if (bound.Count == 0)
+        {
+            ImGui.TextDisabled("This rig has no clip yet. A timeline lives on a skeleton clip.");
+            ImGui.TextDisabled("Create one, add keys, then Bake it into atlas frames.");
+            ImGui.Spacing();
+            if (ImGui.Button("+ Clip for this rig"))
+            {
+                var created = new AnimationClip2D
+                {
+                    Name = UniqueName(_spriteEditor.AnimationClips.Select(c => c.Name), rig.Name + "-idle"),
+                    Mode = AnimationClipMode.Skeleton,
+                    RigId = rig.Id,
+                    FPS = 12f,
+                    Loop = true,
+                    Bake = new BakeSettings { DurationSeconds = 1f },
+                };
+                _rigAnimClipIdx = _spriteEditor.AddOrReplaceClipForEditor(created);
+                SelectClip(_rigAnimClipIdx);
+                Status($"Created skeleton clip '{created.Name}' (1s loop) — add keys, then Bake.");
+            }
+            return;
+        }
+
+        if (_rigAnimClipIdx < 0 || _rigAnimClipIdx >= _spriteEditor.AnimationClips.Count
+            || !string.Equals(_spriteEditor.AnimationClips[_rigAnimClipIdx].RigId, rig.Id, StringComparison.Ordinal))
+            _rigAnimClipIdx = _spriteEditor.AnimationClips.IndexOf(bound[0]);
+
+        var clip = _spriteEditor.AnimationClips[_rigAnimClipIdx];
+        clip.Bake ??= new BakeSettings();
+        _rigTrackIdx = clip.Tracks == null || clip.Tracks.Count == 0
+            ? -1 : Math.Clamp(_rigTrackIdx, -1, clip.Tracks.Count - 1);
+
+        float length = clip.Bake.DurationSeconds > 0f ? clip.Bake.DurationSeconds
+            : AnimationBaker.ResolveDuration(clip);
+        if (length <= 0.01f) length = 1f;
+
+        // ── clip + playback row ──
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.BeginCombo("##animclip", clip.Name))
+        {
+            foreach (var c in bound)
+                if (ImGui.Selectable($"{c.Name}##animclipitem", ReferenceEquals(c, clip)))
+                {
+                    _rigAnimClipIdx = _spriteEditor.AnimationClips.IndexOf(c);
+                    SelectClip(_rigAnimClipIdx);
+                    _rigTime = 0f;
+                    _rigPlaying = false;
+                    _rigTrackIdx = -1;
+                }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Clips animating this rig. Each one owns its own timeline.");
+        ImGui.SameLine();
+        if (ImGui.Button(_rigPlaying ? "Pause" : "Play")) _rigPlaying = !_rigPlaying;
+        ImGui.SameLine();
+        if (ImGui.Button("|<")) { _rigTime = 0f; _rigPlaying = false; }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(220);
+        float t = _rigTime;
+        if (ImGui.SliderFloat("##animtime", ref t, 0f, length, "%.2fs")) { _rigTime = t; _rigPlaying = false; }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(110);
+        float newLength = length;
+        if (ImGui.DragFloat("Length##animlen", ref newLength, 0.01f, 0.05f, 30f, "%.2fs"))
+        {
+            clip.Bake.DurationSeconds = Math.Clamp(newLength, 0.05f, 30f);
+            clip.BakeDirty = true;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Length of one cycle. A looping bake samples exactly this long,\nso keys may stop before the end.");
+        ImGui.SameLine();
+        bool autoKey = _rigAutoKey;
+        if (ImGui.Checkbox("Auto-key", ref autoKey)) _rigAutoKey = autoKey;
+        ImGui.SameLine();
+        bool loop = clip.Loop;
+        if (ImGui.Checkbox("Loop##animclip", ref loop)) { clip.Loop = loop; clip.BakeDirty = true; }
+        if (clip.BakeDirty) { ImGui.SameLine(); ImGui.TextColored(ColAmber, "dirty — bake to update the atlas"); }
+
+        if (_rigPlaying)
+        {
+            _rigTime += ImGui.GetIO().DeltaTime;
+            if (_rigTime >= length)
+            {
+                if (clip.Loop) _rigTime %= length;
+                else { _rigTime = length; _rigPlaying = false; }
+            }
+        }
+        _rigTime = Math.Clamp(_rigTime, 0f, length);
+
+        ImGui.Separator();
+
+        float avail = ImGui.GetContentRegionAvail().X;
+        float bonesW = 235f;
+        float slotsW = 265f;
+        float rightW = Math.Max(340f, avail - bonesW - slotsW - 24f);
+
+        ImGui.BeginChild("##animbones", new Vector2(bonesW, 0), ImGuiChildFlags.Borders);
+        DrawAnimateBones(rig, clip);
+        ImGui.EndChild();
+        ImGui.SameLine();
+
+        ImGui.BeginChild("##animslots", new Vector2(slotsW, 0), ImGuiChildFlags.Borders);
+        DrawAnimateSlots(rig, clip);
+        ImGui.EndChild();
+        ImGui.SameLine();
+
+        ImGui.BeginChild("##animright", new Vector2(rightW, 0), ImGuiChildFlags.Borders);
+        DrawRigPreview(rig, 230f, clip, _rigTime);
+        ImGui.Separator();
+        DrawAnimateTracks(rig, clip, length);
+        ImGui.Separator();
+        DrawAnimateEvents(clip);
+        ImGui.EndChild();
+    }
+
+    private void DrawAnimateBones(AnimationRig rig, AnimationClip2D clip)
+    {
+        ImGui.TextDisabled("BONES  (keys at the playhead)");
+        ImGui.BeginChild("##animBonelist", new Vector2(0, 110), ImGuiChildFlags.None);
+        for (int i = 0; i < rig.Bones.Count; i++)
+        {
+            var bone = rig.Bones[i];
+            string indent = new(' ', Math.Min(12, BoneDepth(rig, bone) * 2));
+            if (ImGui.Selectable($"{indent}{bone.Name}##animBone{i}", i == _rigBoneIdx)) _rigBoneIdx = i;
+        }
+        if (rig.Bones.Count == 0) ImGui.TextDisabled("No bones — build them in Setup mode.");
+        ImGui.EndChild();
+
+        if (_rigBoneIdx < 0 || _rigBoneIdx >= rig.Bones.Count) return;
+        var sel = rig.Bones[_rigBoneIdx];
+        ImGui.Separator();
+        ImGui.TextColored(ColAmber, $"BONE  {sel.Name}");
+        if (!_rigAutoKey)
+            ImGui.TextDisabled("Auto-key OFF — drag a value, then press its K button.");
+
+        // Rotate
+        float rot = EvalChannel(clip, AnimationTrackKind.BoneRotate, sel.Name, _rigTime, 0f);
+        ImGui.SetNextItemWidth(120);
+        float newRot = rot;
+        bool rotEdited = ImGui.DragFloat("Rot##animRot", ref newRot, 0.5f);
+        ImGui.SameLine();
+        if (ImGui.SmallButton("K##kRot")) WriteKey(clip, AnimationTrackKind.BoneRotate, sel.Name, _rigTime, rot);
+        if (rotEdited && _rigAutoKey) WriteKey(clip, AnimationTrackKind.BoneRotate, sel.Name, _rigTime, newRot);
+
+        // Translate
+        float tx = EvalChannel(clip, AnimationTrackKind.BoneTranslate, sel.Name, _rigTime, 0f);
+        float ty = EvalChannelTwo(clip, AnimationTrackKind.BoneTranslate, sel.Name, _rigTime, 0f);
+        ImGui.SetNextItemWidth(78);
+        float newTx = tx, newTy = ty;
+        bool txEdited = ImGui.DragFloat("X##animTx", ref newTx, 0.1f);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(78);
+        bool tyEdited = ImGui.DragFloat("Y##animTy", ref newTy, 0.1f);
+        ImGui.SameLine();
+        if (ImGui.SmallButton("K##kTr")) WriteKey(clip, AnimationTrackKind.BoneTranslate, sel.Name, _rigTime, tx, true, ty);
+        if ((txEdited || tyEdited) && _rigAutoKey)
+            WriteKey(clip, AnimationTrackKind.BoneTranslate, sel.Name, _rigTime,
+                txEdited ? newTx : tx, true, tyEdited ? newTy : ty);
+
+        // Scale (keys default to 1 — a 0 scale would collapse the art)
+        float sx = EvalChannel(clip, AnimationTrackKind.BoneScale, sel.Name, _rigTime, 1f);
+        float sy = EvalChannelTwo(clip, AnimationTrackKind.BoneScale, sel.Name, _rigTime, 1f);
+        ImGui.SetNextItemWidth(78);
+        float newSx = sx, newSy = sy;
+        bool sxEdited = ImGui.DragFloat("SX##animSx", ref newSx, 0.01f);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(78);
+        bool syEdited = ImGui.DragFloat("SY##animSy", ref newSy, 0.01f);
+        ImGui.SameLine();
+        if (ImGui.SmallButton("K##kSc")) WriteKey(clip, AnimationTrackKind.BoneScale, sel.Name, _rigTime, sx, true, sy);
+        if ((sxEdited || syEdited) && _rigAutoKey)
+            WriteKey(clip, AnimationTrackKind.BoneScale, sel.Name, _rigTime,
+                sxEdited ? newSx : sx, true, syEdited ? newSy : sy);
+        if (!_rigAutoKey)
+            ImGui.TextDisabled("K writes the value shown at the playhead.");
+    }
+
+    private void DrawAnimateSlots(AnimationRig rig, AnimationClip2D clip)
+    {
+        ImGui.TextDisabled("SLOTS  (attachment / alpha keys)");
+        ImGui.BeginChild("##animSlotlist", new Vector2(0, 110), ImGuiChildFlags.None);
+        for (int i = 0; i < rig.Slots.Count; i++)
+            if (ImGui.Selectable($"{i + 1}. {rig.Slots[i].Name}##animSlot{i}", i == _rigSlotIdx))
+                _rigSlotIdx = i;
+        if (rig.Slots.Count == 0) ImGui.TextDisabled("No slots — build them in Setup mode.");
+        ImGui.EndChild();
+
+        if (_rigSlotIdx < 0 || _rigSlotIdx >= rig.Slots.Count) return;
+        var slot = rig.Slots[_rigSlotIdx];
+        ImGui.Separator();
+        ImGui.TextColored(ColAmber, $"SLOT  {slot.Name}");
+
+        // Attachment index keys address the slot's NAME-SORTED attachment list (the same
+        // order the evaluator uses), so reordering the rig cannot retarget a key.
+        var options = rig.Attachments.Where(a => string.Equals(a.Slot, slot.Name, StringComparison.Ordinal))
+            .OrderBy(a => a.Name, StringComparer.Ordinal).ToList();
+        int current = options.Count == 0 ? -1
+            : (int)MathF.Round(EvalChannel(clip, AnimationTrackKind.SlotAttachment, slot.Name, _rigTime, -1f));
+        string currentName = current >= 0 && current < options.Count ? options[current].Name : "(hidden)";
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##animAttach", currentName))
+        {
+            if (ImGui.Selectable("(hidden)", current < 0))
+                WriteKey(clip, AnimationTrackKind.SlotAttachment, slot.Name, _rigTime, -1f);
+            for (int i = 0; i < options.Count; i++)
+                if (ImGui.Selectable($"{options[i].Name}##animAttOpt", i == current))
+                    WriteKey(clip, AnimationTrackKind.SlotAttachment, slot.Name, _rigTime, i);
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Attachment shown at the playhead. Changing it writes a SlotAttachment key,\nso a weapon can swap mid-animation. (hidden) writes index -1.");
+
+        float alpha = EvalChannel(clip, AnimationTrackKind.SlotColor, slot.Name, _rigTime, slot.A);
+        ImGui.SetNextItemWidth(-1);
+        float newAlpha = alpha;
+        bool alphaEdited = ImGui.SliderFloat("##animAlpha", ref newAlpha, 0f, 1f, "alpha %.2f");
+        if (alphaEdited && _rigAutoKey)
+            WriteKey(clip, AnimationTrackKind.SlotColor, slot.Name, _rigTime, newAlpha);
+        ImGui.SameLine();
+        if (ImGui.SmallButton("K##kAlpha"))
+            WriteKey(clip, AnimationTrackKind.SlotColor, slot.Name, _rigTime, alpha);
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Add channels for this bone/slot:");
+        if (_rigBoneIdx >= 0 && _rigBoneIdx < rig.Bones.Count)
+        {
+            string bone = rig.Bones[_rigBoneIdx].Name;
+            if (ImGui.SmallButton($"+ Rotate {bone}")) EnsureTrack(clip, AnimationTrackKind.BoneRotate, bone);
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"+ Move {bone}")) EnsureTrack(clip, AnimationTrackKind.BoneTranslate, bone);
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"+ Scale {bone}")) EnsureTrack(clip, AnimationTrackKind.BoneScale, bone);
+        }
+        if (ImGui.SmallButton($"+ Attachment {slot.Name}"))
+            EnsureTrack(clip, AnimationTrackKind.SlotAttachment, slot.Name);
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"+ Alpha {slot.Name}"))
+            EnsureTrack(clip, AnimationTrackKind.SlotColor, slot.Name);
+    }
+
+    private void DrawAnimateTracks(AnimationRig rig, AnimationClip2D clip, float length)
+    {
+        ImGui.TextDisabled("TIMELINE TRACKS");
+        var tracks = clip.Tracks ??= new List<AnimationTrack>();
+        _rigTrackIdx = tracks.Count == 0 ? -1 : Math.Clamp(_rigTrackIdx, -1, tracks.Count - 1);
+
+        ImGui.BeginChild("##animTrackList", new Vector2(0, 84), ImGuiChildFlags.None);
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            var track = tracks[i];
+            if (ImGui.Selectable($"{TrackLabel(track)}  ·  {track.Keys.Count} key(s)##track{i}", i == _rigTrackIdx))
+                _rigTrackIdx = i;
+        }
+        if (tracks.Count == 0)
+            ImGui.TextDisabled("No tracks — use the + buttons on the left to create channels.");
+        ImGui.EndChild();
+
+        if (_rigTrackIdx < 0 || _rigTrackIdx >= tracks.Count) return;
+        var sel = tracks[_rigTrackIdx];
+        bool secondary = sel.Kind is AnimationTrackKind.BoneTranslate or AnimationTrackKind.BoneScale;
+
+        if (ImGui.Button("+ Key at playhead"))
+        {
+            float value = sel.Keys.Count == 0
+                ? (sel.Kind == AnimationTrackKind.BoneScale ? 1f : 0f)
+                : AnimationCurve.Evaluate(sel, _rigTime);
+            float value2 = secondary ? AnimationCurve.EvaluateSecond(sel, _rigTime) : 0f;
+            WriteKey(clip, sel.Kind, sel.Target, _rigTime, value, secondary, value2);
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Delete track"))
+        {
+            tracks.RemoveAt(_rigTrackIdx);
+            _rigTrackIdx = tracks.Count > 0 ? Math.Clamp(_rigTrackIdx, 0, tracks.Count - 1) : -1;
+            clip.BakeDirty = true;
+            return;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Removing the last key of a channel means the setup pose applies again.");
+
+        for (int i = 0; i < sel.Keys.Count; i++)
+        {
+            var key = sel.Keys[i];
+            ImGui.PushID(i);
+            ImGui.SetNextItemWidth(62);
+            float keyTime = key.Time;
+            if (ImGui.DragFloat("t", ref keyTime, 0.005f, 0f, MathF.Max(0.05f, length), "%.2fs"))
+            {
+                key.Time = Math.Clamp(keyTime, 0f, MathF.Max(0.05f, length));
+                sel.Keys.Sort((a, b) => a.Time.CompareTo(b.Time));
+                clip.BakeDirty = true;
+            }
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(74);
+            float keyValue = key.Value;
+            if (ImGui.DragFloat("v", ref keyValue, 0.25f))
+            {
+                key.Value = keyValue;
+                clip.BakeDirty = true;
+            }
+            if (secondary)
+            {
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(74);
+                float keyValue2 = key.Value2;
+                if (ImGui.DragFloat("v2", ref keyValue2, 0.25f))
+                {
+                    key.Value2 = keyValue2;
+                    clip.BakeDirty = true;
+                }
+            }
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(88);
+            if (ImGui.BeginCombo("i", key.Interp.ToString()))
+            {
+                foreach (AnimationKeyInterp interp in Enum.GetValues<AnimationKeyInterp>())
+                    if (ImGui.Selectable($"{interp}##interp", key.Interp == interp))
+                    {
+                        key.Interp = interp;
+                        clip.BakeDirty = true;
+                    }
+                ImGui.EndCombo();
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("X"))
+            {
+                sel.Keys.RemoveAt(i);
+                clip.BakeDirty = true;
+                ImGui.PopID();
+                break;
+            }
+            ImGui.PopID();
+        }
+        if (sel.Keys.Count == 0)
+            ImGui.TextDisabled("No keys — the channel is inert until you add one.");
+    }
+
+    private void DrawAnimateEvents(AnimationClip2D clip)
+    {
+        ImGui.TextDisabled("EVENTS  (frame-keyed; a bake remaps them proportionally)");
+        ImGui.SetNextItemWidth(120);
+        ImGui.InputText("##eventname", ref _rigEventName, 48);
+        ImGui.SameLine();
+        if (ImGui.Button("+ Event at playhead"))
+        {
+            int frame = clip.FPS > 0f ? (int)MathF.Round(_rigTime * clip.FPS) : 0;
+            clip.Events[Math.Max(0, frame)] = string.IsNullOrWhiteSpace(_rigEventName) ? "Event" : _rigEventName.Trim();
+            clip.BakeDirty = true;
+        }
+        if (clip.Events.Count == 0)
+        {
+            ImGui.TextDisabled("No events — the runtime fires them by frame index.");
+            return;
+        }
+        int remove = -1;
+        foreach (var (frame, name) in clip.Events.OrderBy(kv => kv.Key))
+        {
+            ImGui.TextDisabled($"frame {frame}: {name}");
+            ImGui.SameLine();
+            if (ImGui.SmallButton($"X##ev{frame}")) remove = frame;
+        }
+        if (remove >= 0)
+        {
+            clip.Events.Remove(remove);
+            clip.BakeDirty = true;
+        }
+    }
+
+    private static string TrackLabel(AnimationTrack track) => track.Kind switch
+    {
+        AnimationTrackKind.BoneRotate => $"Rotate {track.Target}",
+        AnimationTrackKind.BoneTranslate => $"Move {track.Target}",
+        AnimationTrackKind.BoneScale => $"Scale {track.Target}",
+        AnimationTrackKind.SlotAttachment => $"Attachment {track.Target}",
+        AnimationTrackKind.SlotColor => $"Alpha {track.Target}",
+        _ => $"{track.Kind} {track.Target}",
+    };
+
+    private static AnimationTrack? FindTrack(AnimationClip2D clip, AnimationTrackKind kind, string target)
+        => clip.Tracks?.FirstOrDefault(t => t.Kind == kind
+            && string.Equals(t.Target, target, StringComparison.Ordinal));
+
+    private static float EvalChannel(AnimationClip2D clip, AnimationTrackKind kind, string target,
+        float time, float fallback)
+    {
+        var track = FindTrack(clip, kind, target);
+        return track == null || track.Keys.Count == 0 ? fallback : AnimationCurve.Evaluate(track, time);
+    }
+
+    private static float EvalChannelTwo(AnimationClip2D clip, AnimationTrackKind kind, string target,
+        float time, float fallback)
+    {
+        var track = FindTrack(clip, kind, target);
+        return track == null || track.Keys.Count == 0 ? fallback : AnimationCurve.EvaluateSecond(track, time);
+    }
+
+    private static void EnsureTrack(AnimationClip2D clip, AnimationTrackKind kind, string target)
+    {
+        clip.Tracks ??= new List<AnimationTrack>();
+        if (FindTrack(clip, kind, target) != null) return;
+        clip.Tracks.Add(new AnimationTrack { Kind = kind, Target = target });
+        clip.BakeDirty = true;
+    }
+
+    /// <summary>Insert or update the key at <paramref name="time"/> (tolerance 0.5 ms, so
+    /// scrubbing onto an existing key edits it instead of stacking duplicates).</summary>
+    private static void WriteKey(AnimationClip2D clip, AnimationTrackKind kind, string target,
+        float time, float value, bool hasSecondary = false, float value2 = 0f)
+    {
+        clip.Tracks ??= new List<AnimationTrack>();
+        var track = FindTrack(clip, kind, target);
+        if (track == null)
+        {
+            track = new AnimationTrack { Kind = kind, Target = target };
+            clip.Tracks.Add(track);
+        }
+        time = MathF.Max(0f, time);
+        var key = track.Keys.FirstOrDefault(k => MathF.Abs(k.Time - time) < 0.0005f);
+        if (key == null)
+        {
+            key = new AnimationKey { Time = time };
+            track.Keys.Add(key);
+            track.Keys.Sort((a, b) => a.Time.CompareTo(b.Time));
+        }
+        key.Value = value;
+        if (hasSecondary) key.Value2 = value2;
+        clip.BakeDirty = true;
+    }
+
+    /// <summary>Mark every clip animating this rig dirty when the rig itself changes, so the
+    /// bake badge appears while the author edits. A cheap FNV fingerprint keeps this off the
+    /// JSON serializer (the setup page redraws every frame).</summary>
+    private void DetectRigEdits(AnimationRig rig)
+    {
+        if (string.IsNullOrEmpty(rig.Id)) return;
+        long fingerprint = RigFingerprint(rig);
+        if (_rigFingerprints.TryGetValue(rig.Id, out long previous) && previous != fingerprint)
+        {
+            int marked = 0;
+            foreach (var clip in _spriteEditor.AnimationClips)
+                if (string.Equals(clip.RigId, rig.Id, StringComparison.Ordinal)) { clip.BakeDirty = true; marked++; }
+            if (marked > 0) Status($"Rig changed — {marked} clip(s) marked dirty.");
+        }
+        _rigFingerprints[rig.Id] = fingerprint;
+    }
+
+    private static long RigFingerprint(AnimationRig rig)
+    {
+        long h = 1469598103934665603L;
+        void MixByte(byte b) => h = (h ^ b) * 1099511628211L;
+        void Mix(float v) { foreach (byte b in BitConverter.GetBytes(v)) MixByte(b); }
+        void MixInt(int v) { foreach (byte b in BitConverter.GetBytes(v)) MixByte(b); }
+        void MixText(string? s)
+        {
+            foreach (char c in s ?? "")
+            {
+                MixByte((byte)c);
+                MixByte((byte)(c >> 8));
+            }
+            MixByte(0x1F);
+        }
+
+        MixText(rig.Name);
+        Mix(rig.DesignHeightPx);
+        MixInt(rig.Bones.Count);
+        foreach (var b in rig.Bones)
+        {
+            MixText(b.Name); MixText(b.Parent);
+            Mix(b.X); Mix(b.Y); Mix(b.Rotation); Mix(b.ScaleX); Mix(b.ScaleY); Mix(b.Length);
+        }
+        MixInt(rig.Slots.Count);
+        foreach (var s in rig.Slots)
+        {
+            MixText(s.Name); MixText(s.Bone); MixText(s.Attachment);
+            Mix(s.R); Mix(s.G); Mix(s.B); Mix(s.A); MixInt(s.Visible ? 1 : 0);
+        }
+        MixInt(rig.Attachments.Count);
+        foreach (var a in rig.Attachments)
+        {
+            MixText(a.Name); MixText(a.Slot); MixText(a.SheetName); MixInt(a.FrameIndex);
+            Mix(a.OffsetX); Mix(a.OffsetY); Mix(a.Rotation); Mix(a.ScaleX); Mix(a.ScaleY);
+            Mix(a.PivotX); Mix(a.PivotY);
+        }
+        MixInt(rig.Skins.Count);
+        foreach (var skin in rig.Skins)
+        {
+            MixText(skin.Name);
+            foreach (var (slot, attachment) in skin.AttachmentBySlot.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            {
+                MixText(slot); MixText(attachment);
+            }
+        }
+        MixText(rig.DefaultSkin);
+        return h;
     }
 
     private void DrawRigBones(AnimationRig rig)
@@ -1117,6 +1664,11 @@ public class AnimationEditorPanel
     /// sheet texture, plus bone gizmos — the same geometry the baker will rasterize, so what
     /// the author sees here is what lands in the atlas.</summary>
     private void DrawRigPreview(AnimationRig rig, float size)
+        => DrawRigPreview(rig, size, null, 0f);
+
+    /// <summary>Preview at a point in time: setup pose (no clip) or the clip's timeline pose.
+    /// Same geometry as the baker, so the preview is the bake.</summary>
+    private void DrawRigPreview(AnimationRig rig, float size, AnimationClip2D? clip, float time)
     {
         float availW = Math.Max(220f, ImGui.GetContentRegionAvail().X - 10f);
         size = MathF.Min(size * _rigPreviewZoom, availW);
@@ -1139,7 +1691,7 @@ public class AnimationEditorPanel
                     even ? checkA : checkB);
             }
 
-        var pose = SkeletonPoseEvaluator.Evaluate(rig, null, 0f);
+        var pose = SkeletonPoseEvaluator.Evaluate(rig, clip?.Tracks, time, clip?.Bake?.Skin);
         var quads = new List<(PoseSlot Slot, SpriteSheet Sheet, int FX, int FY, int FW, int FH)>();
         float left = 0f, bottom = 0f, right = 0f, top = 0f;
         bool any = false;
@@ -1214,7 +1766,9 @@ public class AnimationEditorPanel
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.6f)));
 
         ImGui.Dummy(new Vector2(size, size));
-        ImGui.TextDisabled($"Setup pose  ·  {quads.Count} region(s)  ·  {rig.Bones.Count} bone(s)");
+        ImGui.TextDisabled(clip == null
+            ? $"Setup pose  ·  {quads.Count} region(s)  ·  {rig.Bones.Count} bone(s)"
+            : $"t = {time:0.00}s  ·  {quads.Count} region(s)  ·  {rig.Bones.Count} bone(s)");
     }
 
     /// <summary>Pivot-relative region corners in world space: [0]=bottom-left, [1]=bottom-right,
@@ -3305,20 +3859,30 @@ public class AnimationEditorPanel
         ImGui.TextDisabled($"Atlas: {clip.SpriteSheetName}   |   Baked frames: {clip.FrameIndices.Count}");
         if (clip.CanRebake)
             ImGui.TextDisabled($"Source: {clip.SourceSheetName}   |   Authored frames: {clip.SourceFrameIndices.Count}");
+        else if (clip.IsSkeleton)
+            ImGui.TextColored(ColDim, $"Skeleton clip — baked from rig '{RigFor(clip)?.Name ?? "(missing)"}' + its timeline.");
         else
             ImGui.TextColored(ColAmber, "No source sheet — frame/timing edits cannot be rebaked (legacy clip).");
 
         if (clip.BakeDirty)
-            ImGui.TextColored(ColAmber, "DIRTY — source strip changed since the last bake.");
-        else if (clip.CanRebake)
-            ImGui.TextColored(ColGreen, "BAKED — runtime clip matches the authored strip.");
+            ImGui.TextColored(ColAmber, clip.IsSkeleton
+                ? "DIRTY — the rig or timeline changed since the last bake."
+                : "DIRTY — source strip changed since the last bake.");
+        else if (clip.CanBake)
+            ImGui.TextColored(ColGreen, "BAKED — runtime clip matches its authored source.");
+
+        if (clip.IsSkeleton) DrawSkeletonClipSettings(clip);
 
         ImGui.PopItemWidth();
 
         ImGui.Separator();
 
-        ImGui.BeginDisabled(!clip.CanRebake || _spriteEditor.IsAtlasRepackRunning);
+        ImGui.BeginDisabled(!clip.CanBake || _spriteEditor.IsAtlasRepackRunning);
         if (ImGui.Button("Bake Clip")) BakeClip(clip);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(clip.IsSkeleton
+                ? "Sample the rig + timeline into atlas frames and pack them.\nUses the clip's bake FPS / length / skin."
+                : "Bake the authored frame strip into its atlas.");
         ImGui.EndDisabled();
         ImGui.SameLine();
         if (ImGui.Button("Duplicate Clip"))
@@ -3695,8 +4259,8 @@ public class AnimationEditorPanel
                 ImGui.TableNextColumn(); ImGui.Text(clip.Loop ? "yes" : "no");
                 ImGui.TableNextColumn();
                 if (clip.BakeDirty) ImGui.TextColored(ColAmber, "dirty");
-                else if (clip.CanRebake) ImGui.TextColored(ColGreen, "baked");
-                else ImGui.TextColored(ColDim, "legacy");
+                else if (clip.CanBake) ImGui.TextColored(ColGreen, "baked");
+                else ImGui.TextColored(ColDim, clip.IsSkeleton ? "unbaked" : "legacy");
                 ImGui.TableNextColumn(); ImGui.Text(clip.Mode.ToString());
                 ImGui.TableNextColumn();
                 if (refCounts.TryGetValue(clip.Name, out int rc) && rc > 0)
@@ -3723,7 +4287,10 @@ public class AnimationEditorPanel
 
     /// <summary>State badge text shared by the State column and its sort.</summary>
     private static string LibraryState(AnimationClip2D clip)
-        => clip.BakeDirty ? "dirty" : clip.CanRebake ? "baked" : "legacy";
+        => clip.BakeDirty ? "dirty"
+            : clip.CanBake ? "baked"
+            : clip.IsSkeleton ? "unbaked"
+            : "legacy";
 
     private int CompareLibraryRows((AnimationClip2D clip, int idx) a, (AnimationClip2D clip, int idx) b,
         Dictionary<string, int> refCounts)
@@ -3754,8 +4321,12 @@ public class AnimationEditorPanel
     //  Bake
     // ═══════════════════════════════════════════════════════════════
 
+    /// <summary>Bake button entry point: a skeleton clip samples its rig, a sprite clip
+    /// rebuilds its authored strip. Both end in the same repack worker.</summary>
     private bool BakeClip(AnimationClip2D clip)
     {
+        if (clip.IsSkeleton) return BakeSkeletonClip(clip);
+
         var source = _spriteEditor.FindSourceSheetPublic(clip.SourceSheetName);
         if (source == null)
         {
@@ -3775,6 +4346,179 @@ public class AnimationEditorPanel
         _spriteEditor.RequestAtlasRepackForEditor("animation editor bake");
         Status($"Baked '{baked.Name}' → {baked.SpriteSheetName} ({baked.FrameIndices.Count} frames)");
         return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Skeleton clips: settings + bake
+    // ═══════════════════════════════════════════════════════════════
+
+    private AnimationRig? RigFor(AnimationClip2D clip)
+        => _spriteEditor.AnimationRigs.FirstOrDefault(r =>
+            !string.IsNullOrEmpty(r.Id) && string.Equals(r.Id, clip.RigId, StringComparison.Ordinal));
+
+    /// <summary>Per-clip skeleton authoring: which rig, bake fps, cycle length and skin.
+    /// Everything here feeds <see cref="AnimationBaker.Bake"/> and is persisted in
+    /// <see cref="BakeSettings"/>.</summary>
+    private void DrawSkeletonClipSettings(AnimationClip2D clip)
+    {
+        var rigs = _spriteEditor.AnimationRigs;
+        var rig = RigFor(clip);
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.BeginCombo("Rig##cliprig", rig?.Name ?? "(missing rig)"))
+        {
+            foreach (var r in rigs)
+                if (ImGui.Selectable($"{r.Name}##cliprigitem", ReferenceEquals(r, rig)))
+                {
+                    clip.RigId = r.Id;
+                    clip.BakeDirty = true;
+                }
+            ImGui.EndCombo();
+        }
+        if (rig == null)
+        {
+            ImGui.TextColored(ColAmber, "This clip references a rig that is not loaded — pick one above.");
+            return;
+        }
+
+        clip.Bake ??= new BakeSettings();
+        float bakeFps = clip.Bake.Fps > 0f ? clip.Bake.Fps : clip.FPS;
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Bake FPS##clip", ref bakeFps, 0.25f, 1f, 60f, "%.1f"))
+        {
+            clip.Bake.Fps = Math.Clamp(bakeFps, 1f, 60f);
+            clip.BakeDirty = true;
+        }
+        ImGui.SameLine();
+        float length = clip.Bake.DurationSeconds > 0f
+            ? clip.Bake.DurationSeconds
+            : AnimationBaker.ResolveDuration(clip);
+        ImGui.SetNextItemWidth(120);
+        if (ImGui.DragFloat("Length (s)##clip", ref length, 0.01f, 0.05f, 30f, "%.2f"))
+        {
+            clip.Bake.DurationSeconds = Math.Clamp(length, 0.05f, 30f);
+            clip.BakeDirty = true;
+        }
+
+        var skins = rig.Skins.Count > 0 ? rig.Skins.Select(s => s.Name).ToList() : ["default"];
+        string skin = string.IsNullOrEmpty(clip.Bake.Skin) ? rig.DefaultSkin : clip.Bake.Skin;
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.BeginCombo("Skin##clipskin", skin))
+        {
+            foreach (string s in skins)
+                if (ImGui.Selectable($"{s}##clipskinitem", string.Equals(s, skin, StringComparison.Ordinal)))
+                {
+                    clip.Bake.Skin = s;
+                    clip.BakeDirty = true;
+                }
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Skin composited while baking. Different skins = different baked clips.\nAuthor skins on the Rig Setup page.");
+
+        var pose = SkeletonPoseEvaluator.Evaluate(rig, clip.Tracks, 0f, clip.Bake.Skin);
+        ImGui.TextDisabled($"At t=0: {pose.Slots.Count} slot(s) draw, {clip.Tracks?.Count ?? 0} track(s), "
+            + $"{(clip.Bake.DurationSeconds > 0f ? clip.Bake.DurationSeconds : AnimationBaker.ResolveDuration(clip)):0.##}s cycle.");
+    }
+
+    /// <summary>Sample a skeleton clip into atlas-ready frames. Pose evaluation + CPU
+    /// rasterization happen here (cheap for a rig); the 4096² pack still lands on the repack
+    /// worker. Also stamps the runtime metadata the sprite path needs: the draw path puts a
+    /// frame's BOTTOM on the feet line and centres it, so the canvas is symmetric about the
+    /// root and <see cref="AnimationClip2D.SpriteOffsetY"/> compensates art below the feet.</summary>
+    private bool TryBuildSkeletonFrames(AnimationClip2D clip, out List<BakedSpriteFrame> frames, out string error)
+    {
+        frames = new List<BakedSpriteFrame>();
+        error = "";
+        var rig = RigFor(clip);
+        if (rig == null)
+        {
+            error = $"Bake skipped: rig '{clip.RigId}' is not loaded.";
+            return false;
+        }
+
+        var options = new SkeletonBakeOptions { Skin = clip.Bake?.Skin };
+        var result = AnimationBaker.Bake(rig, clip, options, name =>
+            _spriteEditor.FindSourceSheetPublic(name) ?? _spriteEditor.FindBakedAtlasPublic(name));
+        if (!result.Success)
+        {
+            error = $"Bake failed for '{clip.Name}': " + string.Join(" ", result.Warnings);
+            return false;
+        }
+
+        clip.Bake ??= new BakeSettings();
+        clip.FPS = result.Fps;
+        clip.MasterWidth = 0f;                    // square master box from MasterHeight
+        clip.MasterHeight = rig.DesignHeightPx > 0f ? rig.DesignHeightPx : result.Height;
+        clip.SpriteOffsetX = 0f;                  // canvas is symmetric about the root
+        clip.SpriteOffsetY = result.BelowRootPx;  // negative when art hangs below the feet
+        RemapClipEvents(clip, result.Frames.Count);
+
+        foreach (string warning in result.Warnings)
+            Console.WriteLine($"[AnimationEditor] Skeleton bake '{clip.Name}': {warning}");
+
+        frames = result.Frames;
+        return true;
+    }
+
+    /// <summary>Bake one skeleton clip through the shared batch pack (one atlas write, off the
+    /// UI thread). The dirty flag is cleared by the batch on success only.</summary>
+    private bool BakeSkeletonClip(AnimationClip2D clip)
+    {
+        if (!TryBuildSkeletonFrames(clip, out var frames, out string error))
+        {
+            Status(error);
+            return false;
+        }
+        clip.BakeDirty = true;
+        if (!_spriteEditor.TryStartBakeBatch([(clip, frames)], "skeleton clip bake"))
+        {
+            Status("Could not start the bake — see Console.");
+            return false;
+        }
+        clip.Bake!.LastBakeHash = SkeletonBakeHash(RigFor(clip), clip);
+        Status($"Baking '{clip.Name}' — {frames.Count} frames @ {clip.FPS:0.#} fps, feet at offset {clip.SpriteOffsetY:0.#} px");
+        return true;
+    }
+
+    /// <summary>Events are keyed by FRAME index. When a bake changes the frame count the keys
+    /// are scaled proportionally, so a Hit authored at 60% of the cycle stays at 60% instead
+    /// of drifting (or landing outside the strip entirely).</summary>
+    private static void RemapClipEvents(AnimationClip2D clip, int newCount)
+    {
+        if (newCount <= 0 || clip.Events.Count == 0) return;
+        int oldCount = Math.Max(clip.FrameIndices.Count, clip.SourceFrameIndices.Count);
+        foreach (int key in clip.Events.Keys) oldCount = Math.Max(oldCount, key + 1);
+        if (oldCount <= 0) oldCount = newCount;
+
+        var remapped = new Dictionary<int, string>();
+        foreach (var (frame, name) in clip.Events.OrderBy(kv => kv.Key))
+        {
+            int mapped = oldCount <= 1
+                ? 0
+                : (int)MathF.Round(frame * (newCount - 1) / (float)(oldCount - 1));
+            mapped = Math.Clamp(mapped, 0, newCount - 1);
+            remapped.TryAdd(mapped, name);
+        }
+        clip.Events = remapped;
+    }
+
+    /// <summary>Stable hash of everything a skeleton bake depends on (rig geometry, timeline,
+    /// timing, skin) — stored in <see cref="BakeSettings.LastBakeHash"/> so a later edit can
+    /// be spotted.</summary>
+    private static string SkeletonBakeHash(AnimationRig? rig, AnimationClip2D clip)
+    {
+        string payload = JsonSerializer.Serialize(new
+        {
+            rig,
+            clip.Tracks,
+            clip.Loop,
+            clip.FPS,
+            clip.Bake?.Fps,
+            clip.Bake?.Skin,
+            clip.Bake?.DurationSeconds,
+        });
+        byte[] hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hash);
     }
 
     /// <summary>Rebake every requested clip through ONE background pack. Preparing the frames
@@ -3797,7 +4541,15 @@ public class AnimationEditorPanel
         foreach (var clip in candidates)
         {
             if (!seen.Add(clip.Name)) continue;
-            if (!clip.CanRebake) { skipped++; continue; }
+            if (!clip.CanBake) { skipped++; continue; }
+            // Skeleton clips have no source strip: their frames come from the rig + timeline,
+            // sampled here and then packed by the SAME batch (one atlas write for everything).
+            if (clip.IsSkeleton)
+            {
+                if (!TryBuildSkeletonFrames(clip, out var rigFrames, out _)) { failed++; continue; }
+                prepared.Add((clip, rigFrames));
+                continue;
+            }
             var source = _spriteEditor.FindSourceSheetPublic(clip.SourceSheetName);
             if (source == null) { skipped++; continue; }
             if (!_spriteEditor.TryPrepareBakeFramesForEditor(source, clip, out var frames, out _))

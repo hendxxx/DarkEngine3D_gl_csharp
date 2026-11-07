@@ -30,6 +30,11 @@ public sealed class SkeletonBakeResult
     /// (0 = top/left, 1 = bottom/right). Identical on every frame.</summary>
     public float AnchorX = 0.5f;
     public float AnchorY = 1f;
+    /// <summary>How far the canvas extends BELOW the root, in pixels (0 or negative).
+    /// The runtime draws a frame with its BOTTOM on the feet line and ignores anchors, so
+    /// a rig clip must carry this value as its <see cref="AnimationClip2D.SpriteOffsetY"/>
+    /// — otherwise art hanging below the feet would push the character up.</summary>
+    public float BelowRootPx;
     public bool Success => Frames.Count > 0;
 }
 
@@ -44,10 +49,14 @@ public sealed class SkeletonBakeResult
 /// </summary>
 public static class AnimationBaker
 {
-    /// <summary>Authored length in seconds: the last key of any track, falling back to the
-    /// source frame count at the clip's FPS for a rig clip with no keys.</summary>
+    /// <summary>Authored length in seconds: an explicit
+    /// <see cref="BakeSettings.DurationSeconds"/> wins, else the last key of any track,
+    /// falling back to the source frame count at the clip's FPS for a rig clip with no keys.</summary>
     public static float ResolveDuration(AnimationClip2D clip)
     {
+        if (clip?.Bake != null && clip.Bake.DurationSeconds > 0f)
+            return clip.Bake.DurationSeconds;
+
         float duration = 0f;
         if (clip?.Tracks != null)
         {
@@ -148,18 +157,19 @@ public static class AnimationBaker
             return result;
         }
 
-        // The root (0,0) is always inside the canvas so the anchor is meaningful even when
-        // every attachment sits off to one side.
-        left = MathF.Min(left, 0f);
-        bottom = MathF.Min(bottom, 0f);
-        right = MathF.Max(right, 0f);
-        top = MathF.Max(top, 0f);
+        // ── runtime-compatible canvas geometry ──
+        // The sprite draw path centres a frame horizontally on the object and puts its
+        // BOTTOM on the feet line (it never reads SpriteFrame anchors). So the canvas must be
+        // SYMMETRIC about the root, and any art below the root has to be compensated by the
+        // clip's SpriteOffsetY — see SkeletonBakeResult.BelowRootPx.
+        float halfWidth = MathF.Max(MathF.Max(MathF.Abs(left), MathF.Abs(right)), 0.5f);
+        int half = Math.Max(1, (int)MathF.Ceiling(halfWidth));
+        int canvasLeft = -half;
+        int canvasRight = half;
+        int canvasTop = Math.Max(1, (int)MathF.Ceiling(MathF.Max(top, 0f)));
+        int canvasBottom = Math.Min(0, (int)MathF.Floor(bottom));
 
-        int canvasLeft = (int)MathF.Floor(left);
-        int canvasBottom = (int)MathF.Floor(bottom);
-        int canvasRight = (int)MathF.Ceiling(right);
-        int canvasTop = (int)MathF.Ceiling(top);
-        int width = Math.Max(1, canvasRight - canvasLeft);
+        int width = canvasRight - canvasLeft;
         int height = Math.Max(1, canvasTop - canvasBottom);
 
         if (width > opts.MaxFrameSize || height > opts.MaxFrameSize)
@@ -170,8 +180,9 @@ public static class AnimationBaker
 
         result.Width = width;
         result.Height = height;
-        result.AnchorX = (0f - canvasLeft) / width;
-        result.AnchorY = (canvasTop - 0f) / height;
+        result.BelowRootPx = canvasBottom;
+        result.AnchorX = 0.5f;
+        result.AnchorY = canvasTop / (float)height;
 
         // ── pass 2: rasterize ──
         for (int i = 0; i < poses.Count; i++)
