@@ -35,9 +35,9 @@ Rules when updating:
 
 **Current position:** Phase 1 complete. Phase 3's CONSUMPTION half is delivered (layered clip
 compositing). Phase 2's ENGINE half is delivered too: pose evaluation, CPU rasterizer and the frame
-baker all work and are harness-verified — a rig clip can already be turned into atlas-ready frames
-from code. What is missing is everything that makes it usable from the editor: setup mode, animate
-mode, the timeline UI, and the button that pushes `AnimationBaker` output through
+baker work and are harness-verified, and the **Rig Setup page** now authors rigs (bones, slots,
+region attachments) with a live setup-pose preview. What is missing is the animation side — animate
+mode + timeline keys — and the button that pushes `AnimationBaker` output through
 `SpriteAtlasBaker.BakeClip`. That wiring is the next unit of work.
 
 ---
@@ -199,10 +199,18 @@ started. Nothing in the game reads any of this yet — a baked rig clip is still
 
 ### Checklist
 
-- [ ] Setup mode: bones (add / parent / rename, setup pose), slots (draw order, visibility).
-- [ ] Region attachments (pick sheet + frame, pivot/offset/rotation/scale) and skins list.
+- [x] Setup mode — **Rig Setup page** in the Animation Editor: rig list (new / duplicate / delete,
+      refused while a clip still references the rig), design height, bones (add as child of the
+      selected bone, parent picker that hides descendants, delete reparents children to root and
+      clears slots), slots (add / reorder ^v / delete with its attachments, bone binding,
+      visibility, tint), and a live setup-pose preview with bone gizmos + the root cross.
+      Renames commit on Enter/blur and carry every name reference with them.
+- [x] Region attachments (sheet + frame, pivot / offset / rotation / scale) edited per attachment;
+      `Use for selected clip` links the rig to a clip (`RigId` + `Mode = Skeleton`).
+- [ ] Skins list authoring UI (the evaluator + baker already take a skin name; there is no editor
+      for the skin list or per-slot overrides yet).
 - [ ] Attachment palette: drop on a bone slot, `Add texture…` PNG import, drag between slots,
-      duplicate for skin overrides.
+      duplicate for skin overrides (a plain `+ Attachment` button exists today).
 - [ ] Animate mode: bone selection in the viewport, transform gizmo, auto-key, key insertion.
 - [ ] Timeline tracks: bone rotate/translate/scale, slot attachment/color, events; linear/stepped/
       bezier interpolation with handles; playback + onion skin.
@@ -238,6 +246,7 @@ started. Nothing in the game reads any of this yet — a baked rig clip is still
 |---|---|---|
 | 2026-11-07 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
 | 2026-11-07 | `Tools/AnimationEvalTest` A–I | ALL PASS |
+| 2026-11-07 | Rig Setup page: create rig/bones/slots/attachments, preview, renames, save | NOT visually verified (compiled only) |
 | — | Baked rig clip played in Player2D/Sprite2D | blocked on the editor bake wiring |
 
 ### Acceptance

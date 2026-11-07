@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.Visual;
+using DarkEngine3D_gl_csharp.Engine.Visual.Skeleton;
 using ImGuiNET;
 using System.Numerics;
 
@@ -178,6 +179,21 @@ public class AnimationEditorPanel
     // ── Status line ──
     /// <summary>Filter for the "Add layer clip" combo (Phase 3 layered bake picker).</summary>
     private string _layerClipFilter = "";
+
+    // ── Rig Setup page (Phase 2 authoring: bones / slots / region attachments) ──
+    /// <summary>Selected rig / bone / slot / attachment indices on the Rig Setup page.
+    /// -1 = nothing selected; every Draw clamps them against the live lists first.</summary>
+    private int _rigIdx = -1;
+    private int _rigBoneIdx = -1;
+    private int _rigSlotIdx = -1;
+    private int _rigAttachIdx = -1;
+    private float _rigPreviewZoom = 1f;
+    /// <summary>Per-field inline rename buffers, keyed by field id. One buffer per KIND is not
+    /// enough: the bone, slot and attachment fields all draw in the same frame, so a shared
+    /// buffer would be reset by each of them and the text would never survive a frame. Names
+    /// commit on Enter/blur because bones/slots/attachments are linked BY NAME — a per-keystroke
+    /// rename would break every reference mid-word.</summary>
+    private readonly Dictionary<string, (object Target, string Text)> _rigRenameBufs = new();
     private string _status = "";
     private float _statusTime;
 
@@ -291,11 +307,17 @@ public class AnimationEditorPanel
             ImGui.SameLine();
             ImGui.PushStyleColor(ImGuiCol.Button,
                 _tabMode == 1 ? new Vector4(0.24f, 0.34f, 0.52f, 1f) : new Vector4(0.16f, 0.16f, 0.2f, 1f));
-            if (ImGui.Button("Library", new Vector2(110, 0))) _tabMode = 1;
+            if (ImGui.Button("Library", new Vector2(110, 0)))                _tabMode = 1;
+            ImGui.PopStyleColor();
+            ImGui.SameLine();
+            ImGui.PushStyleColor(ImGuiCol.Button,
+                _tabMode == 2 ? new Vector4(0.24f, 0.34f, 0.52f, 1f) : new Vector4(0.16f, 0.16f, 0.2f, 1f));
+            if (ImGui.Button("Rig Setup", new Vector2(110, 0))) _tabMode = 2;
             ImGui.PopStyleColor();
             ImGui.Separator();
 
             if (_tabMode == 0) DrawWorkspace();
+            else if (_tabMode == 2) DrawRigSetup();
             else DrawLibrary();
 
             // Dialogs live in the panel's window context: opening a popup outside any
@@ -602,6 +624,759 @@ public class AnimationEditorPanel
     // ═══════════════════════════════════════════════════════════════
     //  Workspace: groups | preview + timeline + properties
     // ═══════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════
+    //  Rig Setup — Phase 2 authoring (bones, slots, region attachments)
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Setup mode: build the skeleton that a skeleton clip animates. Everything here is
+    /// AUTHORING data (persisted in sprites.sheets.json by the Sprite Editor's Save) — no
+    /// runtime path reads a rig, and a rig only becomes a frame strip through a bake.
+    ///
+    /// Layout mirrors the workspace: rig header, then bones | slots | attachments + a live
+    /// setup-pose preview. Bones/slots/attachments are linked BY NAME, so renames commit on
+    /// Enter/blur and carry every reference with them instead of breaking links per keystroke.
+    /// </summary>
+    private void DrawRigSetup()
+    {
+        var rigs = _spriteEditor.AnimationRigs;
+        if (rigs.Count == 0)
+        {
+            ImGui.TextDisabled("No rigs yet. A rig is the skeleton a skeleton clip animates.");
+            ImGui.TextDisabled("Bake it later to turn the setup pose + timeline into ordinary atlas frames.");
+            ImGui.Spacing();
+            if (ImGui.Button("+ New Rig"))
+            {
+                _rigIdx = AddRig("Hero");
+                _rigBoneIdx = _rigSlotIdx = _rigAttachIdx = -1;
+                Status($"Created rig '{rigs[_rigIdx].Name}' — add a root bone, then slots and attachments.");
+            }
+            return;
+        }
+
+        _rigIdx = Math.Clamp(_rigIdx, 0, rigs.Count - 1);
+        var rig = rigs[_rigIdx];
+        ClampRigSelection(rig);
+
+        // ── rig header ──
+        ImGui.SetNextItemWidth(200);
+        if (ImGui.BeginCombo("##rigpick", rig.Name))
+        {
+            for (int i = 0; i < rigs.Count; i++)
+                if (ImGui.Selectable($"{rigs[i].Name}##rigpick{i}", i == _rigIdx))
+                {
+                    _rigIdx = i;
+                    _rigBoneIdx = _rigSlotIdx = _rigAttachIdx = -1;
+                }
+            ImGui.EndCombo();
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("+ Rig"))
+        {
+            _rigIdx = AddRig("Hero");
+            _rigBoneIdx = _rigSlotIdx = _rigAttachIdx = -1;
+            Status($"Created rig '{_spriteEditor.AnimationRigs[_rigIdx].Name}'.");
+            return;
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Duplicate Rig"))
+        {
+            var copy = rig.Clone();
+            copy.Id = Guid.NewGuid().ToString("N");
+            copy.Name = UniqueName(rigs.Select(r => r.Name), rig.Name + " Copy");
+            rigs.Insert(_rigIdx + 1, copy);
+            _rigIdx++;
+            Status($"Duplicated rig as '{copy.Name}'.");
+            return;
+        }
+        ImGui.SameLine();
+        {
+            // Clips stay linked by RigId: deleting a rig a clip still points at would leave
+            // an un-bakeable skeleton clip behind, so it is refused instead.
+            var users = _spriteEditor.AnimationClips.Where(c =>
+                !string.IsNullOrEmpty(rig.Id) && string.Equals(c.RigId, rig.Id, StringComparison.Ordinal)).ToList();
+            ImGui.BeginDisabled(users.Count > 0);
+            if (ImGui.Button("Delete Rig"))
+            {
+                rigs.RemoveAt(_rigIdx);
+                _rigIdx = rigs.Count > 0 ? Math.Clamp(_rigIdx - 1, 0, rigs.Count - 1) : -1;
+                _rigBoneIdx = _rigSlotIdx = _rigAttachIdx = -1;
+                Status($"Deleted rig '{rig.Name}'.");
+                return;
+            }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered() && users.Count > 0)
+                ImGui.SetTooltip($"Still used by {users.Count} clip(s): "
+                    + string.Join(", ", users.Take(4).Select(c => c.Name))
+                    + (users.Count > 4 ? "…" : "") + "\nClear their rig first.");
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Save"))
+        {
+            _spriteEditor.SaveAllSheets();
+            Status("Saved rigs to sprites.sheets.json");
+        }
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(90);
+        float designH = rig.DesignHeightPx;
+        if (ImGui.DragFloat("Design H", ref designH, 0.25f, 8f, 512f, "%.1f px"))
+            rig.DesignHeightPx = Math.Clamp(designH, 8f, 512f);
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Canonical character height in source pixels.\nThe bake derives its canvas from the posed regions, so this is the reference height the art should sit in.");
+        ImGui.SameLine();
+        {
+            var clip = SelectedClip;
+            ImGui.BeginDisabled(clip == null);
+            if (ImGui.Button("Use for selected clip"))
+            {
+                clip!.RigId = rig.Id;
+                clip.Mode = AnimationClipMode.Skeleton;
+                Status($"'{clip.Name}' now animates rig '{rig.Name}' (bake to produce frames).");
+            }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Link the clip currently selected in the tree to this rig\nand switch its mode to Skeleton. Authoring only — the runtime\nstill plays the baked frame strip.");
+        }
+        ImGui.SameLine();
+        ImGui.TextDisabled($"{rig.Bones.Count} bones | {rig.Slots.Count} slots | {rig.Attachments.Count} attachments");
+
+        ImGui.TextDisabled("Authoring data only: Save writes the rig into sprites.sheets.json;"
+            + " no game path reads it until a bake turns the pose into atlas frames.");
+        ImGui.Separator();
+
+        float avail = ImGui.GetContentRegionAvail().X;
+        float bonesW = 250f;
+        float slotsW = 300f;
+        float rightW = Math.Max(320f, avail - bonesW - slotsW - 24f);
+
+        // ── bones ──
+        ImGui.BeginChild("##rigbones", new Vector2(bonesW, 0), ImGuiChildFlags.Borders);
+        DrawRigBones(rig);
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+
+        // ── slots ──
+        ImGui.BeginChild("##rigslots", new Vector2(slotsW, 0), ImGuiChildFlags.Borders);
+        DrawRigSlots(rig);
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+
+        // ── attachments + preview ──
+        ImGui.BeginChild("##rigattach", new Vector2(rightW, 0), ImGuiChildFlags.Borders);
+        DrawRigAttachments(rig);
+        ImGui.EndChild();
+    }
+
+    private void DrawRigBones(AnimationRig rig)
+    {
+        ImGui.TextDisabled("BONES  (parent → child)");
+        if (ImGui.Button("+ Bone"))
+        {
+            string parent = _rigBoneIdx >= 0 && _rigBoneIdx < rig.Bones.Count ? rig.Bones[_rigBoneIdx].Name : "";
+            var bone = new Bone2D
+            {
+                Name = UniqueName(rig.Bones.Select(b => b.Name), parent.Length > 0 ? "bone" : "root"),
+                Parent = parent,
+                Length = 8f,
+            };
+            rig.Bones.Add(bone);
+            _rigBoneIdx = rig.Bones.Count - 1;
+            Status($"Added bone '{bone.Name}'" + (parent.Length > 0 ? $" under '{parent}'." : " as the root."));
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Adds a bone. With a bone selected it becomes that bone's child.\nBone Y is pixels UP in design space; the root should sit on the feet anchor.");
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_rigBoneIdx < 0 || _rigBoneIdx >= rig.Bones.Count);
+        if (ImGui.Button("Delete Bone"))
+        {
+            var bone = rig.Bones[_rigBoneIdx];
+            rig.Bones.RemoveAt(_rigBoneIdx);
+            // Never leave dangling name references behind: children become roots, slots lose
+            // their bone (the evaluator then draws them at the rig origin).
+            foreach (var child in rig.Bones)
+                if (string.Equals(child.Parent, bone.Name, StringComparison.Ordinal)) child.Parent = "";
+            foreach (var slot in rig.Slots)
+                if (string.Equals(slot.Bone, bone.Name, StringComparison.Ordinal)) slot.Bone = "";
+            _rigBoneIdx = rig.Bones.Count > 0 ? Math.Clamp(_rigBoneIdx, 0, rig.Bones.Count - 1) : -1;
+            Status($"Deleted bone '{bone.Name}' — its children became roots.");
+        }
+        ImGui.EndDisabled();
+
+        ImGui.Separator();
+        ImGui.BeginChild("##rigbonelist", new Vector2(0, 130), ImGuiChildFlags.None);
+        for (int i = 0; i < rig.Bones.Count; i++)
+        {
+            var bone = rig.Bones[i];
+            string indent = new(' ', Math.Min(12, BoneDepth(rig, bone) * 2));
+            string label = $"{indent}{bone.Name}{(string.IsNullOrEmpty(bone.Parent) ? "" : $"  ({bone.Parent})")}";
+            if (ImGui.Selectable($"{label}##rigbone{i}", i == _rigBoneIdx)) _rigBoneIdx = i;
+        }
+        if (rig.Bones.Count == 0)
+            ImGui.TextDisabled("No bones — start with one root bone at the feet.");
+        ImGui.EndChild();
+
+        if (_rigBoneIdx < 0 || _rigBoneIdx >= rig.Bones.Count) return;
+        var selected = rig.Bones[_rigBoneIdx];
+        ImGui.Separator();
+        ImGui.TextColored(ColAmber, "BONE SETUP");
+
+        ImGui.SetNextItemWidth(-1);
+        DrawRigRenameField("bone", selected, selected.Name, n => CommitBoneRename(rig, selected, n));
+        ImGui.TextDisabled("Name (Enter to commit)");
+
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##boneparent", string.IsNullOrEmpty(selected.Parent) ? "(root)" : selected.Parent))
+        {
+            if (ImGui.Selectable("(root)", string.IsNullOrEmpty(selected.Parent))) selected.Parent = "";
+            foreach (var other in rig.Bones)
+            {
+                if (ReferenceEquals(other, selected)) continue;
+                // A bone cannot parent itself or one of its own descendants (that would be a loop).
+                if (IsDescendantOf(rig, selected.Name, other.Name)) continue;
+                if (ImGui.Selectable($"{other.Name}##bp", string.Equals(selected.Parent, other.Name, StringComparison.Ordinal)))
+                    selected.Parent = other.Name;
+            }
+            ImGui.EndCombo();
+        }
+        ImGui.TextDisabled("Parent");
+
+        float x = selected.X, y = selected.Y, rot = selected.Rotation, len = selected.Length;
+        ImGui.SetNextItemWidth(92);
+        if (ImGui.DragFloat("X##boneX", ref x, 0.1f)) selected.X = x;
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.DragFloat("Y##boneY", ref y, 0.1f)) selected.Y = y;
+
+        ImGui.SetNextItemWidth(92);
+        if (ImGui.DragFloat("Rot##boneR", ref rot, 0.25f)) selected.Rotation = rot;
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.DragFloat("Len##boneLen", ref len, 0.1f, 0f, 512f)) selected.Length = MathF.Max(0f, len);
+
+        float sx = selected.ScaleX, sy = selected.ScaleY;
+        ImGui.SetNextItemWidth(92);
+        if (ImGui.DragFloat("Scale X##boneSX", ref sx, 0.01f)) selected.ScaleX = sx;
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.DragFloat("Scale Y##boneSY", ref sy, 0.01f)) selected.ScaleY = sy;
+        ImGui.TextDisabled("X/Y in pixels, Y UP from the feet anchor.");
+        ImGui.TextDisabled("Local values — a child starts at its parent's origin.");
+
+        var world = SkeletonPoseEvaluator.Evaluate(rig, null, 0f);
+        if (world.Bones.TryGetValue(selected.Name, out var w))
+        {
+            var o = w.TransformPoint(0f, 0f);
+            ImGui.TextDisabled($"World: {o.X:0.##}, {o.Y:0.##} px");
+        }
+    }
+
+    private void DrawRigSlots(AnimationRig rig)
+    {
+        ImGui.TextDisabled("SLOTS  (list order = draw order)");
+        if (ImGui.Button("+ Slot"))
+        {
+            string bone = _rigBoneIdx >= 0 && _rigBoneIdx < rig.Bones.Count ? rig.Bones[_rigBoneIdx].Name : "";
+            var slot = new Slot2D
+            {
+                Name = UniqueName(rig.Slots.Select(s => s.Name), "slot"),
+                Bone = bone,
+                Attachment = "",
+            };
+            rig.Slots.Add(slot);
+            _rigSlotIdx = rig.Slots.Count - 1;
+            Status($"Added slot '{slot.Name}' on bone '{(bone.Length > 0 ? bone : "(none)")}'.");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("A slot is one drawable layer bound to a bone.\nLater slots draw IN FRONT of earlier ones — use the arrows to reorder.");
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_rigSlotIdx <= 0);
+        if (ImGui.SmallButton("^"))
+        {
+            (rig.Slots[_rigSlotIdx - 1], rig.Slots[_rigSlotIdx]) = (rig.Slots[_rigSlotIdx], rig.Slots[_rigSlotIdx - 1]);
+            _rigSlotIdx--;
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_rigSlotIdx < 0 || _rigSlotIdx >= rig.Slots.Count - 1);
+        if (ImGui.SmallButton("v"))
+        {
+            (rig.Slots[_rigSlotIdx + 1], rig.Slots[_rigSlotIdx]) = (rig.Slots[_rigSlotIdx], rig.Slots[_rigSlotIdx + 1]);
+            _rigSlotIdx++;
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_rigSlotIdx < 0 || _rigSlotIdx >= rig.Slots.Count);
+        if (ImGui.SmallButton("X##delslot"))
+        {
+            var slot = rig.Slots[_rigSlotIdx];
+            rig.Slots.RemoveAt(_rigSlotIdx);
+            rig.Attachments.RemoveAll(a => string.Equals(a.Slot, slot.Name, StringComparison.Ordinal));
+            _rigSlotIdx = rig.Slots.Count > 0 ? Math.Clamp(_rigSlotIdx, 0, rig.Slots.Count - 1) : -1;
+            _rigAttachIdx = -1;
+            Status($"Deleted slot '{slot.Name}' and its attachments.");
+        }
+        ImGui.EndDisabled();
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Delete the slot AND every attachment that lives on it.");
+
+        ImGui.Separator();
+        ImGui.BeginChild("##rigslotlist", new Vector2(0, 130), ImGuiChildFlags.None);
+        for (int i = 0; i < rig.Slots.Count; i++)
+        {
+            var slot = rig.Slots[i];
+            string att = string.IsNullOrEmpty(slot.Attachment) ? "(no attachment)" : slot.Attachment;
+            if (ImGui.Selectable($"{i + 1}. {slot.Name}  ·  {att}##rigslot{i}", i == _rigSlotIdx))
+                _rigSlotIdx = i;
+        }
+        if (rig.Slots.Count == 0)
+            ImGui.TextDisabled("No slots yet — each piece of art is a slot.");
+        ImGui.EndChild();
+
+        if (_rigSlotIdx < 0 || _rigSlotIdx >= rig.Slots.Count) return;
+        var sel = rig.Slots[_rigSlotIdx];
+        ImGui.Separator();
+        ImGui.TextColored(ColAmber, "SLOT");
+
+        ImGui.SetNextItemWidth(-1);
+        DrawRigRenameField("slot", sel, sel.Name, n => CommitSlotRename(rig, sel, n));
+        ImGui.TextDisabled("Name (Enter to commit)");
+
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.BeginCombo("##slotbone", string.IsNullOrEmpty(sel.Bone) ? "(no bone)" : sel.Bone))
+        {
+            if (ImGui.Selectable("(no bone)", string.IsNullOrEmpty(sel.Bone))) sel.Bone = "";
+            foreach (var bone in rig.Bones)
+                if (ImGui.Selectable($"{bone.Name}##sb", string.Equals(sel.Bone, bone.Name, StringComparison.Ordinal)))
+                    sel.Bone = bone.Name;
+            ImGui.EndCombo();
+        }
+        ImGui.TextDisabled($"Bone ({(string.IsNullOrEmpty(sel.Bone) ? "draws at the rig origin" : "follows this bone")})");
+
+        ImGui.SetNextItemWidth(-1);
+        var slotAttachments = rig.Attachments.Where(a => string.Equals(a.Slot, sel.Name, StringComparison.Ordinal)).ToList();
+        string attPreview = string.IsNullOrEmpty(sel.Attachment) ? "(no attachment)" : sel.Attachment;
+        if (!string.IsNullOrEmpty(sel.Attachment) && !slotAttachments.Any(a => a.Name == sel.Attachment))
+            attPreview += "  (missing)";
+        if (ImGui.BeginCombo("##slotatt", attPreview))
+        {
+            if (ImGui.Selectable("(no attachment)", string.IsNullOrEmpty(sel.Attachment))) sel.Attachment = "";
+            foreach (var a in slotAttachments)
+                if (ImGui.Selectable($"{a.Name}##sa", string.Equals(sel.Attachment, a.Name, StringComparison.Ordinal)))
+                    sel.Attachment = a.Name;
+            ImGui.EndCombo();
+        }
+        ImGui.TextDisabled("Default attachment (skins can override it)");
+
+        bool visible = sel.Visible;
+        if (ImGui.Checkbox("Visible", ref visible)) sel.Visible = visible;
+        ImGui.SameLine();
+        var col = new Vector4(sel.R, sel.G, sel.B, sel.A);
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.ColorEdit4("##slotcol", ref col, ImGuiColorEditFlags.NoInputs | ImGuiColorEditFlags.AlphaBar))
+        {
+            sel.R = col.X; sel.G = col.Y; sel.B = col.Z; sel.A = col.W;
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Slot tint baked into the frame. White = untouched.\nThe alpha also scales the baked pixel alpha — a fully transparent slot draws nothing.");
+    }
+
+    private void DrawRigAttachments(AnimationRig rig)
+    {
+        ImGui.TextDisabled("REGION ATTACHMENTS");
+        if (ImGui.Button("+ Attachment"))
+        {
+            string slot = _rigSlotIdx >= 0 && _rigSlotIdx < rig.Slots.Count ? rig.Slots[_rigSlotIdx].Name : "";
+            var sheet = FirstAttachmentSheet();
+            var att = new Attachment2D
+            {
+                Name = UniqueName(rig.Attachments.Select(a => a.Name), "region"),
+                Slot = slot,
+                SheetName = sheet?.Name ?? "",
+                FrameIndex = 0,
+                PivotX = 0.5f,
+                PivotY = 1f,
+                ScaleX = 1f,
+                ScaleY = 1f,
+            };
+            rig.Attachments.Add(att);
+            _rigAttachIdx = rig.Attachments.Count - 1;
+            // A slot with no attachment (or a fresh one) should show the region immediately.
+            if (!string.IsNullOrEmpty(slot))
+            {
+                var target = rig.Slots.FirstOrDefault(s => s.Name == slot);
+                if (target != null && string.IsNullOrEmpty(target.Attachment)) target.Attachment = att.Name;
+            }
+            Status(sheet == null
+                ? $"Added '{att.Name}' with no art — pick a sheet (import one in the Sprite Editor first)."
+                : $"Added '{att.Name}' from '{sheet.Name}'.");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Adds a region attachment (one sheet frame) to the selected slot.\nPivot 0.5 / 1 = bottom-center, so the art hangs above the bone.");
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_rigAttachIdx < 0 || _rigAttachIdx >= rig.Attachments.Count);
+        if (ImGui.Button("Delete"))
+        {
+            var att = rig.Attachments[_rigAttachIdx];
+            rig.Attachments.RemoveAt(_rigAttachIdx);
+            foreach (var slot in rig.Slots)
+                if (string.Equals(slot.Attachment, att.Name, StringComparison.Ordinal)) slot.Attachment = "";
+            _rigAttachIdx = rig.Attachments.Count > 0 ? Math.Clamp(_rigAttachIdx, 0, rig.Attachments.Count - 1) : -1;
+            Status($"Deleted attachment '{att.Name}'.");
+        }
+        ImGui.EndDisabled();
+
+        ImGui.BeginChild("##rigattlist", new Vector2(0, 96), ImGuiChildFlags.None);
+        for (int i = 0; i < rig.Attachments.Count; i++)
+        {
+            var a = rig.Attachments[i];
+            if (ImGui.Selectable($"{a.Name}  <{a.Slot}>  [{a.SheetName}#{a.FrameIndex}]##rigatt{i}", i == _rigAttachIdx))
+                _rigAttachIdx = i;
+        }
+        if (rig.Attachments.Count == 0)
+            ImGui.TextDisabled("No attachments — add one to give a slot some art.");
+        ImGui.EndChild();
+
+        if (_rigAttachIdx >= 0 && _rigAttachIdx < rig.Attachments.Count)
+        {
+            var a = rig.Attachments[_rigAttachIdx];
+            ImGui.Separator();
+            ImGui.TextColored(ColAmber, "ATTACHMENT");
+
+            ImGui.SetNextItemWidth(-1);
+            DrawRigRenameField("att", a, a.Name, n => CommitAttachmentRename(rig, a, n));
+
+            ImGui.SetNextItemWidth(120);
+            if (ImGui.BeginCombo("##attslot", string.IsNullOrEmpty(a.Slot) ? "(no slot)" : a.Slot))
+            {
+                if (ImGui.Selectable("(no slot)", string.IsNullOrEmpty(a.Slot))) a.Slot = "";
+                foreach (var slot in rig.Slots)
+                    if (ImGui.Selectable($"{slot.Name}##as", string.Equals(a.Slot, slot.Name, StringComparison.Ordinal)))
+                        a.Slot = slot.Name;
+                ImGui.EndCombo();
+            }
+            ImGui.SameLine();
+
+            var sheets = _spriteEditor.SpriteSheets;
+            var currentSheet = FindAttachmentSheet(a.SheetName);
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.BeginCombo("##attsheet", currentSheet?.Name ?? (string.IsNullOrEmpty(a.SheetName) ? "(no sheet)" : $"{a.SheetName} (missing)")))
+            {
+                foreach (var sheet in sheets)
+                    if (ImGui.Selectable($"{sheet.Name}##ass", string.Equals(a.SheetName, sheet.Name, StringComparison.Ordinal)))
+                    {
+                        a.SheetName = sheet.Name;
+                        a.FrameIndex = Math.Clamp(a.FrameIndex, 0, Math.Max(0, sheet.FrameCount - 1));
+                    }
+                ImGui.EndCombo();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Source sheet the region is cropped from.\nRig art ignores the sheet's Flip X/Y — bake-time normalization only applies to sprite strips.");
+
+            int maxFrame = currentSheet != null ? Math.Max(1, currentSheet.FrameCount) : 1;
+            ImGui.SetNextItemWidth(120);
+            int frame = a.FrameIndex;
+            if (ImGui.DragInt("Frame", ref frame, 0.2f, 0, Math.Max(0, maxFrame - 1)))
+                a.FrameIndex = Math.Clamp(frame, 0, Math.Max(0, maxFrame - 1));
+            ImGui.SameLine();
+            ImGui.TextDisabled(currentSheet != null ? $"of {maxFrame}" : "no art");
+
+            ImGui.SetNextItemWidth(120);
+            float px = a.PivotX, py = a.PivotY;
+            if (ImGui.DragFloat("Pivot X", ref px, 0.005f, 0f, 1f)) a.PivotX = Math.Clamp(px, 0f, 1f);
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(120);
+            if (ImGui.DragFloat("Pivot Y", ref py, 0.005f, 0f, 1f)) a.PivotY = Math.Clamp(py, 0f, 1f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Pivot inside the region (0..1). Y = 1 is the BOTTOM (feet anchor),\nso the art hangs above the bone.");
+
+            ImGui.PushItemWidth(110);
+            float ox = a.OffsetX, oy = a.OffsetY, rot = a.Rotation, sx = a.ScaleX, sy = a.ScaleY;
+            if (ImGui.DragFloat("Off X", ref ox, 0.1f)) a.OffsetX = ox;
+            ImGui.SameLine();
+            if (ImGui.DragFloat("Off Y", ref oy, 0.1f)) a.OffsetY = oy;
+            if (ImGui.DragFloat("Rot", ref rot, 0.25f)) a.Rotation = rot;
+            ImGui.SameLine();
+            if (ImGui.DragFloat("Scale X", ref sx, 0.01f)) a.ScaleX = sx;
+            ImGui.SameLine();
+            if (ImGui.DragFloat("Scale Y", ref sy, 0.01f)) a.ScaleY = sy;
+            ImGui.PopItemWidth();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Placement relative to the slot's bone.\nA negative scale mirrors the art (rig art ignores sheet flips).");
+        }
+
+        ImGui.Separator();
+        ImGui.SetNextItemWidth(120);
+        ImGui.SliderFloat("Zoom##rigpreview", ref _rigPreviewZoom, 0.5f, 3f, "%.1fx");
+        DrawRigPreview(rig, 260f);
+    }
+
+    /// <summary>Live SETUP pose (no timeline): every slot drawn with its attachment's real
+    /// sheet texture, plus bone gizmos — the same geometry the baker will rasterize, so what
+    /// the author sees here is what lands in the atlas.</summary>
+    private void DrawRigPreview(AnimationRig rig, float size)
+    {
+        float availW = Math.Max(220f, ImGui.GetContentRegionAvail().X - 10f);
+        size = MathF.Min(size * _rigPreviewZoom, availW);
+        if (size < 40f) return;
+
+        var drawList = ImGui.GetWindowDrawList();
+        Vector2 origin = ImGui.GetCursorScreenPos();
+
+        uint checkA = ImGui.ColorConvertFloat4ToU32(new Vector4(0.33f, 0.33f, 0.33f, 1f));
+        uint checkB = ImGui.ColorConvertFloat4ToU32(new Vector4(0.24f, 0.24f, 0.24f, 1f));
+        const int check = 16;
+        for (int cy = 0; cy < (int)size; cy += check)
+            for (int cx = 0; cx < (int)size; cx += check)
+            {
+                bool even = ((cx / check) + (cy / check)) % 2 == 0;
+                drawList.AddRectFilled(
+                    new Vector2(origin.X + cx, origin.Y + cy),
+                    new Vector2(Math.Min(origin.X + cx + check, origin.X + size),
+                                Math.Min(origin.Y + cy + check, origin.Y + size)),
+                    even ? checkA : checkB);
+            }
+
+        var pose = SkeletonPoseEvaluator.Evaluate(rig, null, 0f);
+        var quads = new List<(PoseSlot Slot, SpriteSheet Sheet, int FX, int FY, int FW, int FH)>();
+        float left = 0f, bottom = 0f, right = 0f, top = 0f;
+        bool any = false;
+
+        foreach (var slot in pose.Slots)
+        {
+            var att = slot.Attachment;
+            if (att == null) continue;
+            var sheet = FindAttachmentSheet(att.SheetName);
+            if (sheet == null) continue;
+            if (!SpriteRasterizer.TryGetFrameRect(sheet, att.FrameIndex, out int fx, out int fy, out int fw, out int fh)) continue;
+            quads.Add((slot, sheet, fx, fy, fw, fh));
+            foreach (var (cx, cy) in AttachmentCorners(slot, fw, fh))
+            {
+                if (!any) { left = right = cx; bottom = top = cy; any = true; }
+                left = MathF.Min(left, cx); right = MathF.Max(right, cx);
+                bottom = MathF.Min(bottom, cy); top = MathF.Max(top, cy);
+            }
+        }
+
+        if (!any) { left = right = bottom = 0f; top = MathF.Max(1f, rig.DesignHeightPx); }
+        left = MathF.Min(left, 0f - 2f); right = MathF.Max(right, 2f);
+        bottom = MathF.Min(bottom, -2f); top = MathF.Max(top, 2f);
+
+        float span = MathF.Max(right - left, top - bottom);
+        float scale = span > 0.001f ? size * 0.86f / span : 1f;
+        float cxWorld = (left + right) * 0.5f;
+        float cyWorld = (bottom + top) * 0.5f;
+        Vector2 ToScreen(float wx, float wy) => new(
+            origin.X + size * 0.5f + (wx - cxWorld) * scale,
+            origin.Y + size * 0.5f - (wy - cyWorld) * scale);
+
+        uint tint = ImGui.ColorConvertFloat4ToU32(Vector4.One);
+        foreach (var q in quads)
+        {
+            uint tex = _spriteEditor.EnsureImageTextureForEditor(q.Sheet.ImagePath);
+            if (tex == 0) continue;
+            var corners = AttachmentCorners(q.Slot, q.FW, q.FH);
+            float u0 = (float)q.FX / Math.Max(1, q.Sheet.ImageWidth);
+            float u1 = (float)(q.FX + q.FW) / Math.Max(1, q.Sheet.ImageWidth);
+            float v0 = (float)q.FY / Math.Max(1, q.Sheet.ImageHeight);
+            float v1 = (float)(q.FY + q.FH) / Math.Max(1, q.Sheet.ImageHeight);
+            drawList.AddImageQuad((nint)tex,
+                ToScreen(corners[3].X, corners[3].Y),   // top-left
+                ToScreen(corners[2].X, corners[2].Y),   // top-right
+                ToScreen(corners[1].X, corners[1].Y),   // bottom-right
+                ToScreen(corners[0].X, corners[0].Y),   // bottom-left
+                new Vector2(u0, v0), new Vector2(u1, v0),
+                new Vector2(u1, v1), new Vector2(u0, v1),
+                tint);
+        }
+
+        // Bone gizmos: origin dot + a line along the bone's local +X (length in px).
+        foreach (var bone in rig.Bones)
+        {
+            if (!pose.Bones.TryGetValue(bone.Name, out var world)) continue;
+            bool selected = _rigBoneIdx >= 0 && _rigBoneIdx < rig.Bones.Count
+                && ReferenceEquals(rig.Bones[_rigBoneIdx], bone);
+            uint color = ImGui.ColorConvertFloat4ToU32(selected
+                ? new Vector4(1f, 0.78f, 0.25f, 1f)
+                : new Vector4(0.45f, 0.8f, 1f, 0.85f));
+            var o = world.TransformPoint(0f, 0f);
+            var tip = world.TransformPoint(MathF.Max(1f, bone.Length), 0f);
+            drawList.AddLine(ToScreen(o.X, o.Y), ToScreen(tip.X, tip.Y), color, selected ? 2.5f : 1.5f);
+            drawList.AddCircleFilled(ToScreen(o.X, o.Y), selected ? 4f : 3f, color);
+        }
+
+        var rootScreen = ToScreen(0f, 0f);
+        drawList.AddLine(new Vector2(rootScreen.X - 6f, rootScreen.Y), new Vector2(rootScreen.X + 6f, rootScreen.Y),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.6f)));
+        drawList.AddLine(new Vector2(rootScreen.X, rootScreen.Y - 6f), new Vector2(rootScreen.X, rootScreen.Y + 6f),
+            ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.8f, 1f, 0.6f)));
+
+        ImGui.Dummy(new Vector2(size, size));
+        ImGui.TextDisabled($"Setup pose  ·  {quads.Count} region(s)  ·  {rig.Bones.Count} bone(s)");
+    }
+
+    /// <summary>Pivot-relative region corners in world space: [0]=bottom-left, [1]=bottom-right,
+    /// [2]=top-right, [3]=top-left (y-up design space).</summary>
+    private static (float X, float Y)[] AttachmentCorners(PoseSlot slot, int width, int height)
+    {
+        float px = slot.Attachment?.PivotX ?? 0.5f;
+        float py = slot.Attachment?.PivotY ?? 1f;
+        float x0 = -px * width, x1 = (1f - px) * width;
+        float y0 = -(1f - py) * height, y1 = py * height;
+        return
+        [
+            slot.World.TransformPoint(x0, y0),
+            slot.World.TransformPoint(x1, y0),
+            slot.World.TransformPoint(x1, y1),
+            slot.World.TransformPoint(x0, y1),
+        ];
+    }
+
+    private SpriteSheet? FindAttachmentSheet(string sheetName)
+    {
+        if (string.IsNullOrEmpty(sheetName)) return null;
+        return _spriteEditor.FindSourceSheetPublic(sheetName)
+            ?? _spriteEditor.FindBakedAtlasPublic(sheetName);
+    }
+
+    private SpriteSheet? FirstAttachmentSheet()
+        => _spriteEditor.SpriteSheets.FirstOrDefault(s => s.FrameCount > 0)
+           ?? _spriteEditor.SpriteSheets.FirstOrDefault();
+
+    /// <summary>Inline rename that commits on Enter/blur: a per-keystroke rename would break
+    /// the name links (parents, slot bones, attachment references) mid-word.</summary>
+    private void DrawRigRenameField(string id, object target, string current, Action<string> apply)
+    {
+        if (!_rigRenameBufs.TryGetValue(id, out var buf) || !ReferenceEquals(buf.Target, target))
+        {
+            buf = (target, current);
+            _rigRenameBufs[id] = buf;
+        }
+        string text = buf.Text;
+        bool enter = ImGui.InputText($"##rigrename{id}", ref text, 64, ImGuiInputTextFlags.EnterReturnsTrue);
+        bool blurred = ImGui.IsItemDeactivatedAfterEdit();
+        _rigRenameBufs[id] = (buf.Target, text);
+
+        string trimmed = (text ?? "").Trim();
+        if ((enter || blurred) && trimmed.Length > 0 && !string.Equals(trimmed, current, StringComparison.Ordinal))
+        {
+            apply(trimmed);
+            _rigRenameBufs[id] = (target, trimmed);
+        }
+    }
+
+    private void CommitBoneRename(AnimationRig rig, Bone2D bone, string newName)
+    {
+        if (rig.Bones.Any(b => !ReferenceEquals(b, bone) && string.Equals(b.Name, newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Status($"A bone named '{newName}' already exists — rename cancelled.");
+            return;
+        }
+        string old = bone.Name;
+        bone.Name = newName;
+        foreach (var child in rig.Bones)
+            if (string.Equals(child.Parent, old, StringComparison.Ordinal)) child.Parent = newName;
+        foreach (var slot in rig.Slots)
+            if (string.Equals(slot.Bone, old, StringComparison.Ordinal)) slot.Bone = newName;
+        Status($"Renamed bone '{old}' → '{newName}'.");
+    }
+
+    private void CommitSlotRename(AnimationRig rig, Slot2D slot, string newName)
+    {
+        if (rig.Slots.Any(s => !ReferenceEquals(s, slot) && string.Equals(s.Name, newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Status($"A slot named '{newName}' already exists — rename cancelled.");
+            return;
+        }
+        string old = slot.Name;
+        slot.Name = newName;
+        foreach (var a in rig.Attachments)
+            if (string.Equals(a.Slot, old, StringComparison.Ordinal)) a.Slot = newName;
+        Status($"Renamed slot '{old}' → '{newName}'.");
+    }
+
+    private void CommitAttachmentRename(AnimationRig rig, Attachment2D att, string newName)
+    {
+        if (rig.Attachments.Any(a => !ReferenceEquals(a, att) && string.Equals(a.Name, newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Status($"An attachment named '{newName}' already exists — rename cancelled.");
+            return;
+        }
+        string old = att.Name;
+        att.Name = newName;
+        foreach (var slot in rig.Slots)
+            if (string.Equals(slot.Attachment, old, StringComparison.Ordinal)) slot.Attachment = newName;
+        Status($"Renamed attachment '{old}' → '{newName}'.");
+    }
+
+    private int AddRig(string baseName)
+    {
+        var rigs = _spriteEditor.AnimationRigs;
+        var rig = new AnimationRig
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = UniqueName(rigs.Select(r => r.Name), baseName),
+            DesignHeightPx = 64f,
+            Skins = [new Skin2D { Name = "default" }],
+            DefaultSkin = "default",
+        };
+        rigs.Add(rig);
+        return rigs.Count - 1;
+    }
+
+    private void ClampRigSelection(AnimationRig rig)
+    {
+        if (rig.Bones.Count == 0) _rigBoneIdx = -1;
+        else _rigBoneIdx = Math.Clamp(_rigBoneIdx, -1, rig.Bones.Count - 1);
+        if (rig.Slots.Count == 0) _rigSlotIdx = -1;
+        else _rigSlotIdx = Math.Clamp(_rigSlotIdx, -1, rig.Slots.Count - 1);
+        if (rig.Attachments.Count == 0) _rigAttachIdx = -1;
+        else _rigAttachIdx = Math.Clamp(_rigAttachIdx, -1, rig.Attachments.Count - 1);
+    }
+
+    private static int BoneDepth(AnimationRig rig, Bone2D bone)
+    {
+        int depth = 0;
+        var name = bone.Parent;
+        while (!string.IsNullOrEmpty(name) && depth < 16)
+        {
+            var parent = rig.Bones.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.Ordinal));
+            if (parent == null) break;
+            depth++;
+            name = parent.Parent;
+        }
+        return depth;
+    }
+
+    /// <summary>True when <paramref name="name"/> sits under <paramref name="ancestor"/> —
+    /// used to keep the parent picker from offering a bone its own descendant (a loop).</summary>
+    private static bool IsDescendantOf(AnimationRig rig, string ancestor, string name)
+    {
+        var current = rig.Bones.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.Ordinal));
+        for (int guard = 0; current != null && guard < 32; guard++)
+        {
+            if (string.Equals(current.Parent, ancestor, StringComparison.Ordinal)) return true;
+            current = string.IsNullOrEmpty(current.Parent)
+                ? null
+                : rig.Bones.FirstOrDefault(b => string.Equals(b.Name, current.Parent, StringComparison.Ordinal));
+        }
+        return false;
+    }
+
+    private static string UniqueName(IEnumerable<string> used, string baseName)
+    {
+        var set = new HashSet<string>(used, StringComparer.OrdinalIgnoreCase);
+        string name = string.IsNullOrWhiteSpace(baseName) ? "item" : baseName.Trim();
+        if (!set.Contains(name)) return name;
+        for (int i = 2; i < 1000; i++)
+        {
+            string candidate = $"{name} {i}";
+            if (!set.Contains(candidate)) return candidate;
+        }
+        return name + " " + Guid.NewGuid().ToString("N")[..4];
+    }
 
     private void DrawWorkspace()
     {
