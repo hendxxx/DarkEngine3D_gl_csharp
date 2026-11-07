@@ -42,6 +42,7 @@ public static class Program
             TemplatesRoundTrip();
             TrackEvaluation();
             LayeredClipRoundTrip();
+            SkeletonClipSemantics();
         }
         catch (Exception ex)
         {
@@ -457,6 +458,81 @@ public static class Program
         });
         Check("a legacy clip loads with no layers", legacy.LayerClipNames.Count == 0);
         Check("a legacy clip is a valid single-layer clip", !legacy.HasLayerClips);
+    }
+
+    // ── K ────────────────────────────────────────────────────────────────────────────
+
+    private static void SkeletonClipSemantics()
+    {
+        Console.WriteLine("\n== K. skeleton clip semantics ==\n");
+
+        // A rig clip has no source strip, so CanRebake stays false — but it IS bakeable.
+        var rigClip = new AnimationClip2D
+        {
+            Name = "hero-run-rig",
+            Mode = AnimationClipMode.Skeleton,
+            RigId = "rig-1",
+            FrameIndices = [3, 4, 5, 6],
+            FPS = 12f,
+        };
+        Check("a rig clip is a skeleton clip", rigClip.IsSkeleton);
+        Check("a rig clip cannot rebake from a strip", !rigClip.CanRebake);
+        Check("a rig clip can still be baked", rigClip.CanBake);
+        Check("a skeleton clip without a rig id is not a rig clip",
+            !new AnimationClip2D { Mode = AnimationClipMode.Skeleton }.IsSkeleton);
+        Check("a sprite clip keeps its old bake rule",
+            new AnimationClip2D { SourceSheetName = "s", SourceFrameIndices = [0] }.CanBake
+            && !new AnimationClip2D { SourceSheetName = "s", SourceFrameIndices = [0] }.IsSkeleton);
+
+        // Events are frame-keyed: a bake that changes the sample count must move them
+        // proportionally instead of letting them drift or fall off the strip.
+        var events = new AnimationClip2D { FrameIndices = Enumerable.Range(0, 10).ToList() };
+        events.Events[0] = "Start";
+        events.Events[6] = "Hit";
+        events.Events[9] = "End";
+        events.RemapEventsToFrameCount(21);
+        Check("the first event stays at the start", events.Events.TryGetValue(0, out var start) && start == "Start");
+        Check("60% stays at 60%", events.Events.TryGetValue(13, out var hit) && hit == "Hit");
+        Check("the last event lands on the last frame",
+            events.Events.TryGetValue(20, out var end) && end == "End");
+        Check("no event is silently dropped", events.Events.Count == 3);
+
+        var shrunk = new AnimationClip2D { FrameIndices = Enumerable.Range(0, 21).ToList() };
+        shrunk.Events[20] = "End";
+        shrunk.RemapEventsToFrameCount(4);
+        Check("shrinking clamps into the new strip",
+            shrunk.Events.Count == 1 && shrunk.Events.ContainsKey(3));
+        Check("a single-frame strip maps everything to frame 0",
+            SingleFrameEventTarget());
+
+        // BakeSettings grew two skeleton fields — they must round-trip like the rest.
+        var save = new SpriteSheetsSaveData
+        {
+            AnimationClips =
+            [
+                new AnimationClip2D
+                {
+                    Name = "hero-run-rig",
+                    Mode = AnimationClipMode.Skeleton,
+                    RigId = "rig-1",
+                    Bake = new BakeSettings { Fps = 12f, Skin = "knight", DurationSeconds = 0.75f },
+                }.ToData(),
+            ],
+        };
+        var loaded = JsonSerializer.Deserialize<SpriteSheetsSaveData>(
+            JsonSerializer.Serialize(save, Opts))!;
+        var back = AnimationClip2D.FromData(loaded.AnimationClips[0]);
+        Check("the bake skin survives save/load", back.Bake?.Skin == "knight");
+        Check("the cycle length survives save/load", Math.Abs((back.Bake?.DurationSeconds ?? 0f) - 0.75f) < 1e-4f);
+        Check("the rig link survives save/load", back.RigId == "rig-1" && back.IsSkeleton);
+    }
+
+    private static bool SingleFrameEventTarget()
+    {
+        var clip = new AnimationClip2D { FrameIndices = [0] };
+        clip.Events[0] = "Only";
+        clip.RemapEventsToFrameCount(1);
+        return clip.Events.Count == 1 && clip.Events.ContainsKey(0);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────

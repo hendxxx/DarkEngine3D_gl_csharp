@@ -120,6 +120,28 @@ public class AnimationClip2D
     /// <summary>True when this clip has baked layer clips to composite over it.</summary>
     public bool HasLayerClips => LayerClipNames.Count > 0;
 
+    /// <summary>Re-target the frame-keyed events onto a strip with a different frame count.
+    /// A bake can change the sample count (fps / length edit), and an event authored at 60%
+    /// of the cycle must stay there instead of drifting or falling off the end. Keys are
+    /// scaled proportionally and clamped into the new range; collisions keep the earliest.</summary>
+    public void RemapEventsToFrameCount(int newCount)
+    {
+        if (newCount <= 0 || Events.Count == 0) return;
+        int oldCount = Math.Max(FrameIndices.Count, SourceFrameIndices.Count);
+        foreach (int key in Events.Keys) oldCount = Math.Max(oldCount, key + 1);
+        if (oldCount <= 0) oldCount = newCount;
+
+        var remapped = new Dictionary<int, string>();
+        foreach (var (frame, name) in Events.OrderBy(kv => kv.Key))
+        {
+            int mapped = oldCount <= 1
+                ? 0
+                : (int)MathF.Round(frame * (newCount - 1) / (float)(oldCount - 1));
+            remapped.TryAdd(Math.Clamp(mapped, 0, newCount - 1), name);
+        }
+        Events = remapped;
+    }
+
     /// <summary>Authored frames the editor should show/edit: source strip when known,
     /// else the baked atlas frames.</summary>
     public List<int> EditFrameIndices => SourceFrameIndices.Count > 0 ? SourceFrameIndices : FrameIndices;

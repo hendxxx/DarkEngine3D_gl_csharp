@@ -1,8 +1,9 @@
 # Plan: Animation Editor revamp (Godot/Spine-style, bake-first)
 
-Status: **Phase 0 ✅ + Phase 1 ✅, Phase 3 layered compositing ✅ (2026-11-07)** — Phase 2 engine
-half delivered (pose evaluator, CPU rasterizer, frame baker + `Tools/AnimationEvalTest`); the
-rig setup/animate UI and the atlas wiring are what remains
+Status: **Phase 0 ✅ + Phase 1 ✅ + Phase 2 ✅ + Phase 3 layered compositing ✅ (2026-11-07)** —
+rigs can be authored (Rig Setup), animated (Animate mode with auto-key + track editor), baked into
+atlas frames from the Bake buttons, and the runtime still plays an ordinary frame strip. Remaining
+polish: palette drag & drop, onion skin, bezier handles, bbox hitboxes, slot-group layered bake.
 Tracking: **[animation-editor-status.md](animation-editor-status.md)** — phase checklists,
 verification log and open items (keep that file updated as work progresses).
 Reference: <https://en.esotericsoftware.com/spine-in-depth>

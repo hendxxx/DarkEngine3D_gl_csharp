@@ -253,6 +253,34 @@ public class SpriteEditorPanel
     /// <summary>Current Animation Preview range (Start/End frame of the selected source sheet).</summary>
     public (int Start, int End) PreviewRangePublic => (_animStartFrame, _animEndFrame);
 
+    /// <summary>Import one image as a source sheet from an absolute path (used by the Rig
+    /// Setup "Add texture…" button). Reuses the Sprite Editor's own import path so grid
+    /// auto-fit, sibling `-sprite-anim.json` exports and preview-range defaults behave
+    /// exactly like a normal import. Returns the sheet, or null when the file is unusable.</summary>
+    public SpriteSheet? ImportSheetFromPathPublic(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+        try
+        {
+            var sheet = CreateSheetForImport(path, out var siblingExport);
+            // Keep both sheets when two files share a stem: rig attachments resolve art by
+            // name, so a silent duplicate would make one of them unreachable.
+            if (SpriteSheets.Any(s => string.Equals(s.Name, sheet.Name, StringComparison.OrdinalIgnoreCase)))
+                sheet.Name = sheet.Name + " " + (SpriteSheets.Count + 1);
+            SpriteSheets.Add(sheet);
+            LoadPreviewTexture(path);
+            if (BakeSiblingExportClips(sheet, siblingExport) > 0) SaveAllSheets();
+            ForceSynchronizeRegistry();
+            Console.WriteLine($"[SpriteEditor] Rig import: {sheet.Name} ({sheet.FrameCount} frames)");
+            return sheet;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SpriteEditor] Rig import failed for '{path}': {ex.Message}");
+            return null;
+        }
+    }
+
     public SpriteSheet? FindSourceSheetPublic(string name)
         => SpriteSheets.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
 

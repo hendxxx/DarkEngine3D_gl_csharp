@@ -203,6 +203,9 @@ public class AnimationEditorPanel
     /// <summary>Last known fingerprint per rig id — a change means "a clip using this rig is
     /// dirty", so the bake badge updates while the author drags a value.</summary>
     private readonly Dictionary<string, long> _rigFingerprints = new();
+    /// <summary>"Add texture…" picker on the Rig Setup page (imports a source sheet).</summary>
+    private readonly DarkEngine3D_gl_csharp.Engine.IDE.ImGuiFileDialog _rigTextureDialog = new();
+    private int _rigSkinIdx;
     /// <summary>Per-field inline rename buffers, keyed by field id. One buffer per KIND is not
     /// enough: the bone, slot and attachment fields all draw in the same frame, so a shared
     /// buffer would be reset by each of them and the text would never survive a frame. Names
@@ -773,6 +776,8 @@ public class AnimationEditorPanel
         ImGui.PopStyleColor();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Timeline keys on top of the setup pose.\nKeys are added at the playhead; the bake samples this timeline.");
+        DrawRigTextureDialog(rig);
+
         ImGui.Separator();
 
         if (_rigPageMode == 1)
@@ -1533,6 +1538,16 @@ public class AnimationEditorPanel
     private void DrawRigAttachments(AnimationRig rig)
     {
         ImGui.TextDisabled("REGION ATTACHMENTS");
+        if (ImGui.Button("Add texture…"))
+        {
+            string? start = _rigAttachIdx >= 0 && _rigAttachIdx < rig.Attachments.Count
+                ? Path.GetDirectoryName(FindAttachmentSheet(rig.Attachments[_rigAttachIdx].SheetName)?.ImagePath)
+                : null;
+            _rigTextureDialog.OpenForLoad("*.png;*.jpg", "Import texture", start, "rig_texture");
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Import a PNG/JPG as a source sheet, then pick it as an attachment's sheet.");
+        ImGui.SameLine();
         if (ImGui.Button("+ Attachment"))
         {
             string slot = _rigSlotIdx >= 0 && _rigSlotIdx < rig.Slots.Count ? rig.Slots[_rigSlotIdx].Name : "";
@@ -1655,9 +1670,139 @@ public class AnimationEditorPanel
         }
 
         ImGui.Separator();
+        DrawRigSkins(rig);
+
+        ImGui.Separator();
         ImGui.SetNextItemWidth(120);
         ImGui.SliderFloat("Zoom##rigpreview", ref _rigPreviewZoom, 0.5f, 3f, "%.1fx");
         DrawRigPreview(rig, 260f);
+    }
+
+    /// <summary>Import a PNG/JPG as a source sheet without leaving the rig page (the sheet is
+    /// then picked in the attachment's sheet combo).</summary>
+    private void DrawRigTextureDialog(AnimationRig rig)
+    {
+        if (_rigTextureDialog.Render())
+        {
+            if (_rigTextureDialog.IsConfirmed && _rigTextureDialog.SelectedPath is { } path)
+            {
+                _rigTextureDialog.Close();
+                var sheet = _spriteEditor.ImportSheetFromPathPublic(path);
+                if (sheet == null)
+                {
+                    Status("Texture import failed — see Console.");
+                    return;
+                }
+                if (_rigAttachIdx >= 0 && _rigAttachIdx < rig.Attachments.Count)
+                {
+                    var att = rig.Attachments[_rigAttachIdx];
+                    att.SheetName = sheet.Name;
+                    att.FrameIndex = 0;
+                    Status($"Imported '{sheet.Name}' and assigned it to '{att.Name}'.");
+                }
+                else
+                {
+                    Status($"Imported '{sheet.Name}' — add an attachment to use it.");
+                }
+            }
+            else
+            {
+                _rigTextureDialog.Close();
+            }
+        }
+    }
+
+    /// <summary>Skins: per-slot attachment overrides. The baker composites the skin selected
+    /// on the CLIP (BakeSettings.Skin), so outfits/weapons ship as separate baked clips.</summary>
+    private void DrawRigSkins(AnimationRig rig)
+    {
+        ImGui.TextDisabled("SKINS  (per-slot attachment overrides)");
+        if (rig.Skins.Count == 0)
+        {
+            rig.Skins.Add(new Skin2D { Name = "default" });
+            if (string.IsNullOrEmpty(rig.DefaultSkin)) rig.DefaultSkin = "default";
+        }
+        _rigSkinIdx = Math.Clamp(_rigSkinIdx, 0, rig.Skins.Count - 1);
+        var skin = rig.Skins[_rigSkinIdx];
+
+        ImGui.SetNextItemWidth(140);
+        if (ImGui.BeginCombo("##skinpick", skin.Name))
+        {
+            for (int i = 0; i < rig.Skins.Count; i++)
+                if (ImGui.Selectable($"{rig.Skins[i].Name}##skinitem", i == _rigSkinIdx))
+                    _rigSkinIdx = i;
+            ImGui.EndCombo();
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("+ Skin"))
+        {
+            var created = new Skin2D { Name = UniqueName(rig.Skins.Select(s => s.Name), "skin") };
+            rig.Skins.Add(created);
+            _rigSkinIdx = rig.Skins.Count - 1;
+            Status($"Added skin '{created.Name}'.");
+        }
+        ImGui.SameLine();
+        ImGui.BeginDisabled(rig.Skins.Count <= 1);
+        if (ImGui.SmallButton("X##delskin"))
+        {
+            string removed = skin.Name;
+            rig.Skins.RemoveAt(_rigSkinIdx);
+            if (string.Equals(rig.DefaultSkin, removed, StringComparison.Ordinal))
+                rig.DefaultSkin = rig.Skins[0].Name;
+            _rigSkinIdx = Math.Clamp(_rigSkinIdx, 0, rig.Skins.Count - 1);
+            Status($"Deleted skin '{removed}'.");
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.BeginDisabled(string.Equals(rig.DefaultSkin, skin.Name, StringComparison.Ordinal));
+        if (ImGui.SmallButton("Make default"))
+        {
+            rig.DefaultSkin = skin.Name;
+            Status($"'{skin.Name}' is now the rig's default skin.");
+        }
+        ImGui.EndDisabled();
+
+        ImGui.SetNextItemWidth(-1);
+        DrawRigRenameField("skin", skin, skin.Name, n =>
+        {
+            if (rig.Skins.Any(s => !ReferenceEquals(s, skin) && string.Equals(s.Name, n, StringComparison.OrdinalIgnoreCase)))
+            {
+                Status($"A skin named '{n}' already exists — rename cancelled.");
+                return;
+            }
+            string old = skin.Name;
+            skin.Name = n;
+            if (string.Equals(rig.DefaultSkin, old, StringComparison.Ordinal)) rig.DefaultSkin = n;
+            foreach (var clip in _spriteEditor.AnimationClips)
+                if (string.Equals(clip.RigId, rig.Id, StringComparison.Ordinal)
+                    && clip.Bake != null && string.Equals(clip.Bake.Skin, old, StringComparison.Ordinal))
+                    clip.Bake.Skin = n;
+            Status($"Renamed skin '{old}' → '{n}'.");
+        });
+
+        foreach (var slot in rig.Slots)
+        {
+            var options = rig.Attachments.Where(a => string.Equals(a.Slot, slot.Name, StringComparison.Ordinal))
+                .Select(a => a.Name).ToList();
+            string current = skin.AttachmentBySlot.TryGetValue(slot.Name, out var over) ? over : "";
+            string preview = string.IsNullOrEmpty(current)
+                ? $"(rig default: {(string.IsNullOrEmpty(slot.Attachment) ? "none" : slot.Attachment)})"
+                : current;
+            ImGui.SetNextItemWidth(120);
+            ImGui.TextDisabled(slot.Name);
+            ImGui.SameLine();
+            ImGui.SetNextItemWidth(-1);
+            if (ImGui.BeginCombo($"##skinslot{slot.Name}", preview))
+            {
+                if (ImGui.Selectable($"(rig default)##skinover", string.IsNullOrEmpty(current)))
+                    skin.AttachmentBySlot.Remove(slot.Name);
+                foreach (string name in options)
+                    if (ImGui.Selectable($"{name}##skinoveropt", string.Equals(current, name, StringComparison.Ordinal)))
+                        skin.AttachmentBySlot[slot.Name] = name;
+                ImGui.EndCombo();
+            }
+        }
+        if (rig.Slots.Count == 0) ImGui.TextDisabled("No slots to override yet.");
     }
 
     /// <summary>Live SETUP pose (no timeline): every slot drawn with its attachment's real
@@ -4451,7 +4596,7 @@ public class AnimationEditorPanel
         clip.MasterHeight = rig.DesignHeightPx > 0f ? rig.DesignHeightPx : result.Height;
         clip.SpriteOffsetX = 0f;                  // canvas is symmetric about the root
         clip.SpriteOffsetY = result.BelowRootPx;  // negative when art hangs below the feet
-        RemapClipEvents(clip, result.Frames.Count);
+        clip.RemapEventsToFrameCount(result.Frames.Count);
 
         foreach (string warning in result.Warnings)
             Console.WriteLine($"[AnimationEditor] Skeleton bake '{clip.Name}': {warning}");
@@ -4478,28 +4623,6 @@ public class AnimationEditorPanel
         clip.Bake!.LastBakeHash = SkeletonBakeHash(RigFor(clip), clip);
         Status($"Baking '{clip.Name}' — {frames.Count} frames @ {clip.FPS:0.#} fps, feet at offset {clip.SpriteOffsetY:0.#} px");
         return true;
-    }
-
-    /// <summary>Events are keyed by FRAME index. When a bake changes the frame count the keys
-    /// are scaled proportionally, so a Hit authored at 60% of the cycle stays at 60% instead
-    /// of drifting (or landing outside the strip entirely).</summary>
-    private static void RemapClipEvents(AnimationClip2D clip, int newCount)
-    {
-        if (newCount <= 0 || clip.Events.Count == 0) return;
-        int oldCount = Math.Max(clip.FrameIndices.Count, clip.SourceFrameIndices.Count);
-        foreach (int key in clip.Events.Keys) oldCount = Math.Max(oldCount, key + 1);
-        if (oldCount <= 0) oldCount = newCount;
-
-        var remapped = new Dictionary<int, string>();
-        foreach (var (frame, name) in clip.Events.OrderBy(kv => kv.Key))
-        {
-            int mapped = oldCount <= 1
-                ? 0
-                : (int)MathF.Round(frame * (newCount - 1) / (float)(oldCount - 1));
-            mapped = Math.Clamp(mapped, 0, newCount - 1);
-            remapped.TryAdd(mapped, name);
-        }
-        clip.Events = remapped;
     }
 
     /// <summary>Stable hash of everything a skeleton bake depends on (rig geometry, timeline,

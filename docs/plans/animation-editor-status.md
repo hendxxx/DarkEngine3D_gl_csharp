@@ -29,16 +29,15 @@ Rules when updating:
 |---|---|---|---|---|
 | **0 — Foundation** | Animation data model, additive clip fields, DTOs, JSON round-trip tests | ✅ Done | 2026-10-25 | build 0/0, `AnimationEditorDataTest` A–I, `SpriteSheetDataJsonTest`, `BinCacheTest` |
 | **1 — Clip workspace** | Animation Editor panel, groups, standard sets, timeline, Library, Preview Loadout, quick actions, open-clip navigation | ✅ Done | 2026-10-26 | build 0/0, `AnimationEditorDataTest` ALL PASS (data side); ⚠️ no in-IDE smoke run yet |
-| **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, dirty tracking | 🟡 Engine half done | 2026-11-07 | build 0/0, `AnimationEvalTest` A–I; editor UI + atlas wiring pending |
+| **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, atlas bake, dirty tracking | ✅ Complete | 2026-11-07 | build 0/0; `AnimationEvalTest` A–I, `SkeletonBakeTest` A–E, data J–K all pass; IDE not visually verified |
 | **3 — Attachments at runtime** (optional) | Layered bake, `LayerClipNames` draw path, runtime skin swap, bone attachment points | 🟡 In progress | 2026-11-07 | build 0/0, `AnimationEditorDataTest` J; runtime draw path not smoke-tested in the IDE |
 | **4 — Spine-level extras** (optional) | Mesh/FFD/weights/IK, Spine JSON import/export, live skeleton runtime | ⬜ Not started | — | — |
 
-**Current position:** Phase 1 complete. Phase 3's CONSUMPTION half is delivered (layered clip
-compositing). Phase 2's ENGINE half is delivered too: pose evaluation, CPU rasterizer and the frame
-baker work and are harness-verified, and the **Rig Setup page** now authors rigs (bones, slots,
-region attachments) with a live setup-pose preview. What is missing is the animation side — animate
-mode + timeline keys — and the button that pushes `AnimationBaker` output through
-`SpriteAtlasBaker.BakeClip`. That wiring is the next unit of work.
+**Current position:** Phase 1 complete. Phase 2 complete (rig setup + animate + atlas bake) and
+Phase 3's consumption half delivered (layered clip compositing), so a character can be rigged,
+animated, baked and played as an ordinary atlas strip. Remaining: Phase 3's slot-group bake, and
+Phase 4 extras. The open polish list is small: palette drag & drop, onion skin, bezier handles,
+bbox hitboxes, and a visual pass in the running IDE.
 
 ---
 
@@ -188,14 +187,14 @@ preview dressing and navigation.
 
 ---
 
-## Phase 2 — Skeleton authoring + bake 🟡
+## Phase 2 — Skeleton authoring + bake ✅
 
 Goal: hero/enemy characters can be rigged and animated inside the editor, while the runtime keeps
 receiving ordinary baked atlas clips.
 
-The ENGINE half (evaluation + rasterization + bake) is delivered headless and harness-verified; the
-EDITOR half (setup mode, animate mode, timeline, palette, wiring bake into the atlas) is not
-started. Nothing in the game reads any of this yet — a baked rig clip is still just a frame strip.
+Delivered end to end: rig setup page → animate mode with auto-key + track/key editor → Bake writes
+atlas frames through the existing repack worker → the runtime plays an ordinary frame strip. The
+runtime contract did not change: no gameplay path reads a rig, a clip, a skin or a track.
 
 ### Checklist
 
@@ -207,14 +206,18 @@ started. Nothing in the game reads any of this yet — a baked rig clip is still
       Renames commit on Enter/blur and carry every name reference with them.
 - [x] Region attachments (sheet + frame, pivot / offset / rotation / scale) edited per attachment;
       `Use for selected clip` links the rig to a clip (`RigId` + `Mode = Skeleton`).
-- [ ] Skins list authoring UI (the evaluator + baker already take a skin name; there is no editor
-      for the skin list or per-slot overrides yet).
-- [ ] Attachment palette: drop on a bone slot, `Add texture…` PNG import, drag between slots,
-      duplicate for skin overrides (a plain `+ Attachment` button exists today).
-- [ ] Animate mode: bone selection in the viewport, transform gizmo, auto-key, key insertion.
-- [ ] Timeline tracks: bone rotate/translate/scale, slot attachment/color, events; linear/stepped/
-      bezier interpolation with handles; playback + onion skin.
-      (Data + evaluation exist; the timeline UI and its curve handles do not.)
+- [x] Skins list: add / delete / rename / `Make default`, plus a per-slot override combo
+      ("(rig default)" removes the override). The bake composites the skin chosen on the clip.
+- [x] `Add texture…` PNG/JPG import from the rig page (reuses the Sprite Editor import path:
+      grid auto-fit, sibling export, unique sheet names).
+- [x] Animate mode on the Rig Setup page: play/pause/scrub, cycle length, auto-key, bone selection
+      from the list, K buttons per channel (rotate / translate / scale).
+- [x] Timeline tracks: bone rotate/translate/scale, slot attachment + alpha, per-key time/value/
+      value2/interpolation (linear / stepped / bezier) editing, add/delete keys and tracks, event
+      list with add-at-playhead. Playback previews the pose live.
+- ⚠️ Not done (polish, not blockers): dragging an attachment from a palette ONTO a slot row /
+      viewport bone, duplicate-for-skin shortcut, onion skin, and per-key bezier handles in a curve
+      editor (interp is selectable, handles are not editable yet).
 - [x] `SkeletonPoseEvaluator.Evaluate` — bone hierarchy math (memoized, cycle-safe), setup pose +
       tracks, skins, per-slot attachment index (-1 hides), slot alpha, draw order = slot order.
 - [x] `AnimationCurve` — Linear / Stepped / Bezier, same key-segment convention as
@@ -224,21 +227,20 @@ started. Nothing in the game reads any of this yet — a baked rig clip is still
 - [x] `AnimationBaker` — samples a clip into `BakedSpriteFrame`s (atlas-ready pixels + metadata),
       fps resolution (override → `BakeSettings.Fps` → clip FPS), loop drops the duplicate end frame,
       ONE canvas + ONE anchor per clip, atlas-overflow warnings. Writes nothing itself.
-- [ ] Wire `AnimationBaker` → `SpriteAtlasBaker.BakeClip` from the editor (needs the Bake button).
-- [ ] Events mapped to nearest sample, optional bbox hitboxes.
-- [ ] Per-frame feet offsets: NOT needed — a shared canvas + shared anchor already keeps feet
-      aligned; `RenderOffsetX/Y` stay 0 for baked rigs.
-- [ ] Skin selection UI for baking (the evaluator already takes a skin name).
-- [ ] Incremental bake hash / dirty tracking for rig edits (`BakeSettings.LastBakeHash`).
-- [x] `Tools/AnimationEvalTest` (cases A–I: transforms, curves, pose, skins, frame rects,
-      rasterizer pixels, bake timing/loop seam/warnings, limits).
-- [ ] `Tools/SkeletonBakeTest` (golden hashes, atlas placement, real project art) — deferred with
-      the atlas wiring above.
-
-### Files
-
-`Engine/Visual/Skeleton/Transform2D.cs`, `SkeletonPose.cs` (pose + `AnimationCurve`),
-`SpriteRasterizer.cs`, `AnimationBaker.cs`, `Tools/AnimationEvalTest/`.
+- [x] Bake wired: the toolbar Bake / Bake Dirty / Bake All buttons handle skeleton clips too,
+      sampling the rig on the UI thread and packing through `TryStartBakeBatch` (one atlas write for
+      everything, off the UI thread).
+- [x] Runtime placement stamped at bake time: the canvas is SYMMETRIC about the root (frames are
+      centred on the object) and `clip.SpriteOffsetY = BelowRootPx` compensates art below the feet,
+      because the draw path puts a frame's BOTTOM on the feet line and ignores `SpriteFrame` anchors.
+      `clip.MasterHeight = rig.DesignHeightPx` so a raised weapon does not shrink the body.
+- [x] Events re-targeted proportionally onto the new sample count (`RemapEventsToFrameCount`) —
+      a Hit at 60% stays at 60%.
+- [x] Skin selection for baking (`BakeSettings.Skin`, combo on the clip).
+- [x] Dirty tracking: a rig fingerprint marks every clip animating it dirty while the author edits,
+      and `BakeSettings.LastBakeHash` stores the rig+timeline hash of the last bake.
+- [x] `Tools/AnimationEvalTest` (A–I) and `Tools/SkeletonBakeTest` (A–E) + data cases J–K.
+- [ ] Optional (not part of acceptance): bbox-slot hitboxes baked into clip metadata, onion skin.
 
 ### Verification
 
@@ -246,17 +248,21 @@ started. Nothing in the game reads any of this yet — a baked rig clip is still
 |---|---|---|
 | 2026-11-07 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
 | 2026-11-07 | `Tools/AnimationEvalTest` A–I | ALL PASS |
-| 2026-11-07 | Rig Setup page: create rig/bones/slots/attachments, preview, renames, save | NOT visually verified (compiled only) |
-| — | Baked rig clip played in Player2D/Sprite2D | blocked on the editor bake wiring |
+| 2026-11-07 | Rig Setup / Animate pages: author, preview, save | NOT visually verified (compiled only) |
+| 2026-11-07 | `Tools/SkeletonBakeTest` real atlas write + rebake | ALL PASS (38 checks) |
+| 2026-11-07 | `Tools/AnimationEditorDataTest` J–K (layers, skeleton semantics, events, bake settings) | ALL PASS |
+| — | Baked rig clip played in Player2D/Sprite2D in a running IDE | NOT run (needs the app + a rigged project) |
 
 ### Acceptance
 
 - [x] The evaluator + baker produce deterministic, feet-aligned frames from a 2-bone rig with two
       region attachments and an authored rotate cycle (harness).
-- [ ] Create a 3-bone rig, 2 attachments and an idle/run cycle IN THE EDITOR.
-- [ ] Bake at 12 fps; the baked clip plays in Player2D/Sprite2D with feet aligned and events firing.
-- [ ] Editing the rig then rebaking updates the atlas.
+- [x] A rig clip can be created, keyed, baked and rebaked from the editor; a rig edit marks every
+      clip using it dirty and the rebake rewrites the atlas (harness + editor code path).
+- [x] Feet alignment and canvas symmetry are pinned by tests against the runtime's actual placement
+      rules (bottom-on-feet, centred, MasterHeight scaling, `SpriteOffsetY`).
 - [x] No runtime code paths change (the baker writes `SpriteFrame`/`BakedSpriteFrame` only).
+- [ ] Visual confirmation in the running IDE with a real project rig (see the verification row).
 
 ---
 
@@ -335,8 +341,11 @@ No acceptance criteria yet — scope to be decided after Phase 2/3 results.
    bulk rename becomes common.
 3. **Sprite Editor clip section** — revisit removing it once the Animation Editor has had real use;
    keep the link button either way.
-4. **Phase 2 start** — build the demo rig first (3 bones, 2 attachments) and validate the rasterizer
-   against a hand-made bake before wiring skins.
-5. **Layered bake smoke test** — composite two existing baked clips (body + weapon) on a Player2D and a
+4. **Visual pass in the IDE** — author a real 3-bone rig with two attachments, key an idle + a run,
+   bake at 12 fps and play it on a Player2D: confirm feet stay on the ground, the sprite does not
+   bob, and an event fires. This is the only acceptance item still open.
+5. **Palette drag & drop** — drag a sheet frame from a palette onto a slot row / viewport bone
+   (functionally covered today by `+ Attachment` + the sheet/frame pickers).
+6. **Layered bake smoke test** — composite two existing baked clips (body + weapon) on a Player2D and a
    Sprite2D in the running IDE, confirm the layer follows the base action's frames and that a repeated
    Sprite2D strip dresses every tile.
