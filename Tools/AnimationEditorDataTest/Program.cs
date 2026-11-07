@@ -41,6 +41,7 @@ public static class Program
             LegacyPhase0Defaults();
             TemplatesRoundTrip();
             TrackEvaluation();
+            LayeredClipRoundTrip();
         }
         catch (Exception ex)
         {
@@ -410,6 +411,52 @@ public static class Program
         Check("stepped holds the previous value", Math.Abs(track.Evaluate(2.5f) - 90f) < 1e-4f);
         Check("after the last key clamps", track.Evaluate(99f) == 180f);
         Check("empty track evaluates to 0", new AnimationTrack().Evaluate(0.5f) == 0f);
+    }
+
+    // ── J ────────────────────────────────────────────────────────────────────────────
+
+    private static void LayeredClipRoundTrip()
+    {
+        Console.WriteLine("\n== J. Phase 3 layered-bake clip list survives save/load ==\n");
+
+        var body = new AnimationClip2D
+        {
+            Name = "Hero-run",
+            SpriteSheetName = "mainsprite1",
+            FrameIndices = [0, 1, 2, 3],
+            SourceSheetName = "Hero",
+            SourceFrameIndices = [0, 1, 2, 3],
+            // back→front: hair behind the weapon
+            LayerClipNames = ["Hero-hair-run", "Hero-sword-run"],
+        };
+        Check("a clip reports its layers", body.HasLayerClips);
+        Check("layer list keeps its order (draw order)",
+            body.LayerClipNames.SequenceEqual(["Hero-hair-run", "Hero-sword-run"]));
+
+        var save = new SpriteSheetsSaveData { AnimationClips = [body.ToData()] };
+        var loaded = JsonSerializer.Deserialize<SpriteSheetsSaveData>(
+            JsonSerializer.Serialize(save, Opts))!;
+        var back = AnimationClip2D.FromData(loaded.AnimationClips[0]);
+        Check("layer clip names survive the round-trip, in order",
+            back.LayerClipNames.SequenceEqual(["Hero-hair-run", "Hero-sword-run"]));
+        Check("layers do not disturb the baked strip", back.FrameIndices.SequenceEqual([0, 1, 2, 3]));
+        Check("a layered clip still rebakes from its source strip", back.CanRebake);
+
+        // The DTO list must be a COPY: editing the reloaded clip must not mutate the
+        // source data (undo snapshots serialize the same DTO instances).
+        loaded.AnimationClips[0].LayerClipNames!.Clear();
+        Check("the reloaded list is an independent copy",
+            back.LayerClipNames.Count == 2);
+
+        // Legacy clips carry no layers and must stay valid single-layer clips.
+        var legacy = AnimationClip2D.FromData(new AnimationClip2DData
+        {
+            Name = "Old-idle",
+            SpriteSheetName = "mainsprite1",
+            FrameIndices = [0],
+        });
+        Check("a legacy clip loads with no layers", legacy.LayerClipNames.Count == 0);
+        Check("a legacy clip is a valid single-layer clip", !legacy.HasLayerClips);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────────

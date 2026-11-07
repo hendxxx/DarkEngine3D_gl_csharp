@@ -108,6 +108,18 @@ public class AnimationClip2D
     /// falling back to the clip's own FPS when null).</summary>
     public BakeSettings? Bake;
 
+    /// <summary>Phase 3 layered bake: names of OTHER baked clips drawn over this one at
+    /// the SAME time and anchor, in list order (first = furthest back). They share this
+    /// clip's timing/pivot, so a layered character is `<hero>-run` + `<hero-hair>-run` +
+    /// `<hero-sword>-run` instead of one flattened strip and a layer can be swapped
+    /// without rebaking the body. Empty = a plain single-layer clip (every legacy clip),
+    /// and everything that is not the sprite draw path (DoF silhouette, repeat strips,
+    /// equipment overlays) keeps using the BASE layer's frames only.</summary>
+    public List<string> LayerClipNames = new();
+
+    /// <summary>True when this clip has baked layer clips to composite over it.</summary>
+    public bool HasLayerClips => LayerClipNames.Count > 0;
+
     /// <summary>Authored frames the editor should show/edit: source strip when known,
     /// else the baked atlas frames.</summary>
     public List<int> EditFrameIndices => SourceFrameIndices.Count > 0 ? SourceFrameIndices : FrameIndices;
@@ -303,7 +315,8 @@ public class AnimationClip2D
         Id = Id,
         RigId = RigId,
         Tracks = Tracks?.Select(t => t.Clone()).ToList(),
-        Bake = Bake?.Clone()
+        Bake = Bake?.Clone(),
+        LayerClipNames = LayerClipNames.ToList()
     };
 
     public static AnimationClip2D FromData(AnimationClip2DData data) => new()
@@ -330,7 +343,8 @@ public class AnimationClip2D
         Id = string.IsNullOrEmpty(data.Id) ? Guid.NewGuid().ToString("N") : data.Id,
         RigId = data.RigId ?? "",
         Tracks = data.Tracks?.Select(t => t.Clone()).ToList(),
-        Bake = data.Bake?.Clone()
+        Bake = data.Bake?.Clone(),
+        LayerClipNames = data.LayerClipNames?.ToList() ?? new()
     };
 }
 
@@ -477,4 +491,6 @@ public class AnimationClip2DData
     public string? RigId { get; set; }
     public List<AnimationTrack>? Tracks { get; set; }
     public BakeSettings? Bake { get; set; }
+    /// <summary>Phase 3: baked clips composited over this one (draw order = list order).</summary>
+    public List<string>? LayerClipNames { get; set; }
 }

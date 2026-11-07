@@ -4,7 +4,7 @@ Living status board for the Animation Editor revamp. The design/rationale lives 
 [animation-editor-revamp.md](animation-editor-revamp.md); **this file is the single place where
 progress is tracked** — update it as each phase advances instead of scrolling the plan.
 
-Last updated: **2026-10-26**
+Last updated: **2026-11-07**
 
 ## How to read / maintain this file
 
@@ -30,11 +30,13 @@ Rules when updating:
 | **0 — Foundation** | Animation data model, additive clip fields, DTOs, JSON round-trip tests | ✅ Done | 2026-10-25 | build 0/0, `AnimationEditorDataTest` A–I, `SpriteSheetDataJsonTest`, `BinCacheTest` |
 | **1 — Clip workspace** | Animation Editor panel, groups, standard sets, timeline, Library, Preview Loadout, quick actions, open-clip navigation | ✅ Done | 2026-10-26 | build 0/0, `AnimationEditorDataTest` ALL PASS (data side); ⚠️ no in-IDE smoke run yet |
 | **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, dirty tracking | ⬜ Not started | — | — |
-| **3 — Attachments at runtime** (optional) | Layered bake, `LayerClipNames` draw path, runtime skin swap, bone attachment points | ⬜ Not started | — | — |
+| **3 — Attachments at runtime** (optional) | Layered bake, `LayerClipNames` draw path, runtime skin swap, bone attachment points | 🟡 In progress | 2026-11-07 | build 0/0, `AnimationEditorDataTest` J; runtime draw path not smoke-tested in the IDE |
 | **4 — Spine-level extras** (optional) | Mesh/FFD/weights/IK, Spine JSON import/export, live skeleton runtime | ⬜ Not started | — | — |
 
-**Current position:** Phase 1 complete; the next unit of work is Phase 2, starting with a small
-demo rig (3 bones, 2 region attachments, idle/run) before committing to skins/layers.
+**Current position:** Phase 1 complete. Phase 3's CONSUMPTION half is delivered (layered clip
+compositing); its bake/slot half, plus all of Phase 2, still needs the rig model. The next unit of
+work is Phase 2, starting with a small demo rig (3 bones, 2 region attachments, idle/run) before
+committing to skins/slot-group bakes.
 
 ---
 
@@ -221,20 +223,50 @@ receiving ordinary baked atlas clips.
 
 ---
 
-## Phase 3 — Attachments at runtime (optional) ⬜
+## Phase 3 — Attachments at runtime (optional) 🟡
 
-- [ ] Layered bake (slot groups) + `LayerClipNames` handling in the sprite/player draw paths
-      (base layer first; DoF mask / repeat strips / equipment overlays keep using it).
-- [ ] Runtime skin/material swap integrated with `EquipSheet` / `EquipClip` / `EquipLayer`
-      (no new item fields).
-- [ ] Per-slot visibility/colour at runtime.
-- [ ] Optional: bone attachment points (`hand`, `muzzle`) baked as per-frame anchor metadata so
-      projectiles spawn from the right place.
+Delivered first (before Phase 2) because the CONSUMPTION half does not depend on a skeleton:
+any two baked clips can be composited, so body/hair/weapon authored as separate strips already
+swap without rebaking. The slot-group BAKE side still needs Phase 2 (there are no slots to group
+yet), which is why this phase stays in progress.
+
+### Checklist
+
+- [x] `AnimationClip2D.LayerClipNames` (+ `HasLayerClips`) and `AnimationClip2DData.LayerClipNames`
+      — additive, absent in old files → empty list; both `CloneClip` implementations (editor duplicate
+      + undo snapshots) copy it.
+- [x] `IDEBridge.TryFindSpriteClipByName` — name-only resolver for layer entries, cached per
+      `SpriteRegistryVersion` (a layer can be rebaked into another atlas without editing every
+      composite clip). Only clips with baked frames qualify.
+- [x] Draw path `EditorObject.DrawBakedLayerClips`, called from BOTH `DrawPlayer2D` and
+      `DrawSprite2D` after the equipment overlays: list order = draw order, each layer samples its
+      own sheet at the BASE clip's position-in-clip (clamped), scaled by the base `pxToWorld` so a
+      layer authored on the base grid lines up, anchored bottom-center of each tile (a repeated
+      strip dresses every tile), z just above the base quad and below the equipment band.
+- [x] Base layer stays the single source for everything that is not the sprite draw: DoF silhouette,
+      repeat-strip width, equipment overlays, badges/`RuntimeVisualTopOffset`.
+- [x] Editor UI (Animation Editor → clip properties): layer list with reorder (^/v), remove,
+      missing-layer warning, and an "Add layer clip" combo filtered to baked clips; no rebake needed.
+- [ ] Layered BAKE (slot groups) — blocked on Phase 2 (no slot model in the bake path yet).
+- [ ] Runtime per-slot visibility/colour — needs Phase 2 slots.
+- [ ] Optional bone attachment points (`hand`, `muzzle`) — needs Phase 2 rigs.
+- ⚠️ Item integration is unchanged on purpose: `EquipSheet/EquipClip/EquipLayer` keeps drawing the
+      equipment overlays it always did, and a layered clip's layers sit BELOW that band, so worn items
+      still paint over baked hair/weapon layers. No new item fields were added.
+
+### Verification
+
+| Date | Check | Result |
+|---|---|---|
+| 2026-11-07 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
+| 2026-11-07 | `Tools/AnimationEditorDataTest` (case J: layer list round-trip, order, copy semantics, legacy clip) | ALL PASS |
+| — | In-IDE smoke run (layered clip drawn over a player + sprite) | not run yet |
 
 ### Acceptance
 
-- [ ] A baked layered clip swaps weapon/clothing at runtime without rebaking.
-- [ ] Existing non-layered clips render exactly as today.
+- [x] A layered clip's layer list is authored in the editor and survives save/load.
+- [x] Existing non-layered clips take an early-out in the new draw path and render exactly as today.
+- [ ] Swapping a baked weapon/clothing layer in the running IDE without rebaking (pending smoke run).
 
 ---
 
@@ -268,3 +300,6 @@ No acceptance criteria yet — scope to be decided after Phase 2/3 results.
    keep the link button either way.
 4. **Phase 2 start** — build the demo rig first (3 bones, 2 attachments) and validate the rasterizer
    against a hand-made bake before wiring skins.
+5. **Layered bake smoke test** — composite two existing baked clips (body + weapon) on a Player2D and a
+   Sprite2D in the running IDE, confirm the layer follows the base action's frames and that a repeated
+   Sprite2D strip dresses every tile.

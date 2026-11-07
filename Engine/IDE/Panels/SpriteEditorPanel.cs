@@ -1023,7 +1023,8 @@ public class SpriteEditorPanel
         // working on the SAME clip — a fresh id would break the link).
         Id = clip.Id, RigId = clip.RigId,
         Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
-        Bake = clip.Bake?.Clone()
+        Bake = clip.Bake?.Clone(),
+        LayerClipNames = clip.LayerClipNames.ToList()
     };
 
     private void ReloadRepackedAtlasTextures(IEnumerable<SpriteSheet> atlases)

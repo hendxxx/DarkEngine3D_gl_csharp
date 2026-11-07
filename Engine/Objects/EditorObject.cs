@@ -5467,6 +5467,11 @@ public unsafe class EditorObject
             actionActive ? Player2DActionTime : Player2DAnimTime, baseFrameIdx,
             baseClipName, baseClipLocalFrame);
 
+        // ── Layered bake (Phase 3): baked layer clips follow the BASE clip's timing ──
+        // (an action clip is the playing clip, so its layer list is the one that counts)
+        DrawBakedLayerClips(actionClip ?? clip, x0, y0, w, h, z,
+            Player2DFacingRight ^ Player2DFlipFacing, 1, baseClipLocalFrame, pxToWorld);
+
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
         GL.Disable(Const.GL_BLEND);
@@ -5695,6 +5700,11 @@ public unsafe class EditorObject
         DrawEquipmentSpriteOverlays(x0, y0, w, h, z, Sprite2DFacingRight, reps,
             Sprite2DAnimTime + MathF.Max(0f, Sprite2DStartOffset), frameIdx,
             baseClipName, baseClipLocalFrame);
+
+        // ── Layered bake (Phase 3): baked layer clips follow the base clip's timing ──
+        // (a repeated strip dresses every tile, same as its equipment overlays)
+        DrawBakedLayerClips(clip, x0, y0, w, h, z, Sprite2DFacingRight, reps,
+            baseClipLocalFrame, pxToWorld);
 
         if (depth) GL.Enable(Const.GL_DEPTH_TEST);
         if (cull) GL.Enable(Const.GL_CULL_FACE);
@@ -6008,6 +6018,104 @@ public unsafe class EditorObject
                 float cx = x0 + t * tileW + tileW * 0.5f + def.EquipOffsetX * mirrorX;
                 float by0 = y0 - def.EquipOffsetY;
                 float bx0 = cx - ow * 0.5f, bx1 = bx0 + ow, by1 = by0 + oh;
+                quad[0] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quad[1] = new Map2DVertex(bx1, by0, z, su1, svBot, 1f, 1f, 1f, 1f);
+                quad[2] = new Map2DVertex(bx1, by1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quad[3] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
+                quad[4] = new Map2DVertex(bx1, by1, z, su1, svTop, 1f, 1f, 1f, 1f);
+                quad[5] = new Map2DVertex(bx0, by1, z, su0, svTop, 1f, 1f, 1f, 1f);
+                fixed (Map2DVertex* pQuad = quad)
+                {
+                    GL.BufferData(Const.GL_ARRAY_BUFFER, (nuint)(6 * sizeof(Map2DVertex)), pQuad, Const.GL_DYNAMIC_DRAW);
+                }
+                GL.DrawArrays(Const.GL_TRIANGLES, 0, 6);
+            }
+        }
+        GL.BindVertexArray(0);
+    }
+
+    // ── Layered bake: baked clips composited over the base clip (Phase 3) ──
+
+    /// <summary>Draw the baked LAYER clips listed on the playing clip
+    /// (<see cref="AnimationClip2D.LayerClipNames"/>) over the base quad — a body/hair/weapon
+    /// character baked as separate atlas clips shares ONE timing and pivot instead of being
+    /// flattened into a single strip, so a weapon or hairstyle can be swapped by editing the
+    /// layer list, without rebaking the body.
+    ///
+    /// Rules (deliberately identical to the equipment-overlay path below, minus items):
+    /// list order = draw order (first entry furthest back), every layer samples its own frame
+    /// at the BASE clip's POSITION-IN-CLIP (clamped, so a shorter layer freezes on its last
+    /// frame instead of sampling outside the texture), scaled by the SAME pxToWorld so a layer
+    /// authored on the base grid lines up pixel-for-pixel, anchored bottom-center of each base
+    /// tile and nudged by the layer clip's own snapshot offsets + that frame's RenderOffset.
+    /// z sits just above the base quad and BELOW the equipment band, so worn items still win.
+    /// Everything else (DoF mask, repeat strips, equipment overlays) keeps using the base layer.
+    /// Runs inside the caller's map2d shader session like the equipment overlays.</summary>
+    private unsafe void DrawBakedLayerClips(AnimationClip2D? composite, float x0, float y0,
+        float tileW, float tileH, float zBase, bool facingRight, int reps,
+        int baseLocalFrame, float pxToWorld)
+    {
+        if (composite == null || composite.LayerClipNames.Count == 0 || reps < 1) return;
+        if (baseLocalFrame < 0) return;
+
+        // The base sprite already switched the 2D pass to LIT; every layer has its own
+        // sheet, so its UVs must not sample the base character's normal atlas.
+        SpriteLighting2D.BindNormal(_map2dShader, 0);
+        GL.BindVertexArray(_player2dVAO);
+        GL.BindBuffer(Const.GL_ARRAY_BUFFER, _player2dVBO);
+        GL.ActiveTexture(Const.GL_TEXTURE0);
+        Span<Map2DVertex> quad = stackalloc Map2DVertex[6];
+        float mirrorX = facingRight ? 1f : -1f;
+        float zStep = 0.0001f;
+
+        for (int li = 0; li < composite.LayerClipNames.Count; li++)
+        {
+            string layerName = composite.LayerClipNames[li];
+            if (string.IsNullOrWhiteSpace(layerName)) continue;
+            if (!IDEBridge.TryFindSpriteClipByName(layerName, out var lsheet, out var lclip)
+                || lsheet == null || lclip == null) continue;
+            if (ReferenceEquals(lclip, composite)) continue; // a clip cannot layer itself
+            int lcount = lclip.FrameIndices.Count;
+            if (lcount == 0) continue;
+            if (!IDEBridge.TryGetSpriteSheetTexture(lsheet.Name, out uint ltex, out int _, out int _)
+                || ltex == 0) continue;
+            SpriteBindTexture(ltex);
+
+            int lframe = Math.Clamp(baseLocalFrame, 0, lcount - 1);
+            int frameIdx = Math.Clamp(lclip.FrameIndices[lframe], 0, int.MaxValue);
+            var (luvMin, luvMax) = lsheet.GetFrameUV(frameIdx);
+            float su0 = luvMin.X, su1 = luvMax.X;
+            float svBot = 1f - luvMin.Y;
+            float svTop = 1f - luvMax.Y;
+            if (lsheet.FlipY) (svBot, svTop) = (svTop, svBot);
+            if (!facingRight) (su0, su1) = (su1, su0);
+            if (lsheet.FlipX) (su0, su1) = (su1, su0);
+
+            float ccellH = lsheet.FrameHeight > 0 ? lsheet.FrameHeight : lsheet.ImageHeight;
+            if (ccellH <= 0) ccellH = 64;
+            float ccellW = lsheet.FrameWidth > 0 ? lsheet.FrameWidth : ccellH;
+            SpriteFrame? lframeData = null;
+            if (lsheet.CustomFrames != null && frameIdx < lsheet.CustomFrames.Count)
+            {
+                lframeData = lsheet.CustomFrames[frameIdx];
+                ccellW = lframeData.Width;
+                ccellH = lframeData.Height > 0 ? lframeData.Height : 1;
+            }
+            float lw = MathF.Max(0.01f, ccellW * pxToWorld);
+            float lh = MathF.Max(0.01f, ccellH * pxToWorld);
+            float mx = mirrorX * (lsheet.FlipX ? -1f : 1f);
+            float lOffX = (lclip.SpriteOffsetX + (lframeData?.RenderOffsetX ?? 0f)) * pxToWorld * mx;
+            float lOffY = (lclip.SpriteOffsetY + (lframeData?.RenderOffsetY ?? 0f)) * pxToWorld;
+            // Just above the base quad (+0.001) and below the equipment band (+0.002):
+            // worn items keep painting over the baked layers, and each layer keeps a
+            // distinct z so a depth-tested pass never z-fights two layers.
+            float z = zBase + 0.001f + li * zStep;
+
+            for (int t = 0; t < reps; t++)
+            {
+                float cx = x0 + t * tileW + tileW * 0.5f + lOffX;
+                float by0 = y0 + lOffY;
+                float bx0 = cx - lw * 0.5f, bx1 = bx0 + lw, by1 = by0 + lh;
                 quad[0] = new Map2DVertex(bx0, by0, z, su0, svBot, 1f, 1f, 1f, 1f);
                 quad[1] = new Map2DVertex(bx1, by0, z, su1, svBot, 1f, 1f, 1f, 1f);
                 quad[2] = new Map2DVertex(bx1, by1, z, su1, svTop, 1f, 1f, 1f, 1f);

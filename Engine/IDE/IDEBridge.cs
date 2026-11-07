@@ -205,6 +205,14 @@ public class IDEBridge
     /// renderer asks per layer per FRAME, so the scan must not re-run every frame.</summary>
     private static readonly Dictionary<(string sheet, string baseName), (AnimationClip2D? clip, int ver)> _autoClipMatchCache = new();
 
+    /// <summary>Name-only clip lookup used by the Phase 3 layered draw path
+    /// (<see cref="AnimationClip2D.LayerClipNames"/> stores clip NAMES, not sheet+name, so a
+    /// layer can be rebaked into a different atlas without touching every composite clip).
+    /// Cached per registry version; the FIRST baked clip (non-empty FrameIndices) wins, and
+    /// an exact-name hit is preferred over the case-insensitive scan.</summary>
+    private static Dictionary<string, (SpriteSheet? sheet, AnimationClip2D? clip)>? _clipByNameCache;
+    private static int _clipByNameCacheVer = -1;
+
     /// <summary>Live Role of every SOURCE sheet in the editor (Name → "Accessories" /
     /// "Base Character"), refreshed by SyncSpriteRegistry. Clips are baked onto an atlas
     /// (mainspriteN), so the atlas itself carries no role: "is this clip accessory art?"
@@ -305,6 +313,7 @@ public class IDEBridge
         foreach (var c in clips)
             _spriteClips[(c.SpriteSheetName, c.Name)] = c;
         _autoClipMatchCache.Clear();       // sheet/clip lists changed — cached matches are stale
+        _clipByNameCache = null;           // and so is the name→clip layer index
         _clipNamesCache.Clear();           // per-sheet name lists are stale too
         _accessoryClipNamesCache.Clear();  // and so are the accessory-only subsets
         SpriteRegistryVersion++;
@@ -619,6 +628,40 @@ public class IDEBridge
             .Select(kv => kv.Value.Name).OrderBy(n => n).ToList();
         _clipNamesCache[sheetName] = (names, SpriteRegistryVersion);
         return names;
+    }
+
+    /// <summary>Resolve a BAKED clip by name alone — the lookup behind
+    /// <see cref="AnimationClip2D.LayerClipNames"/>. The sprite draw path runs per frame
+    /// per object, so the scan is cached per registry version (`name` → sheet+clip, built
+    /// lazily once) instead of walking the whole `(sheet, clip)` dictionary every draw.
+    /// Only clips with baked frames qualify; an unknown/renamed layer just does not draw.
+    /// Returns false for null/empty names so a stale entry never costs a lookup.</summary>
+    public static bool TryFindSpriteClipByName(string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)
+    {
+        sheet = null; clip = null;
+        if (string.IsNullOrWhiteSpace(clipName)) return false;
+
+        if (_clipByNameCache == null || _clipByNameCacheVer != SpriteRegistryVersion)
+        {
+            var map = new Dictionary<string, (SpriteSheet? sheet, AnimationClip2D? clip)>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in _spriteClips)
+            {
+                var c = kv.Value;
+                if (c == null || c.FrameIndices.Count == 0) continue;
+                _spriteSheets.TryGetValue(kv.Key.sheet, out var entry);
+                // First registration wins; a re-bake that adds the same name to another
+                // atlas must not silently steal the layer.
+                map.TryAdd(c.Name, (entry.sheet, c));
+            }
+            _clipByNameCache = map;
+            _clipByNameCacheVer = SpriteRegistryVersion;
+        }
+
+        if (!_clipByNameCache.TryGetValue(clipName.Trim(), out var hit)) return false;
+        sheet = hit.sheet;
+        clip = hit.clip;
+        return clip != null;
     }
 
     public static bool TryGetSpriteClip(string sheetName, string clipName, out SpriteSheet? sheet, out AnimationClip2D? clip)

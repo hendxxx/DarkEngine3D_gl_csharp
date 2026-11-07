@@ -176,6 +176,8 @@ public class AnimationEditorPanel
     }
 
     // ── Status line ──
+    /// <summary>Filter for the "Add layer clip" combo (Phase 3 layered bake picker).</summary>
+    private string _layerClipFilter = "";
     private string _status = "";
     private float _statusTime;
 
@@ -2563,6 +2565,99 @@ public class AnimationEditorPanel
             _spriteEditor.ForceSynchronizeRegistry();
             Status($"Deleted clip '{name}'");
         }
+
+        DrawLayerClipList(clip);
+    }
+
+    /// <summary>Phase 3 — layered bake authoring: the baked clips drawn OVER this clip at
+    /// the same time and anchor, back→front in list order (body / hair / weapon baked as
+    /// separate clips). Only clips that already have baked frames are offered, and a name
+    /// that no longer resolves is flagged instead of silently disappearing from the list.
+    /// Editing this list needs no rebake — it is a draw-order link, not pixels.</summary>
+    private void DrawLayerClipList(AnimationClip2D clip)
+    {
+        ImGui.Separator();
+        ImGui.TextDisabled("Baked layers (drawn back\u2192front with this clip's timing)");
+
+        if (clip.LayerClipNames.Count == 0)
+            ImGui.TextDisabled("  none \u2014 single-layer clip");
+
+        int moveFrom = -1, moveTo = -1, removeAt = -1;
+        for (int i = 0; i < clip.LayerClipNames.Count; i++)
+        {
+            string layerName = clip.LayerClipNames[i];
+            bool found = !string.IsNullOrWhiteSpace(layerName) && _spriteEditor.AnimationClips.Any(c =>
+                !ReferenceEquals(c, clip) && string.Equals(c.Name, layerName, StringComparison.OrdinalIgnoreCase)
+                && c.FrameIndices.Count > 0);
+
+            ImGui.PushID(i);
+            ImGui.BeginDisabled(i == 0);
+            if (ImGui.SmallButton("^")) { moveFrom = i; moveTo = i - 1; }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move this layer back (drawn behind the one above it).");
+            ImGui.SameLine();
+            ImGui.BeginDisabled(i >= clip.LayerClipNames.Count - 1);
+            if (ImGui.SmallButton("v")) { moveFrom = i; moveTo = i + 1; }
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Move this layer forward.");
+            ImGui.SameLine();
+            if (found)
+                ImGui.TextColored(ColText, layerName);
+            else
+                ImGui.TextColored(ColAmber, $"{layerName}  (missing \u2014 not baked / renamed)");
+            ImGui.SameLine();
+            if (ImGui.SmallButton("X")) removeAt = i;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip("Remove this layer from the composite.");
+            ImGui.PopID();
+        }
+
+        if (moveFrom >= 0)
+        {
+            (clip.LayerClipNames[moveFrom], clip.LayerClipNames[moveTo]) =
+                (clip.LayerClipNames[moveTo], clip.LayerClipNames[moveFrom]);
+        }
+        else if (removeAt >= 0)
+        {
+            string removed = clip.LayerClipNames[removeAt];
+            clip.LayerClipNames.RemoveAt(removeAt);
+            Status($"Layer '{removed}' removed from '{clip.Name}'");
+        }
+
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(160);
+        ImGui.InputTextWithHint("##layerfilter", "filter baked clips\u2026", ref _layerClipFilter, 96);
+        ImGui.SetNextItemWidth(230);
+        if (ImGui.BeginCombo("Add layer clip##addlayer", "Choose a baked clip\u2026"))
+        {
+            string filter = (_layerClipFilter ?? "").Trim();
+            int offered = 0;
+            foreach (var other in _spriteEditor.AnimationClips)
+            {
+                if (ReferenceEquals(other, clip)) continue;
+                if (other.FrameIndices.Count == 0) continue;   // not baked yet
+                if (clip.LayerClipNames.Any(n => string.Equals(n, other.Name, StringComparison.OrdinalIgnoreCase)))
+                    continue;                                   // already a layer
+                if (filter.Length > 0
+                    && !other.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                    && !other.SpriteSheetName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                offered++;
+                if (ImGui.Selectable($"{other.Name}   [{other.SpriteSheetName}]"))
+                {
+                    clip.LayerClipNames.Add(other.Name);
+                    Status($"Layer '{other.Name}' added to '{clip.Name}' (drawn above the previous layer)");
+                }
+            }
+            if (offered == 0)
+                ImGui.TextDisabled(filter.Length == 0
+                    ? "  No other baked clips \u2014 bake the layer clips first."
+                    : "  No baked clip matches the filter.");
+            ImGui.EndCombo();
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Composite another BAKED clip over this one, sharing this clip's timing and pivot.\n"
+                + "Order = draw order (first = furthest back). A shorter layer freezes on its last frame.\n"
+                + "Nothing is rebaked: the layers stay independent clips, so swapping art is one edit here.");
     }
 
     /// <summary>Commits the name buffer once (Enter/blur). Duplicate names are rejected
@@ -2709,6 +2804,7 @@ public class AnimationEditorPanel
         RigId = clip.RigId,
         Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
         Bake = clip.Bake?.Clone(),
+        LayerClipNames = clip.LayerClipNames.ToList(),
     };
 
     // ═══════════════════════════════════════════════════════════════
