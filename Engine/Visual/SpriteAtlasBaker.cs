@@ -729,13 +729,24 @@ public static class SpriteAtlasBaker
     {
         if (rgba.Length != checked(AtlasSize * AtlasSize * 4))
             throw new InvalidDataException("Atlas buffer dimensions do not match 4096x4096 RGBA.");
+        WriteRgbaPng(path, rgba, AtlasSize, AtlasSize);
+    }
+
+    /// <summary>Write a straight-alpha RGBA buffer as a PNG at any size. The atlas paths
+    /// call this through <see cref="WritePng"/>; tools (the skeleton-bake harness) use it to
+    /// produce small test sheets, which is why it takes explicit dimensions.</summary>
+    public static void WriteRgbaPng(string path, byte[] rgba, int width, int height)
+    {
+        if (width <= 0 || height <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        if (rgba.Length != checked(width * height * 4))
+            throw new InvalidDataException("PNG buffer dimensions do not match its RGBA data.");
         string temp = path + ".tmp";
         using (var output = File.Create(temp))
         {
             output.Write(PngSignature);
             Span<byte> header = stackalloc byte[13];
-            WriteBigEndian(header, 0, AtlasSize);
-            WriteBigEndian(header, 4, AtlasSize);
+            WriteBigEndian(header, 0, width);
+            WriteBigEndian(header, 4, height);
             header[8] = 8;
             header[9] = 6;
             WriteChunk(output, "IHDR", header);
@@ -743,11 +754,11 @@ public static class SpriteAtlasBaker
             using var compressed = new MemoryStream();
             using (var zlib = new ZLibStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
             {
-                byte[] row = new byte[1 + AtlasSize * 4];
-                for (int y = 0; y < AtlasSize; y++)
+                byte[] row = new byte[1 + width * 4];
+                for (int y = 0; y < height; y++)
                 {
                     row[0] = 0; // PNG filter: None
-                    Buffer.BlockCopy(rgba, y * AtlasSize * 4, row, 1, AtlasSize * 4);
+                    Buffer.BlockCopy(rgba, y * width * 4, row, 1, width * 4);
                     zlib.Write(row);
                 }
             }

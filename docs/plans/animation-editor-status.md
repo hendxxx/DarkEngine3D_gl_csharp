@@ -29,14 +29,16 @@ Rules when updating:
 |---|---|---|---|---|
 | **0 — Foundation** | Animation data model, additive clip fields, DTOs, JSON round-trip tests | ✅ Done | 2026-10-25 | build 0/0, `AnimationEditorDataTest` A–I, `SpriteSheetDataJsonTest`, `BinCacheTest` |
 | **1 — Clip workspace** | Animation Editor panel, groups, standard sets, timeline, Library, Preview Loadout, quick actions, open-clip navigation | ✅ Done | 2026-10-26 | build 0/0, `AnimationEditorDataTest` ALL PASS (data side); ⚠️ no in-IDE smoke run yet |
-| **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, dirty tracking | ⬜ Not started | — | — |
+| **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, dirty tracking | 🟡 Engine half done | 2026-11-07 | build 0/0, `AnimationEvalTest` A–I; editor UI + atlas wiring pending |
 | **3 — Attachments at runtime** (optional) | Layered bake, `LayerClipNames` draw path, runtime skin swap, bone attachment points | 🟡 In progress | 2026-11-07 | build 0/0, `AnimationEditorDataTest` J; runtime draw path not smoke-tested in the IDE |
 | **4 — Spine-level extras** (optional) | Mesh/FFD/weights/IK, Spine JSON import/export, live skeleton runtime | ⬜ Not started | — | — |
 
 **Current position:** Phase 1 complete. Phase 3's CONSUMPTION half is delivered (layered clip
-compositing); its bake/slot half, plus all of Phase 2, still needs the rig model. The next unit of
-work is Phase 2, starting with a small demo rig (3 bones, 2 region attachments, idle/run) before
-committing to skins/slot-group bakes.
+compositing). Phase 2's ENGINE half is delivered too: pose evaluation, CPU rasterizer and the frame
+baker all work and are harness-verified — a rig clip can already be turned into atlas-ready frames
+from code. What is missing is everything that makes it usable from the editor: setup mode, animate
+mode, the timeline UI, and the button that pushes `AnimationBaker` output through
+`SpriteAtlasBaker.BakeClip`. That wiring is the next unit of work.
 
 ---
 
@@ -186,10 +188,14 @@ preview dressing and navigation.
 
 ---
 
-## Phase 2 — Skeleton authoring + bake ⬜
+## Phase 2 — Skeleton authoring + bake 🟡
 
 Goal: hero/enemy characters can be rigged and animated inside the editor, while the runtime keeps
 receiving ordinary baked atlas clips.
+
+The ENGINE half (evaluation + rasterization + bake) is delivered headless and harness-verified; the
+EDITOR half (setup mode, animate mode, timeline, palette, wiring bake into the atlas) is not
+started. Nothing in the game reads any of this yet — a baked rig clip is still just a frame strip.
 
 ### Checklist
 
@@ -200,26 +206,48 @@ receiving ordinary baked atlas clips.
 - [ ] Animate mode: bone selection in the viewport, transform gizmo, auto-key, key insertion.
 - [ ] Timeline tracks: bone rotate/translate/scale, slot attachment/color, events; linear/stepped/
       bezier interpolation with handles; playback + onion skin.
-- [ ] `SkeletonPose.Evaluate` (bone hierarchy math, deterministic).
-- [ ] `SpriteRasterizer` (CPU, nearest sampling default, optional 2× supersample).
-- [ ] `AnimationBaker`: bake clip / bake group / bake all; atlas-overflow warnings.
-- [ ] Baked metadata correct: master height, per-frame feet offsets (`RenderOffsetX/Y`), events
-      mapped to nearest sample, optional bbox hitboxes.
-- [ ] Skin selection for baking (composite bake) + incremental `BakeKey` / dirty tracking.
-- [ ] `Tools/AnimationEvalTest` + `Tools/SkeletonBakeTest` harnesses.
+      (Data + evaluation exist; the timeline UI and its curve handles do not.)
+- [x] `SkeletonPoseEvaluator.Evaluate` — bone hierarchy math (memoized, cycle-safe), setup pose +
+      tracks, skins, per-slot attachment index (-1 hides), slot alpha, draw order = slot order.
+- [x] `AnimationCurve` — Linear / Stepped / Bezier, same key-segment convention as
+      `AnimationTrack.Evaluate` (which stays untouched so sprite clips keep their timing).
+- [x] `SpriteRasterizer` — CPU, bilinear sampling with clamped edges, straight-alpha source-over,
+      slot tint, pivot-relative quads. Reads source sheets through StbImageSharp.
+- [x] `AnimationBaker` — samples a clip into `BakedSpriteFrame`s (atlas-ready pixels + metadata),
+      fps resolution (override → `BakeSettings.Fps` → clip FPS), loop drops the duplicate end frame,
+      ONE canvas + ONE anchor per clip, atlas-overflow warnings. Writes nothing itself.
+- [ ] Wire `AnimationBaker` → `SpriteAtlasBaker.BakeClip` from the editor (needs the Bake button).
+- [ ] Events mapped to nearest sample, optional bbox hitboxes.
+- [ ] Per-frame feet offsets: NOT needed — a shared canvas + shared anchor already keeps feet
+      aligned; `RenderOffsetX/Y` stay 0 for baked rigs.
+- [ ] Skin selection UI for baking (the evaluator already takes a skin name).
+- [ ] Incremental bake hash / dirty tracking for rig edits (`BakeSettings.LastBakeHash`).
+- [x] `Tools/AnimationEvalTest` (cases A–I: transforms, curves, pose, skins, frame rects,
+      rasterizer pixels, bake timing/loop seam/warnings, limits).
+- [ ] `Tools/SkeletonBakeTest` (golden hashes, atlas placement, real project art) — deferred with
+      the atlas wiring above.
+
+### Files
+
+`Engine/Visual/Skeleton/Transform2D.cs`, `SkeletonPose.cs` (pose + `AnimationCurve`),
+`SpriteRasterizer.cs`, `AnimationBaker.cs`, `Tools/AnimationEvalTest/`.
 
 ### Verification
 
 | Date | Check | Result |
 |---|---|---|
-| — | not run yet | — |
+| 2026-11-07 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
+| 2026-11-07 | `Tools/AnimationEvalTest` A–I | ALL PASS |
+| — | Baked rig clip played in Player2D/Sprite2D | blocked on the editor bake wiring |
 
 ### Acceptance
 
-- [ ] Create a 3-bone rig, 2 attachments and an idle/run cycle.
+- [x] The evaluator + baker produce deterministic, feet-aligned frames from a 2-bone rig with two
+      region attachments and an authored rotate cycle (harness).
+- [ ] Create a 3-bone rig, 2 attachments and an idle/run cycle IN THE EDITOR.
 - [ ] Bake at 12 fps; the baked clip plays in Player2D/Sprite2D with feet aligned and events firing.
 - [ ] Editing the rig then rebaking updates the atlas.
-- [ ] No runtime code paths change.
+- [x] No runtime code paths change (the baker writes `SpriteFrame`/`BakedSpriteFrame` only).
 
 ---
 

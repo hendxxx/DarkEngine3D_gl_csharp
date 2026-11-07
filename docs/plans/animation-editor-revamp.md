@@ -1,7 +1,8 @@
 # Plan: Animation Editor revamp (Godot/Spine-style, bake-first)
 
-Status: **Phase 0 ✅ + Phase 1 ✅ complete (2026-10-26)** — Phase 2 (skeleton authoring +
-bake) not started
+Status: **Phase 0 ✅ + Phase 1 ✅, Phase 3 layered compositing ✅ (2026-11-07)** — Phase 2 engine
+half delivered (pose evaluator, CPU rasterizer, frame baker + `Tools/AnimationEvalTest`); the
+rig setup/animate UI and the atlas wiring are what remains
 Tracking: **[animation-editor-status.md](animation-editor-status.md)** — phase checklists,
 verification log and open items (keep that file updated as work progresses).
 Reference: <https://en.esotericsoftware.com/spine-in-depth>
