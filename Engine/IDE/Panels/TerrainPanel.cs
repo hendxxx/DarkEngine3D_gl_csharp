@@ -264,6 +264,23 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Checkbox("Distance LOD##terrain_lod", ref lodOn)) obj.TerrainLodEnabled = lodOn;
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Each chunk picks its detail level from its distance to the camera:\nLOD0 = authored grid · LOD1 = ½ detail · LOD2 = ¼ detail · LOD3 = 1 quad.\nOFF = always draw the authored grid (pre-LOD behavior).");
+                // One-click recommendation derived from the terrain FOOTPRINT (world units),
+                // so it scales with the plane instead of depending on the camera: near ground
+                // (≤ 15% of the footprint) keeps full detail, the middle band (≤ 45%) half, the
+                // far band (≤ 120%) a quarter, and everything past that is one quad per chunk.
+                if (ImGui.Button("Recommend LOD##terrain_lod"))
+                {
+                    float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                    obj.TerrainLodEnabled = true;
+                    obj.TerrainLodDistance0 = foot * 0.15f;
+                    obj.TerrainLodDistance1 = foot * 0.45f;
+                    obj.TerrainLodDistance2 = foot * 1.20f;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Sets the three switch distances from the terrain size (footprint):\nLOD0 ≤ 15% · LOD1 ≤ 45% · LOD2 ≤ 120% of the larger X/Z size.\nBeyond LOD2 = one quad per chunk and no shadow.\nActs on the numeric fields only — raise LOD0/LOD1 if popping is visible.");
+                ImGui.SameLine();
+                float footCur = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                ImGui.TextDisabled($"footprint {footCur:F0} → {footCur * 0.15f:F0} / {footCur * 0.45f:F0} / {footCur * 1.2f:F0}");
                 if (lodOn)
                 {
                     ImGui.Indent();
@@ -309,6 +326,22 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
             else
             {
+                // No chunk grid yet → LOD has nothing to switch per chunk. The same
+                // recommendation button ALSO creates the chunk grid needed for it
+                // (~1 chunk per 64 world units, 32 segments per chunk).
+                if (ImGui.Button("Recommend LOD##terrain_lod_off"))
+                {
+                    float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                    int recChunks = Math.Clamp((int)MathF.Round(foot / 64f), 2, 8);
+                    obj.PbrVertexChunk = recChunks;
+                    obj.PbrVertexSegments = Math.Clamp(obj.PbrVertexSegments, recChunks * 32, 512);
+                    obj.TerrainLodEnabled = true;
+                    obj.TerrainLodDistance0 = foot * 0.15f;
+                    obj.TerrainLodDistance1 = foot * 0.45f;
+                    obj.TerrainLodDistance2 = foot * 1.20f;
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("LOD needs a chunk grid. This enables chunks (~1 per 64 m of terrain),\nkeeps at least 32 segments per chunk, and sets the three switch distances\nfrom the footprint (15% / 45% / 120%).");
                 ImGui.TextDisabled("Set 'Chunks per side' > 1 to use LOD — the levels are per chunk.");
             }
             if (string.IsNullOrEmpty(obj.TerrainHeightSourcePath))
