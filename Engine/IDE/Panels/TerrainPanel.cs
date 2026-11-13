@@ -48,25 +48,54 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         /// detail further out, Balanced sits between (same ratios as "Recommend LOD").</summary>
         private enum TerrainLodPreset { Performance, Balanced, Quality }
 
-        /// <summary>(target chunk world size, target total segments, LOD0/LOD1/LOD2 fractions
-        /// of the footprint) per preset.</summary>
-        private static (float ChunkSize, int SegmentTarget, float D0, float D1, float D2) LodPresetConfig(TerrainLodPreset p)
+        /// <summary>(target chunk world size, quads per chunk, distance scale) per preset.</summary>
+        private static (float ChunkSize, int QuadsPerChunk, float DistanceScale) LodPresetConfig(TerrainLodPreset p)
             => p switch
             {
-                TerrainLodPreset.Performance => (200f, 192, 0.10f, 0.35f, 0.90f),
-                TerrainLodPreset.Quality => (64f, 384, 0.25f, 0.60f, 1.60f),
-                _ => (125f, 320, 0.15f, 0.45f, 1.20f),
+                TerrainLodPreset.Performance => (200f, 32, 0.70f),
+                TerrainLodPreset.Quality => (64f, 64, 1.60f),
+                _ => (125f, 48, 1.00f),
             };
 
-        /// <summary>Resolve a preset against the CURRENT terrain size without touching the
-        /// object (also used for the hover tooltip, so what is previewed is what is applied).</summary>
+        /// <summary>Vertical relief the mesh has to follow: the base heightmap shape plus the PBR
+        /// detail displacement. Ridges are where a coarse mesh is actually noticeable, flat
+        /// ground is not — the distance plan stretches with this.</summary>
+        private static float TerrainRelief(EditorObject obj)
+            => Math.Clamp(obj.TerrainBaseHeight, 0f, 500f)
+             + (string.IsNullOrEmpty(obj.PbrHeightPath) ? 0f : Math.Clamp(obj.TerrainHeightScale, 0f, 500f));
+
+        /// <summary>Distance plan shared by "Recommend LOD" and the presets. The three rings are
+        /// expressed in CHUNK units (1.5 / 4 / 10 chunks) because that is the scale a chunk's
+        /// geometry error is judged against, and they stretch with the relief so a tall ridge
+        /// keeps its vertices further out. <paramref name="distanceScale"/> is the preset nudge.
+        /// Always monotonic and capped at 2.5× the footprint.</summary>
+        private static (float D0, float D1, float D2) LodDistances(
+            float footprint, int chunks, float relief, float distanceScale)
+        {
+            footprint = MathF.Max(1f, footprint);
+            float chunkWorld = footprint / Math.Max(1, chunks);
+            float relief01 = Math.Clamp(relief / (footprint * 0.25f), 0f, 1f);
+            float scale = MathF.Max(0.1f, distanceScale) * (1f + 0.6f * relief01);
+            float d0 = chunkWorld * 1.5f * scale;
+            float d1 = d0 * 2.6f;
+            float d2 = d1 * 2.6f;
+            float cap = footprint * 2.5f;
+            d0 = Math.Clamp(d0, 1f, cap);
+            d1 = Math.Clamp(d1, d0 + 1f, cap);
+            d2 = Math.Clamp(d2, d1 + 1f, cap);
+            return (d0, d1, d2);
+        }
+
+        /// <summary>Resolve a preset against the CURRENT terrain (size + relief) without touching
+        /// the object, so the tooltip previews exactly what the click writes.</summary>
         private static (int Chunks, int Segments, float D0, float D1, float D2) LodPresetPlan(EditorObject obj, TerrainLodPreset p)
         {
             var cfg = LodPresetConfig(p);
             float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
             int chunks = Math.Clamp((int)MathF.Round(foot / cfg.ChunkSize), 2, 8);
-            int perChunk = Math.Clamp(cfg.SegmentTarget / chunks, 8, 96);
-            return (chunks, Math.Clamp(chunks * perChunk, 16, 512), foot * cfg.D0, foot * cfg.D1, foot * cfg.D2);
+            int perChunk = Math.Clamp(cfg.QuadsPerChunk, 4, 512 / chunks);
+            var d = LodDistances(foot, chunks, TerrainRelief(obj), cfg.DistanceScale);
+            return (chunks, chunks * perChunk, d.D0, d.D1, d.D2);
         }
 
         private static void ApplyLodPreset(EditorObject obj, TerrainLodPreset p)
@@ -137,8 +166,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 {
                     var plan = LodPresetPlan(obj, presets[i]);
                     var after = LodCost(plan.Segments, plan.Chunks, foot, true, plan.D0, plan.D1, plan.D2);
-                    ImGui.SetTooltip($"{plan.Chunks} chunks × {plan.Segments / plan.Chunks} segs/chunk ({plan.Segments} total)\n"
-                        + $"LOD within {plan.D0:F0} / {plan.D1:F0} / {plan.D2:F0} world\n"
+                    ImGui.SetTooltip($"{plan.Chunks} chunks ({foot / plan.Chunks:F0} m each) × {plan.Segments / plan.Chunks} quads\n"
+                        + $"= {plan.Segments} segments · {foot / plan.Segments:F2} m per quad\n"
+                        + $"LOD within {plan.D0:F0} / {plan.D1:F0} / {plan.D2:F0} world (relief {TerrainRelief(obj):F1})\n"
                         + "Also enables Distance LOD."
                         + LodCostBlock(now, after));
                 }
@@ -367,31 +397,33 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Checkbox("Distance LOD##terrain_lod", ref lodOn)) obj.TerrainLodEnabled = lodOn;
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Each chunk picks its detail level from its distance to the camera:\nLOD0 = authored grid · LOD1 = ½ detail · LOD2 = ¼ detail · LOD3 = 1 quad.\nOFF = always draw the authored grid (pre-LOD behavior).");
-                // One-click recommendation derived from the terrain FOOTPRINT (world units),
-                // so it scales with the plane instead of depending on the camera: near ground
-                // (≤ 15% of the footprint) keeps full detail, the middle band (≤ 45%) half, the
-                // far band (≤ 120%) a quarter, and everything past that is one quad per chunk.
+                // Recommendation: the three rings measured in CHUNK units (1.5 / 4 / 10) because
+                // that is the scale a chunk's geometry error is judged against, stretched by the
+                // terrain relief so a tall ridge keeps its vertices further out. The MESH is left
+                // untouched — the presets below are the ones that rewrite chunks/segments too.
+                float footCur = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                var rec = LodDistances(footCur, Math.Max(1, obj.PbrVertexChunk), TerrainRelief(obj), 1f);
                 if (ImGui.Button("Recommend LOD##terrain_lod"))
                 {
-                    float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
                     obj.TerrainLodEnabled = true;
-                    obj.TerrainLodDistance0 = foot * 0.15f;
-                    obj.TerrainLodDistance1 = foot * 0.45f;
-                    obj.TerrainLodDistance2 = foot * 1.20f;
+                    obj.TerrainLodDistance0 = rec.D0;
+                    obj.TerrainLodDistance1 = rec.D1;
+                    obj.TerrainLodDistance2 = rec.D2;
                 }
                 if (ImGui.IsItemHovered())
                 {
-                    float footNow = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
-                    var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, obj.TerrainLodEnabled,
+                    var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footCur, obj.TerrainLodEnabled,
                         obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2);
-                    var after = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, true,
-                        footNow * 0.15f, footNow * 0.45f, footNow * 1.20f);
-                    ImGui.SetTooltip("Sets the three switch distances from the terrain size (footprint):\nLOD0 ≤ 15% · LOD1 ≤ 45% · LOD2 ≤ 120% of the larger X/Z size.\nBeyond LOD2 = one quad per chunk and no shadow.\nActs on the numeric fields only — raise LOD0/LOD1 if popping is visible."
+                    var after = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footCur, true, rec.D0, rec.D1, rec.D2);
+                    ImGui.SetTooltip("Distances from the CHUNK size and the terrain relief:\nLOD0 = 1.5 chunks · LOD1 = 4 chunks · LOD2 = 10 chunks,\nstretched up to 1.6× once the relief reaches ¼ of the footprint\n(a ridge pops earlier than flat ground).\nLeaves chunks/segments untouched — use a preset to change the mesh too."
                         + LodCostBlock(now, after));
                 }
+                // Live read-out of the mesh those distances were derived from.
                 ImGui.SameLine();
-                float footCur = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
-                ImGui.TextDisabled($"footprint {footCur:F0} → {footCur * 0.15f:F0} / {footCur * 0.45f:F0} / {footCur * 1.2f:F0}");
+                int chunksCur = Math.Max(1, obj.PbrVertexChunk);
+                int perCur = Math.Max(1, obj.PbrPlaneSegmentsBuilt / chunksCur);
+                float chunkWorldCur = footCur / chunksCur;
+                ImGui.TextDisabled($"{chunkWorldCur:F0} m/chunk · {perCur} quads · {chunkWorldCur / perCur:F2} m/quad · relief {TerrainRelief(obj):F1} → LOD {rec.D0:F0} / {rec.D1:F0} / {rec.D2:F0}");
                 // Quality presets — each fills chunks + segments + the three distances.
                 ImGui.TextDisabled("Quality preset:");
                 ImGui.SameLine();
@@ -452,32 +484,23 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             }
             else
             {
-                // No chunk grid yet → LOD has nothing to switch per chunk. The same
-                // recommendation button ALSO creates the chunk grid needed for it
-                // (~1 chunk per 64 world units, 32 segments per chunk).
+                // No chunk grid yet → LOD has nothing to switch per chunk. Apply the Balanced
+                // plan (chunk split + quads per chunk + relief-aware distances) so a single click
+                // creates a mesh the levels can actually live on.
+                var planOff = LodPresetPlan(obj, TerrainLodPreset.Balanced);
                 if (ImGui.Button("Recommend LOD##terrain_lod_off"))
-                {
-                    float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
-                    int recChunks = Math.Clamp((int)MathF.Round(foot / 64f), 2, 8);
-                    obj.PbrVertexChunk = recChunks;
-                    obj.PbrVertexSegments = Math.Clamp(obj.PbrVertexSegments, recChunks * 32, 512);
-                    obj.TerrainLodEnabled = true;
-                    obj.TerrainLodDistance0 = foot * 0.15f;
-                    obj.TerrainLodDistance1 = foot * 0.45f;
-                    obj.TerrainLodDistance2 = foot * 1.20f;
-                }
+                    ApplyLodPreset(obj, TerrainLodPreset.Balanced);
                 if (ImGui.IsItemHovered())
                 {
                     float footNow = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
-                    int recChunks = Math.Clamp((int)MathF.Round(footNow / 64f), 2, 8);
-                    int recSegs = Math.Clamp(obj.PbrVertexSegments, recChunks * 32, 512);
                     var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, obj.TerrainLodEnabled,
                         obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2);
-                    var after = LodCost(recSegs, recChunks, footNow, true,
-                        footNow * 0.15f, footNow * 0.45f, footNow * 1.20f);
-                    ImGui.SetTooltip("LOD needs a chunk grid. This enables chunks (~1 per 64 m of terrain),\nkeeps at least 32 segments per chunk, and sets the three switch distances\nfrom the footprint (15% / 45% / 120%)."
+                    var after = LodCost(planOff.Segments, planOff.Chunks, footNow, true, planOff.D0, planOff.D1, planOff.D2);
+                    ImGui.SetTooltip($"Creates the chunk grid LOD needs and applies the Balanced plan:\n{planOff.Chunks} chunks × {planOff.Segments / planOff.Chunks} quads = {planOff.Segments} segments\nLOD within {planOff.D0:F0} / {planOff.D1:F0} / {planOff.D2:F0} world (relief {TerrainRelief(obj):F1})"
                         + LodCostBlock(now, after));
                 }
+                ImGui.SameLine();
+                ImGui.TextDisabled($"{planOff.Chunks} chunks × {planOff.Segments / planOff.Chunks} quads → {planOff.Segments} segs · LOD {planOff.D0:F0} / {planOff.D1:F0} / {planOff.D2:F0}");
                 ImGui.TextDisabled("Quality preset (also creates the chunk grid):");
                 ImGui.SameLine();
                 DrawLodPresets(obj);
