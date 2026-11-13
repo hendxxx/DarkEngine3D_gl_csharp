@@ -396,6 +396,17 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.TextDisabled("Quality preset:");
                 ImGui.SameLine();
                 DrawLodPresets(obj);
+                bool lodDbg = EditorObject.ShowTerrainLodDebug;
+                if (ImGui.Checkbox("LOD overlay##terrain_lod", ref lodDbg)) EditorObject.ShowTerrainLodDebug = lodDbg;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Draws a colour-coded LOD grid above the terrain's highest peak,\none rectangle per chunk: green LOD0 · yellow LOD1 · orange LOD2 · red LOD3.\nSame level selection as the draw pass, so the colours are the truth.\nSession-only and hidden in game mode.");
+                ImGui.SameLine();
+                for (int lc = 0; lc < EditorObject.TerrainLodLevelCount; lc++)
+                {
+                    if (lc > 0) ImGui.SameLine();
+                    var cc = EditorObject.TerrainLodDebugColor(lc);
+                    ImGui.TextColored(new Vector4(cc.X, cc.Y, cc.Z, 1f), $"LOD{lc}");
+                }
                 if (lodOn)
                 {
                     ImGui.Indent();

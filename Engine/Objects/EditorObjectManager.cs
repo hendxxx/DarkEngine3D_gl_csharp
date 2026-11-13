@@ -862,6 +862,12 @@ public unsafe class EditorObjectManager
                     if (showEditorGizmos && showSkyGizmo && obj.ShowSkyGizmo)
                         obj.DrawSkyGizmo(camera);
                 }
+
+                // Terrain LOD debug map (Terrain panel checkbox): colour per level, drawn
+                // above the peaks. Editor-only — never in preview/game mode.
+                if (showEditorGizmos && EditorObject.ShowTerrainLodDebug
+                    && obj.PrimitiveType == EditorPrimitiveType.Plane && obj.PbrChunkCount > 1)
+                    obj.DrawTerrainLodDebug(camera);
             }
 
             // ── Stencil-based inverted-hull outline on ALL selected objects (with pulsing effect).

@@ -3534,6 +3534,72 @@ public unsafe class EditorObject
         return true;
     }
 
+    /// <summary>Session-only debug overlay (not saved): the terrain's LOD grid drawn as a
+    /// colour-coded map above the highest possible peak. Editor-only — drawn from the
+    /// gizmo pass in <see cref="EditorObjectManager"/>.</summary>
+    public static bool ShowTerrainLodDebug { get; set; } = false;
+
+    /// <summary>Colour of one LOD level in the debug overlay.</summary>
+    public static Vector3 TerrainLodDebugColor(int level) => level switch
+    {
+        0 => new Vector3(0.20f, 0.90f, 0.35f),   // green  = authored detail
+        1 => new Vector3(0.95f, 0.90f, 0.25f),   // yellow = half
+        2 => new Vector3(1.00f, 0.55f, 0.15f),   // orange = quarter
+        _ => new Vector3(0.95f, 0.20f, 0.25f),   // red    = one quad per chunk
+    };
+
+    /// <summary>Draw one rectangle per chunk at the overlay height, coloured by the LOD the
+    /// draw pass picks for that chunk (same <see cref="SelectLod"/> call, so the overlay can
+    /// never disagree with what renders). One line batch per level keeps it to ≤4 draws.
+    /// Depth test is off so the map stays readable through hills.</summary>
+    public void DrawTerrainLodDebug(Camera camera)
+    {
+        if (!ShowTerrainLodDebug || !IsVisible || PrimitiveType != EditorPrimitiveType.Plane
+            || PbrChunkCount <= 1 || _chunkAABBs.Count != PbrChunkCount)
+            return;
+
+        var model = WorldMatrix;
+        // Above the highest peak the displacement can reach (base + PBR detail + |offset| +
+        // sculpt swing) so the grid floats clear of the terrain instead of being buried.
+        float peakY = Math.Clamp(TerrainBaseHeight, 0f, 500f)
+                    + Math.Clamp(TerrainHeightScale, 0f, 500f)
+                    + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
+                    + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f) + 0.5f;
+
+        bool depthWasOn = GL.IsEnabled(Const.GL_DEPTH_TEST);
+        GL.Disable(Const.GL_DEPTH_TEST);
+        var lines = new List<Vector3>(PbrChunkCount * 8);
+        for (int level = 0; level < TerrainLodLevelCount; level++)
+        {
+            lines.Clear();
+            for (int c = 0; c < PbrChunkCount; c++)
+            {
+                var local = _chunkAABBs[c];
+                var center = Vector3.Transform((local.Min + local.Max) * 0.5f, model);
+                if (SelectLod(camera.Position, center) != level) continue;
+
+                Vector3 Corner(float x, float z)
+                {
+                    var w = Vector3.Transform(new Vector3(x, 0f, z), model);
+                    w.Y = peakY;   // flat overlay plane: readable from any angle
+                    return w;
+                }
+                var a = Corner(local.Min.X, local.Min.Z);
+                var b = Corner(local.Max.X, local.Min.Z);
+                var d = Corner(local.Max.X, local.Max.Z);
+                var e = Corner(local.Min.X, local.Max.Z);
+                lines.Add(a); lines.Add(b);
+                lines.Add(b); lines.Add(d);
+                lines.Add(d); lines.Add(e);
+                lines.Add(e); lines.Add(a);
+            }
+            if (lines.Count > 0)
+                Helpers.DebugDraw.DrawLineSegments(lines, TerrainLodDebugColor(level), camera, 0.85f);
+        }
+        if (depthWasOn) GL.Enable(Const.GL_DEPTH_TEST);
+        GL.UseProgram(Shader.GetShaderProgram());
+    }
+
     /// <summary>Emit one CCW quad (2 tris, shared corners) at (u, v) in mesh-UV units
     /// (mesh spans −0.5..0.5 in X/Z). NOTE: bounds accumulation intentionally REMOVED —
     /// Vector3 params are copied by value; chunk AABBs are computed analytically in
