@@ -76,13 +76,26 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             float chunkWorld = footprint / Math.Max(1, chunks);
             float relief01 = Math.Clamp(relief / (footprint * 0.25f), 0f, 1f);
             float scale = MathF.Max(0.1f, distanceScale) * (1f + 0.6f * relief01);
-            float d0 = chunkWorld * 1.5f * scale;
+            float d0 = MathF.Max(1f, chunkWorld * 1.5f * scale);
             float d1 = d0 * 2.6f;
             float d2 = d1 * 2.6f;
-            float cap = footprint * 2.5f;
-            d0 = Math.Clamp(d0, 1f, cap);
-            d1 = Math.Clamp(d1, d0 + 1f, cap);
-            d2 = Math.Clamp(d2, d1 + 1f, cap);
+            // Cap by SCALING all three rings together instead of clamping each one:
+            // clamping d1 to the cap and then demanding d1 + 1 for d2 produced
+            // Math.Clamp(x, cap + 1, cap) on small terrains — an ArgumentException
+            // ("'251' cannot be greater than 250.") the moment the panel asked for a
+            // recommendation on a ~100-unit terrain. Scaling keeps the 1 : 2.6 : 6.76
+            // ratio, stays monotonic by construction and can never invert a bound.
+            float cap = MathF.Max(2f, footprint * 3f);
+            if (d2 > cap)
+            {
+                // Scale the ORIGINAL triple (not the already-scaled members) so the
+                // 1 : 2.6 : 6.76 ring ratio survives the cap.
+                float k = cap / d2;
+                float s0 = d0 * k, s1 = d1 * k;
+                d0 = MathF.Max(1f, s0);
+                d1 = MathF.Max(d0 * 1.05f, s1);
+                d2 = MathF.Max(d1 * 1.05f, cap);
+            }
             return (d0, d1, d2);
         }
 
