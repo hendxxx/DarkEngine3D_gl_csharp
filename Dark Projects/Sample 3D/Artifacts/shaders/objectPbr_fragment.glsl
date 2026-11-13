@@ -219,6 +219,12 @@ uniform vec3 u_MaxWorldBias = vec3(50.5, 150.5, 350.5);
 uniform int showCSMCascadeColor;
 uniform float u_CascadeOverlayAlpha = 0.15;
 
+// Terrain LOD debug (Terrain panel → "LOD overlay"). The renderer uploads a color per
+// LOD draw run (green LOD0 · yellow LOD1 · orange LOD2 · red LOD3), so the terrain
+// surface itself reads level by level — the same overlay idea as the cascade debug.
+uniform int u_lodDebug;
+uniform vec3 u_lodDebugColor = vec3(0.2, 0.9, 0.35);
+
 // ── LOCAL LIGHTS (Point / Spot from editor Light markers) ──
 // The sun (Direct) stays the global directional light; every Point/Spot marker
 // adds its own colored light with distance falloff + spot cone.
@@ -909,6 +915,11 @@ void main() {
             cColor = mix(prevColor, cColor, cascadeBlendT);
         }
         result = mix(result, cColor, u_CascadeOverlayAlpha);
+    }
+
+    // ── DEBUG TERRAIN LOD COLOR (per-chunk level tint, like the cascade debug) ──
+    if (u_lodDebug == 1) {
+        result = mix(result, u_lodDebugColor, 0.55);
     }
 
     // ── TONEMAP + GAMMA ──

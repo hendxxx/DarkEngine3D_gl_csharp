@@ -2633,7 +2633,7 @@
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
       "FlipY": false,
-      "FlipX": false,
+      "FlipX": true,
       "NormalMapVersion": 0,
       "GroupName": "",
       "Role": "Base Character",
@@ -3771,7 +3771,7 @@
       "FrameHeight": 64,
       "PaddingX": 16,
       "PaddingY": 0,
-      "OffsetX": 4,
+      "OffsetX": 0,
       "OffsetY": 0,
       "ColOffset": 0,
       "MasterWidth": 0,
@@ -3785,7 +3785,7 @@
       "Role": "Accessories",
       "CustomFrames": [
         {
-          "X": 4,
+          "X": 0,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3801,7 +3801,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3817,7 +3817,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3833,7 +3833,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3849,7 +3849,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3865,7 +3865,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3881,7 +3881,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3897,7 +3897,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3913,7 +3913,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3929,7 +3929,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 0,
           "Width": 64,
           "Height": 64,
@@ -3945,7 +3945,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -3961,7 +3961,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -3977,7 +3977,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -3993,7 +3993,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4009,7 +4009,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4025,7 +4025,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4041,7 +4041,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4057,7 +4057,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4073,7 +4073,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4089,7 +4089,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 64,
           "Width": 64,
           "Height": 64,
@@ -4105,7 +4105,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4121,7 +4121,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4137,7 +4137,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4153,7 +4153,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4169,7 +4169,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4185,7 +4185,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4201,7 +4201,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4217,7 +4217,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4233,7 +4233,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4249,7 +4249,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 128,
           "Width": 64,
           "Height": 64,
@@ -4265,7 +4265,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4281,7 +4281,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4297,7 +4297,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4313,7 +4313,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4329,7 +4329,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4345,7 +4345,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4361,7 +4361,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4377,7 +4377,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4393,7 +4393,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4409,7 +4409,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 192,
           "Width": 64,
           "Height": 64,
@@ -4425,7 +4425,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4441,7 +4441,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4457,7 +4457,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4473,7 +4473,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4489,7 +4489,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4505,7 +4505,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4521,7 +4521,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4537,7 +4537,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4553,7 +4553,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4569,7 +4569,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 256,
           "Width": 64,
           "Height": 64,
@@ -4585,7 +4585,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4601,7 +4601,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4617,7 +4617,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4633,7 +4633,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4649,7 +4649,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4665,7 +4665,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4681,7 +4681,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4697,7 +4697,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4713,7 +4713,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4729,7 +4729,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 320,
           "Width": 64,
           "Height": 64,
@@ -4745,7 +4745,7 @@
           "Tags": {}
         },
         {
-          "X": 4,
+          "X": 0,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4761,7 +4761,7 @@
           "Tags": {}
         },
         {
-          "X": 84,
+          "X": 80,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4777,7 +4777,7 @@
           "Tags": {}
         },
         {
-          "X": 164,
+          "X": 160,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4793,7 +4793,7 @@
           "Tags": {}
         },
         {
-          "X": 244,
+          "X": 240,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4809,7 +4809,7 @@
           "Tags": {}
         },
         {
-          "X": 324,
+          "X": 320,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4825,7 +4825,7 @@
           "Tags": {}
         },
         {
-          "X": 404,
+          "X": 400,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4841,7 +4841,7 @@
           "Tags": {}
         },
         {
-          "X": 484,
+          "X": 480,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4857,7 +4857,7 @@
           "Tags": {}
         },
         {
-          "X": 564,
+          "X": 560,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4873,7 +4873,7 @@
           "Tags": {}
         },
         {
-          "X": 644,
+          "X": 640,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4889,7 +4889,7 @@
           "Tags": {}
         },
         {
-          "X": 724,
+          "X": 720,
           "Y": 384,
           "Width": 64,
           "Height": 64,
@@ -4925,7 +4925,7 @@
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
       "FlipY": false,
-      "FlipX": false,
+      "FlipX": true,
       "NormalMapVersion": 0,
       "GroupName": "",
       "Role": "Accessories",
@@ -6094,7 +6094,8 @@
       "Id": "9df5f5a13d6e48f09e4ba8edab889c11",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-walk",
@@ -6145,7 +6146,8 @@
       "Id": "261dc249f88941b6afc2c30c7e4075ab",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-run",
@@ -6196,7 +6198,8 @@
       "Id": "009e5ad47c2d43049458b231d857030e",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-jump start",
@@ -6235,7 +6238,8 @@
       "Id": "3c067d9dae404206bcab430d9021d04d",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-jump end",
@@ -6274,7 +6278,8 @@
       "Id": "c9137ebeda934e94be8836d333588343",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-attack",
@@ -6321,7 +6326,8 @@
       "Id": "d711b6c72a9d45b78616708db1946466",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Male Skin1-dead",
@@ -6378,7 +6384,8 @@
       "Id": "2a07a88ba93a48b9986d35cd8bf108a5",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-idle",
@@ -6420,7 +6427,8 @@
       "Id": "20ff0f4721ce4cd486b9375360bfd8c2",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-walk",
@@ -6457,12 +6465,22 @@
         16,
         17
       ],
-      "FrameHolds": [],
+      "FrameHolds": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
       "BakeDirty": false,
       "Id": "9ddaf331bd3a48918bc09a672dad773a",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-run",
@@ -6499,12 +6517,22 @@
         26,
         27
       ],
-      "FrameHolds": [],
+      "FrameHolds": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
       "BakeDirty": false,
       "Id": "7bf736a9438b498da5dcdcf39f50c0fa",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-jump start",
@@ -6533,12 +6561,18 @@
         32,
         33
       ],
-      "FrameHolds": [],
+      "FrameHolds": [
+        1,
+        1,
+        1,
+        1
+      ],
       "BakeDirty": false,
       "Id": "ca948a427f854c9cb036a52c290c735a",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-jump end",
@@ -6567,12 +6601,18 @@
         42,
         43
       ],
-      "FrameHolds": [],
+      "FrameHolds": [
+        1,
+        1,
+        1,
+        1
+      ],
       "BakeDirty": false,
       "Id": "91b2ac74d9144d7dbf7cc60cf326aee4",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-attack",
@@ -6607,12 +6647,20 @@
         54,
         55
       ],
-      "FrameHolds": [],
+      "FrameHolds": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
       "BakeDirty": false,
       "Id": "f0fe1b6b6bf24c06b4d4869ea16e8d33",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     },
     {
       "Name": "Female Skin1-dead",
@@ -6669,43 +6717,20 @@
       "Id": "b76a123dd5374e508f36d7b924a74caa",
       "RigId": "",
       "Tracks": null,
-      "Bake": null
+      "Bake": null,
+      "LayerClipNames": []
     }
   ],
   "AnimationGroups": [
     {
       "Path": "Male Skin1",
       "SortOrder": 0,
-      "PreviewLoadout": [
-        {
-          "ItemId": "",
-          "Sheet": "Male Hair1",
-          "Clip": "",
-          "Layer": 1,
-          "OffsetX": 0,
-          "OffsetY": 0,
-          "WorldHeight": 0,
-          "SyncFrame": true,
-          "Visible": true
-        }
-      ]
+      "PreviewLoadout": []
     },
     {
       "Path": "Female Skin1",
       "SortOrder": 1,
-      "PreviewLoadout": [
-        {
-          "ItemId": "",
-          "Sheet": "Female Hair1",
-          "Clip": "",
-          "Layer": 1,
-          "OffsetX": 0,
-          "OffsetY": 0,
-          "WorldHeight": 0,
-          "SyncFrame": true,
-          "Visible": true
-        }
-      ]
+      "PreviewLoadout": []
     },
     {
       "Path": "Female Hair1",

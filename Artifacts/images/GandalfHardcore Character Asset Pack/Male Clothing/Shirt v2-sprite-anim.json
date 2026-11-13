@@ -13,12 +13,16 @@
       "PaddingY": 0,
       "OffsetX": 4,
       "OffsetY": 0,
+      "ColOffset": 0,
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
       "SpriteOffsetY": 0,
       "FlipY": false,
       "FlipX": true,
+      "NormalMapVersion": 0,
+      "GroupName": "",
+      "Role": "",
       "CustomFrames": [
         {
           "X": 4,
@@ -1162,7 +1166,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-walk",
@@ -1185,7 +1200,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-run",
@@ -1208,7 +1234,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-jump start",
@@ -1227,7 +1264,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-jump end",
@@ -1246,7 +1294,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-attack",
@@ -1267,7 +1326,18 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     },
     {
       "Name": "Shirt v2-dead",
@@ -1292,11 +1362,26 @@
       "MasterWidth": 0,
       "MasterHeight": 0,
       "SpriteOffsetX": 0,
-      "SpriteOffsetY": 0
+      "SpriteOffsetY": 0,
+      "GroupPath": "",
+      "Mode": "Sprite",
+      "SourceSheetName": "",
+      "SourceFrameIndices": null,
+      "FrameHolds": null,
+      "BakeDirty": false,
+      "Id": "",
+      "RigId": null,
+      "Tracks": null,
+      "Bake": null,
+      "LayerClipNames": null
     }
   ],
+  "AnimationGroups": [],
+  "Rigs": [],
+  "AnimationTemplates": [],
   "PreviewStartFrame": -1,
   "PreviewEndFrame": -1,
   "PreviewFps": 12,
-  "PreviewLoop": true
+  "PreviewLoop": true,
+  "PatternActions": ""
 }

@@ -3564,7 +3564,7 @@
           "npcBadgeLift": 0,
           "npcPromptPos": 1,
           "player2DSpriteSheet": "mainsprite1",
-          "player2DAnimationClip": "Female Hair1-attack",
+          "player2DAnimationClip": "Male Skin1-idle",
           "player2DWalkSheet": "",
           "player2DWalkClip": "",
           "player2DHeight": 16,
