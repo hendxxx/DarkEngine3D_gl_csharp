@@ -527,6 +527,12 @@ public class EditorObjectData
     /// <summary>Split the displaced grid into chunk×chunk vertex blocks (1..16), each
     /// frustum-culled independently at draw time. Null/absent = 1 (single mesh).</summary>
     public int? PbrVertexChunk { get; set; }
+    /// <summary>Per-chunk distance LOD (levels 0-3: authored / half / quarter / one quad).
+    /// Null/absent = legacy scene → ON.</summary>
+    public bool? TerrainLodEnabled { get; set; }
+    /// <summary>LOD switch distances in world units: [0] LOD0 max, [1] LOD1 max,
+    /// [2] LOD2 max (beyond = one quad per chunk). Null/absent = the panel defaults.</summary>
+    public float[]? TerrainLodDistances { get; set; }
     /// <summary>Sampling settings for the SIMPLE texture (min/mag filter, mipmapping,
     /// anisotropy, wrapping, UV tiling/offset). Null/absent = legacy scene → defaults
     /// (tiling falls back to <see cref="PbrTexTiling"/>).</summary>

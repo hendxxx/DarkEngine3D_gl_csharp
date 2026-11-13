@@ -1166,6 +1166,8 @@ public class SceneManagerPanel
                         TerrainHeightStrength = obj.TerrainHeightStrength,
                         PbrVertexSegments = obj.PbrVertexSegments,
                         PbrVertexChunk = obj.PbrVertexChunk,
+                        TerrainLodEnabled = obj.TerrainLodEnabled,
+                        TerrainLodDistances = [obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2],
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                     });
@@ -1687,6 +1689,14 @@ public class SceneManagerPanel
                             : 1f;
                         if (objData.PbrVertexSegments is int s && s > 0) obj.PbrVertexSegments = Math.Clamp(s, 16, 512);
                         if (objData.PbrVertexChunk is int ck && ck > 0) obj.PbrVertexChunk = Math.Clamp(ck, 1, 16);
+                        // Terrain LOD (draw-time only: no mesh rebuild needed).
+                        obj.TerrainLodEnabled = objData.TerrainLodEnabled ?? true;
+                        if (objData.TerrainLodDistances is { Length: 3 } lodDist)
+                        {
+                            obj.TerrainLodDistance0 = lodDist[0];
+                            obj.TerrainLodDistance1 = lodDist[1];
+                            obj.TerrainLodDistance2 = lodDist[2];
+                        }
                         obj.MarkDirty(); // displaced planes always need the dense grid
                         // Per-texture sampling settings (min/mag, mipmap, wrapping, UV
                         // tiling/offset). Legacy scenes have no TexSettings → fall back to
@@ -2157,6 +2167,8 @@ public class SceneManagerPanel
                             TerrainHeightStrength = obj.TerrainHeightStrength,
                             PbrVertexSegments = obj.PbrVertexSegments,
                             PbrVertexChunk = obj.PbrVertexChunk,
+                            TerrainLodEnabled = obj.TerrainLodEnabled,
+                            TerrainLodDistances = [obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2],
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                             // Player2D sizing — twin of the SaveAllEditorScenes block so

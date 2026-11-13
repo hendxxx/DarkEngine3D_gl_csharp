@@ -2298,6 +2298,71 @@ public unsafe class EditorObject
     public int PbrChunkCount { get; private set; }
     /// <summary>Chunks skipped by the frustum cull on the last PBR draw (diagnostics).</summary>
     public int PbrChunksCulled { get; private set; }
+
+    // ── Terrain LOD (per chunk, 4 levels) ──
+    // Level 0 is the AUTHORED grid (one chunk = perChunk×perChunk quads). Each further
+    // level keeps the same chunk grid but halves the segments per chunk, and the last
+    // level collapses every chunk to a SINGLE quad:
+    //   LOD0 = 100% (authored), LOD1 = 1/2, LOD2 = 1/4, LOD3 = 1 quad per chunk.
+    // The level is picked per chunk from the camera distance to its centre, so near
+    // ground keeps full detail while the far half of a big terrain costs almost nothing.
+    public const int TerrainLodLevelCount = 4;
+    private readonly ChunkLodMesh?[] _coarseLods = new ChunkLodMesh?[TerrainLodLevelCount]; // levels 1..3
+    private readonly int[] _lodChunkSegments = new int[TerrainLodLevelCount];
+    private readonly int[] _lodDrawn = new int[TerrainLodLevelCount];
+    private bool _terrainLodEnabled = true;
+    private float _terrainLodDistance0 = 100f;
+    private float _terrainLodDistance1 = 300f;
+    private float _terrainLodDistance2 = 800f;
+
+    /// <summary>Per-chunk distance LOD for a chunked terrain plane. Draw-time only —
+    /// toggling never rebuilds a mesh. OFF = always draw the authored grid.</summary>
+    public bool TerrainLodEnabled
+    {
+        get => _terrainLodEnabled;
+        set => _terrainLodEnabled = value;
+    }
+    /// <summary>Distance (world units, camera → chunk centre) up to which a chunk keeps
+    /// LOD0 (full authored detail).</summary>
+    public float TerrainLodDistance0
+    {
+        get => _terrainLodDistance0;
+        set => _terrainLodDistance0 = Math.Clamp(value, 0.5f, 50000f);
+    }
+    /// <summary>Distance up to which a chunk is drawn at LOD1 (half the detail).</summary>
+    public float TerrainLodDistance1
+    {
+        get => _terrainLodDistance1;
+        set => _terrainLodDistance1 = Math.Clamp(value, 0.5f, 50000f);
+    }
+    /// <summary>Distance up to which a chunk is drawn at LOD2 (a quarter of the detail);
+    /// beyond it the chunk is a single quad (LOD3).</summary>
+    public float TerrainLodDistance2
+    {
+        get => _terrainLodDistance2;
+        set => _terrainLodDistance2 = Math.Clamp(value, 0.5f, 50000f);
+    }
+    /// <summary>How many LOD levels were actually built (1 = none, e.g. a single-chunk or
+    /// perChunk == 1 grid where no coarser level exists).</summary>
+    public int TerrainLodBuiltLevels { get; private set; } = 1;
+    /// <summary>Segments per side of ONE chunk at the given level (diagnostics).</summary>
+    public int TerrainLodChunkSegments(int level)
+        => level >= 0 && level < TerrainLodLevelCount ? _lodChunkSegments[level] : 0;
+    /// <summary>Chunks drawn at the given level on the last draw (diagnostics).</summary>
+    public int PbrLodDrawn(int level)
+        => level >= 0 && level < TerrainLodLevelCount ? _lodDrawn[level] : 0;
+    /// <summary>Total vertices uploaded for this terrain across every LOD level.</summary>
+    public int TerrainLodTotalVerts { get; private set; }
+
+    /// <summary>One coarser LOD level: its own GPU mesh plus per-chunk draw ranges
+    /// (same chunk indices / order as level 0, so chunk <c>c</c> means the same ground
+    /// patch at every level).</summary>
+    private sealed class ChunkLodMesh
+    {
+        public Object3D? Mesh;
+        public readonly List<int> Starts = [];
+        public readonly List<int> Counts = [];
+    }
     /// <summary>Sampling settings for the SIMPLE texture (<see cref="TexturePath"/>):
     /// min/mag filter, mipmapping & anisotropy, wrapping, UV tiling/offset.</summary>
     public Libs.TextureSettings TexSettings { get; set; } = new();
@@ -2859,6 +2924,7 @@ public unsafe class EditorObject
                 GL.DeleteBuffers(1, &vbo);
             }
             _object3D = null;
+            DisposeChunkLods();
         }
 
         var shader = Shader.GetShaderProgram();
@@ -3224,11 +3290,12 @@ public unsafe class EditorObject
         // A flat multi-texture plane still benefits: each chunk is frustum-culled
         // against the camera independently ("optimasi berjalan per frustum camera").
         if (PrimitiveType != EditorPrimitiveType.Plane || PbrVertexChunk <= 1)
-            return false;
-        if (PbrVertexChunk <= 1)
         {
             _chunkStarts.Clear(); _chunkCounts.Clear(); _chunkAABBs.Clear();
             PbrChunkCount = 0;
+            // Chunks per side went back to 1: the coarse LOD meshes must not survive
+            // the rebuild (their VAOs would leak and LodMesh would return dead meshes).
+            DisposeChunkLods();
             return false; // unchunked: caller builds the plain grid
         }
         int chunks = PbrVertexChunk;
@@ -3273,6 +3340,197 @@ public unsafe class EditorObject
         _object3D = new Object3D(0, 0, 0);
         _object3D.Generate(shader, fullVerts);
         PbrChunkCount = chunks * chunks;
+        // LOD levels 1..3 come from the SAME chunk split: half the segments per chunk,
+        // a quarter, then one quad. Built here so a rebuild disposes/recreates them with
+        // the level-0 mesh in one place.
+        BuildChunkLods(chunks, perChunk, shader);
+        return true;
+    }
+
+    /// <summary>Build the coarser LOD meshes for a chunked plane (levels 1..3).
+    /// Coarser levels never exist for <paramref name="perChunk"/> == 1 (a single quad per
+    /// chunk is already the coarsest form), and a level that resolves to the SAME
+    /// segments as the previous one simply shares that mesh instead of duplicating it.</summary>
+    private void BuildChunkLods(int chunks, int perChunk, uint shader)
+    {
+        DisposeChunkLods();
+        _lodChunkSegments[0] = perChunk;
+        TerrainLodTotalVerts = _object3D?.VertexCount ?? 0;
+        if (perChunk <= 1) return;   // nothing coarser to build
+
+        for (int level = 1; level < TerrainLodLevelCount; level++)
+        {
+            int lseg = level == TerrainLodLevelCount - 1 ? 1 : Math.Max(1, perChunk >> level);
+            _lodChunkSegments[level] = lseg;
+            if (lseg >= _lodChunkSegments[level - 1])
+            {
+                // Same resolution as the level below (tiny grids) — share its mesh.
+                _coarseLods[level] = _coarseLods[level - 1];
+                continue;
+            }
+            float step = 1f / (chunks * lseg);
+            float chunkSpan = lseg * step;
+            var lod = new ChunkLodMesh();
+            var verts = new List<Vertex>(chunks * chunks * lseg * lseg * 6);
+            for (int cz = 0; cz < chunks; cz++)
+            {
+                for (int cx = 0; cx < chunks; cx++)
+                {
+                    int start = verts.Count;
+                    float u0 = cx * chunkSpan, v0 = cz * chunkSpan;
+                    for (int iz = 0; iz < lseg; iz++)
+                        for (int ix = 0; ix < lseg; ix++)
+                            EmitPlaneQuad(verts, u0 + ix * step, v0 + iz * step, step);
+                    lod.Starts.Add(start);
+                    lod.Counts.Add(verts.Count - start);
+                }
+            }
+            lod.Mesh = new Object3D(0, 0, 0);
+            lod.Mesh.Generate(shader, verts.ToArray());
+            _coarseLods[level] = lod;
+            TerrainLodTotalVerts += lod.Mesh.VertexCount;
+            TerrainLodBuiltLevels = level + 1;
+        }
+    }
+
+    /// <summary>Free the coarser LOD meshes (shared levels are released once).</summary>
+    private void DisposeChunkLods()
+    {
+        for (int level = 1; level < TerrainLodLevelCount; level++)
+        {
+            var lod = _coarseLods[level];
+            _coarseLods[level] = null;
+            if (lod == null) continue;
+            if (lod.Mesh != null)
+            {
+                if (lod.Mesh.VAO != 0) { uint vao = lod.Mesh.VAO; GL.DeleteVertexArrays(1, &vao); }
+                if (lod.Mesh.VBO != 0) { uint vbo = lod.Mesh.VBO; GL.DeleteBuffers(1, &vbo); }
+                lod.Mesh = null;
+            }
+        }
+        TerrainLodBuiltLevels = 1;
+    }
+
+    /// <summary>GPU mesh of one LOD level (null = level was not built).</summary>
+    private Object3D? LodMesh(int level)
+        => level <= 0 ? _object3D : _coarseLods[level]?.Mesh;
+
+    private int LodStart(int level, int chunk)
+        => level <= 0 ? _chunkStarts[chunk] : _coarseLods[level]!.Starts[chunk];
+
+    private int LodCount(int level, int chunk)
+        => level <= 0 ? _chunkCounts[chunk] : _coarseLods[level]!.Counts[chunk];
+
+    /// <summary>Pick the detail level of one chunk from the camera distance. The three
+    /// thresholds are forced monotonic here (a slider order can never invert the levels)
+    /// and the result is clamped to what was actually built.</summary>
+    private int SelectLod(Vector3 cameraPos, Vector3 worldChunkCenter)
+    {
+        int top = Math.Min(TerrainLodLevelCount - 1, TerrainLodBuiltLevels - 1);
+        if (!_terrainLodEnabled || top <= 0) return 0;
+        float d0 = _terrainLodDistance0;
+        float d1 = MathF.Max(_terrainLodDistance1, d0 + 1f);
+        float d2 = MathF.Max(_terrainLodDistance2, d1 + 1f);
+        float d = Vector3.Distance(cameraPos, worldChunkCenter);
+        int level = d <= d0 ? 0 : d <= d1 ? 1 : d <= d2 ? 2 : 3;
+        return Math.Min(level, top);
+    }
+
+    /// <summary>Shadow cascades a terrain chunk at this LOD may cast into. Level 0 writes
+    /// every cascade (full shadow-map resolution), level 1 the two nearest, level 2 only
+    /// the nearest, level 3 none — shadow quality drops with the detail instead of far
+    /// chunks silently paying full shadow-map cost.</summary>
+    public static int TerrainLodShadowCascades(int level) => level switch
+    {
+        0 => CSM.NumCascades,
+        1 => 2,
+        2 => 1,
+        _ => 0,
+    };
+
+    /// <summary>Render a chunked terrain plane into ONE CSM cascade, chunk by chunk, with
+    /// the per-chunk LOD shadow budget. Consecutive chunks that land on the same level are
+    /// merged into a single DrawArrays range, so this costs no extra draw calls.
+    /// Returns false for anything that is not a chunked terrain plane (the caller then
+    /// keeps the normal full-mesh shadow path).</summary>
+    private bool DrawChunkedShadow(Camera camera, CSM csm, int cascadeIndex, uint shadowShader, int modelLoc)
+    {
+        if (PrimitiveType != EditorPrimitiveType.Plane || PbrChunkCount <= 1 || _object3D == null
+            || _chunkAABBs.Count != PbrChunkCount || TerrainLodBuiltLevels < 2)
+            return false;
+
+        var model = WorldMatrix;
+        GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&model);
+        Visual.ShadowUniforms.UploadNormalBias(shadowShader);
+        Visual.ShadowUniforms.UploadShadowNormalMatrix(shadowShader, model);
+
+        // Peaks sit far above the flat chunk box (base + PBR detail + |offset| + sculpt),
+        // so the caster box is inflated vertically before the light-space test.
+        float yPad = Math.Clamp(TerrainBaseHeight, 0f, 500f)
+                   + Math.Clamp(TerrainHeightScale, 0f, 500f)
+                   + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
+                   + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
+
+        Plane[]? planes = CSM.BuildPlanesFromCorners(csm.OrthoCorners[cascadeIndex]);
+        int boundLod = 0;
+        int runLod = -1, runStart = 0, runEnd = 0;
+        int drawn = 0;
+
+        void Flush()
+        {
+            if (runLod < 0) return;
+            var mesh = LodMesh(runLod);
+            if (mesh != null)
+            {
+                if (boundLod != runLod) { GL.BindVertexArray(mesh.VAO); boundLod = runLod; }
+                GL.DrawArrays(Const.GL_TRIANGLES, runStart, runEnd - runStart);
+                drawn++;
+            }
+            runLod = -1;
+        }
+
+        for (int c = 0; c < PbrChunkCount; c++)
+        {
+            var local = _chunkAABBs[c];
+            var center = Vector3.Transform((local.Min + local.Max) * 0.5f, model);
+            int lod = SelectLod(camera.Position, center);
+            bool cast = cascadeIndex < TerrainLodShadowCascades(lod);
+            if (cast && planes != null) cast = ChunkInsidePlanes(planes, local, model, yPad);
+            if (!cast) { Flush(); continue; }
+
+            int start = LodStart(lod, c), count = LodCount(lod, c);
+            if (runLod == lod && start == runEnd) runEnd += count;
+            else { Flush(); runLod = lod; runStart = start; runEnd = start + count; }
+        }
+        Flush();
+        GL.BindVertexArray(0);
+        return drawn > 0;
+    }
+
+    /// <summary>World-space chunk box vs light-space planes (positive-vertex test: the box
+    /// is OUTSIDE only when its most positive corner is behind a plane).</summary>
+    private static bool ChunkInsidePlanes(Plane[] planes, AABB local, Matrix4x4 model, float yPad)
+    {
+        Vector3 mn = new(float.MaxValue), mx = new(float.MinValue);
+        for (int i = 0; i < 8; i++)
+        {
+            var corner = Vector3.Transform(new Vector3(
+                (i & 1) != 0 ? local.Max.X : local.Min.X,
+                (i & 2) != 0 ? local.Max.Y : local.Min.Y,
+                (i & 4) != 0 ? local.Max.Z : local.Min.Z), model);
+            mn = Vector3.Min(mn, corner);
+            mx = Vector3.Max(mx, corner);
+        }
+        mn.Y -= yPad;
+        mx.Y += yPad;
+        foreach (var p in planes)
+        {
+            var pv = new Vector3(
+                p.Normal.X >= 0f ? mx.X : mn.X,
+                p.Normal.Y >= 0f ? mx.Y : mn.Y,
+                p.Normal.Z >= 0f ? mx.Z : mn.Z);
+            if (Vector3.Dot(p.Normal, pv) + p.D < 0f) return false;
+        }
         return true;
     }
 
@@ -3295,7 +3553,7 @@ public unsafe class EditorObject
     }
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
-    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, float dispScale, float dispHeightNorm, bool twoSided, float dispOffset = 0f)
+    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cameraPos, float dispScale, float dispHeightNorm, bool twoSided, float dispOffset = 0f)
     {
         if (PbrChunkCount <= 1 || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
             return false;
@@ -3305,6 +3563,25 @@ public unsafe class EditorObject
         float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + MathF.Abs(dispOffset) + 0.05f);
         int culled = 0;
         int drawn = 0;
+        Array.Clear(_lodDrawn);
+        int boundLod = 0;
+        GL.BindVertexArray(_object3D.VAO);
+        // Chunk ranges are contiguous inside each level's VBO, so neighbouring chunks
+        // that end up at the SAME level are merged into one DrawArrays run — a uniform
+        // level draws in ONE call instead of one per chunk.
+        int runLod = -1, runStart = 0, runEnd = 0, lastChunk = -2;
+        void FlushRun()
+        {
+            if (runLod < 0) return;
+            var m = LodMesh(runLod);
+            if (m != null)
+            {
+                if (boundLod != runLod) { GL.BindVertexArray(m.VAO); boundLod = runLod; }
+                GL.DrawArrays(Const.GL_TRIANGLES, runStart, runEnd - runStart);
+                drawn++;
+            }
+            runLod = -1;
+        }
         // Capture the incoming cull state BEFORE disabling — checking GL.IsEnabled after
         // our own Disable is always false and the scene's culling never came back.
         bool cullWasOn = GL.IsEnabled(Const.GL_CULL_FACE);
@@ -3332,11 +3609,21 @@ public unsafe class EditorObject
             if (!IsAABBInFrustum(viewProj, aabb))
             {
                 culled++;
+                FlushRun();
+                lastChunk = -2;      // a culled chunk BREAKS the run (its data must not draw)
                 continue;
             }
-            GL.DrawArrays(Const.GL_TRIANGLES, _chunkStarts[c], _chunkCounts[c]);
-            drawn++;
+            // Per-chunk LOD: near ground keeps the authored grid, far chunks drop to
+            // half / quarter / one quad. SelectLod never returns an unbuilt level.
+            int lod = SelectLod(cameraPos, (wMin + wMax) * 0.5f);
+            if (LodMesh(lod) == null) lod = 0;
+            int start = LodStart(lod, c), count = LodCount(lod, c);
+            if (runLod == lod && lastChunk == c - 1) runEnd += count;
+            else { FlushRun(); runLod = lod; runStart = start; runEnd = start + count; }
+            lastChunk = c;
+            _lodDrawn[lod]++;
         }
+        FlushRun();
         if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
         PbrChunksCulled = culled;
         // SAFETY NET: when EVERY chunk was culled the plane is (theoretically) fully
@@ -3347,7 +3634,8 @@ public unsafe class EditorObject
         {
             bool cullWasOn2 = GL.IsEnabled(Const.GL_CULL_FACE);
             GL.Disable(Const.GL_CULL_FACE);
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D!.VertexCount);
+            GL.BindVertexArray(_object3D!.VAO);   // a coarse level's VAO may still be bound
+            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
             if (cullWasOn2) GL.Enable(Const.GL_CULL_FACE);
         }
         return true;
@@ -3902,7 +4190,7 @@ public unsafe class EditorObject
                        + Math.Clamp(TerrainHeightScale, 0f, 500f)
                        + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
                        + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
-            try { drewChunks = DrawChunkedPlane(model, view * proj, maxY, 1f, twoSided, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
+            try { drewChunks = DrawChunkedPlane(model, view * proj, camera.Position, maxY, 1f, twoSided, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
             catch (Exception ex)
             {
                 Console.WriteLine($"[PBR] Chunked draw FAILED on '{Name}' → full-draw fallback: {ex.Message}");
@@ -6824,6 +7112,9 @@ public unsafe class EditorObject
         // which the manager no longer calls — so shadows were rendered with the stale
         // constructor-default matrix (identity at the origin) and the stale-matrix frustum
         // culling culled everything out. Sync it with the current editor transform here.
+        // Chunked terrain: per-chunk shadow draws under the LOD shadow budget (a far
+        // LOD3 chunk casts nothing, and the chunks merge into runs — no extra calls).
+        if (DrawChunkedShadow(camera, csm, cascadeIndex, shadowShader, shadowModelLoc)) return;
         _object3D.UpdateModelMatriC(WorldMatrix);
         _object3D.RenderShadow(camera, csm, cascadeIndex, shadowShader, shadowModelLoc);
     }
@@ -6871,6 +7162,7 @@ public unsafe class EditorObject
 
         // Keep the internal model matrix in sync (see the other overload for details) so
         // the shadow pass renders at the object's current position/scale/rotation.
+        if (DrawChunkedShadow(camera, csm, cascadeIndex, shadowShader, modelLoc)) return;
         _object3D.UpdateModelMatriC(WorldMatrix);
         _object3D.RenderShadow(camera, csm, cascadeIndex, shadowShader, modelLoc);
     }
@@ -8026,6 +8318,7 @@ void main() {
         if (_map2dVBO != 0) { uint v = _map2dVBO; GL.DeleteBuffers(1, &v); _map2dVBO = 0; }
         if (_player2dVAO != 0) { uint v = _player2dVAO; GL.DeleteVertexArrays(1, &v); _player2dVAO = 0; }
         if (_player2dVBO != 0) { uint v = _player2dVBO; GL.DeleteBuffers(1, &v); _player2dVBO = 0; }
+        DisposeChunkLods();
         DisposePbrTextures();
         DropTerrainHeightTexture();
         DropSculptField();

@@ -480,6 +480,12 @@ public unsafe class EditorObjectManager
                 TerrainHeightOffset = source.TerrainHeightOffset,
                 TerrainHeightStrength = source.TerrainHeightStrength,
                 PbrPrimTessellation = source.PbrPrimTessellation,
+                // Terrain LOD travels with the duplicate too (the mesh rebuilds from the
+                // same segments/chunks, so the levels come out identical).
+                TerrainLodEnabled = source.TerrainLodEnabled,
+                TerrainLodDistance0 = source.TerrainLodDistance0,
+                TerrainLodDistance1 = source.TerrainLodDistance1,
+                TerrainLodDistance2 = source.TerrainLodDistance2,
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
                 // drops its live GPU buffers and re-decodes/recomputes lazily).

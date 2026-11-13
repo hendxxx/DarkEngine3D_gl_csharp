@@ -1,5 +1,6 @@
 using DarkEngine3D_gl_csharp.Engine.Helpers;
 using DarkEngine3D_gl_csharp.Engine.Objects;
+using DarkEngine3D_gl_csharp.Engine.Visual;
 using ImGuiNET;
 using System;
 using System.IO;
@@ -249,6 +250,66 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             else
             {
                 ImGui.TextDisabled($"Mesh: {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} grid (1 draw)");
+            }
+            // ── TERRAIN LOD (per chunk, 4 levels) ──
+            //   LOD0 near      = the authored grid           · shadows in every cascade (HD)
+            //   LOD1 medium    = half the segments/chunk     · shadows in the 2 nearest cascades
+            //   LOD2 far       = a quarter of the segments   · shadow only in the nearest cascade
+            //   LOD3 far away  = ONE quad per chunk          · no shadow at all
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Terrain LOD (per chunk)");
+            if (obj.PbrChunkCount > 1)
+            {
+                bool lodOn = obj.TerrainLodEnabled;
+                if (ImGui.Checkbox("Distance LOD##terrain_lod", ref lodOn)) obj.TerrainLodEnabled = lodOn;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Each chunk picks its detail level from its distance to the camera:\nLOD0 = authored grid · LOD1 = ½ detail · LOD2 = ¼ detail · LOD3 = 1 quad.\nOFF = always draw the authored grid (pre-LOD behavior).");
+                if (lodOn)
+                {
+                    ImGui.Indent();
+                    float ld0 = obj.TerrainLodDistance0;
+                    if (ImGui.SliderFloat("LOD0 within##terrain_lod", ref ld0, 1f, 2000f, "%.0f")) obj.TerrainLodDistance0 = ld0;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Chunks whose centre is closer than this keep the FULL authored grid.");
+                    float ld1 = obj.TerrainLodDistance1;
+                    if (ImGui.SliderFloat("LOD1 within##terrain_lod", ref ld1, 1f, 5000f, "%.0f")) obj.TerrainLodDistance1 = ld1;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Beyond LOD0 up to this distance: half the segments per chunk (and terrain shadows\nstop writing the farthest cascade).");
+                    float ld2 = obj.TerrainLodDistance2;
+                    if (ImGui.SliderFloat("LOD2 within##terrain_lod", ref ld2, 1f, 20000f, "%.0f")) obj.TerrainLodDistance2 = ld2;
+                    if (ImGui.IsItemHovered())
+                        ImGui.SetTooltip("Beyond LOD1 up to this distance: a quarter of the segments per chunk.\nAnything farther is ONE quad per chunk and casts no shadow.");
+                    if (obj.TerrainLodBuiltLevels < 2)
+                    {
+                        ImGui.TextColored(new Vector4(1f, 0.65f, 0.25f, 1f),
+                            "Only ONE level exists (1 segment per chunk) — raise Segments for a real LOD chain.");
+                    }
+                    else
+                    {
+                        for (int l = 0; l < EditorObject.TerrainLodLevelCount; l++)
+                        {
+                            int perChunkSegs = obj.TerrainLodChunkSegments(l);
+                            string detail = l == 0
+                                ? $"authored {perChunkSegs}×{perChunkSegs}/chunk"
+                                : l == EditorObject.TerrainLodLevelCount - 1
+                                    ? "1 quad/chunk"
+                                    : $"{perChunkSegs}×{perChunkSegs}/chunk";
+                            int cascades = EditorObject.TerrainLodShadowCascades(l);
+                            string shadow = cascades == 0
+                                ? "no shadow"
+                                : cascades >= CSM.NumCascades ? "shadow HD (all cascades)" : $"shadow {cascades}/{CSM.NumCascades} cascades";
+                            ImGui.TextDisabled($"LOD{l}: {detail} · {shadow} · drawn {obj.PbrLodDrawn(l)}");
+                        }
+                        int drawnTotal = 0;
+                        for (int l = 0; l < EditorObject.TerrainLodLevelCount; l++) drawnTotal += obj.PbrLodDrawn(l);
+                        ImGui.TextDisabled($"{drawnTotal}/{obj.PbrChunkCount} chunks drawn · {obj.TerrainLodTotalVerts:N0} verts for every level");
+                    }
+                    ImGui.Unindent();
+                }
+            }
+            else
+            {
+                ImGui.TextDisabled("Set 'Chunks per side' > 1 to use LOD — the levels are per chunk.");
             }
             if (string.IsNullOrEmpty(obj.TerrainHeightSourcePath))
                 ImGui.TextDisabled("Flat plane — no terrain heightmap yet.");
