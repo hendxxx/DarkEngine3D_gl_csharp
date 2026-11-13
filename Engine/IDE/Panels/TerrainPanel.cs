@@ -42,6 +42,66 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
 
         public void ShowInMenu() => ImGui.MenuItem("Terrain", null, ref _visible);
 
+        /// <summary>Quality presets for the terrain LOD chain. Each preset fills the chunk
+        /// split, the segment count AND the three switch distances in one click, scaled to the
+        /// terrain footprint: Performance buys vertices by keeping detail close, Quality keeps
+        /// detail further out, Balanced sits between (same ratios as "Recommend LOD").</summary>
+        private enum TerrainLodPreset { Performance, Balanced, Quality }
+
+        /// <summary>(target chunk world size, target total segments, LOD0/LOD1/LOD2 fractions
+        /// of the footprint) per preset.</summary>
+        private static (float ChunkSize, int SegmentTarget, float D0, float D1, float D2) LodPresetConfig(TerrainLodPreset p)
+            => p switch
+            {
+                TerrainLodPreset.Performance => (200f, 192, 0.10f, 0.35f, 0.90f),
+                TerrainLodPreset.Quality => (64f, 384, 0.25f, 0.60f, 1.60f),
+                _ => (125f, 320, 0.15f, 0.45f, 1.20f),
+            };
+
+        /// <summary>Resolve a preset against the CURRENT terrain size without touching the
+        /// object (also used for the hover tooltip, so what is previewed is what is applied).</summary>
+        private static (int Chunks, int Segments, float D0, float D1, float D2) LodPresetPlan(EditorObject obj, TerrainLodPreset p)
+        {
+            var cfg = LodPresetConfig(p);
+            float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+            int chunks = Math.Clamp((int)MathF.Round(foot / cfg.ChunkSize), 2, 8);
+            int perChunk = Math.Clamp(cfg.SegmentTarget / chunks, 8, 96);
+            return (chunks, Math.Clamp(chunks * perChunk, 16, 512), foot * cfg.D0, foot * cfg.D1, foot * cfg.D2);
+        }
+
+        private static void ApplyLodPreset(EditorObject obj, TerrainLodPreset p)
+        {
+            var plan = LodPresetPlan(obj, p);
+            // Chunk split + segments first (each MarkDirty()s — one rebuild on the next frame),
+            // then the draw-time LOD state.
+            obj.PbrVertexChunk = plan.Chunks;
+            obj.PbrVertexSegments = plan.Segments;
+            obj.TerrainLodEnabled = true;
+            obj.TerrainLodDistance0 = plan.D0;
+            obj.TerrainLodDistance1 = plan.D1;
+            obj.TerrainLodDistance2 = plan.D2;
+        }
+
+        /// <summary>Render the three preset buttons; each tooltip previews the exact chunks /
+        /// segments / distances the click will write for the selected terrain.</summary>
+        private static void DrawLodPresets(EditorObject obj)
+        {
+            TerrainLodPreset[] presets = [TerrainLodPreset.Performance, TerrainLodPreset.Balanced, TerrainLodPreset.Quality];
+            for (int i = 0; i < presets.Length; i++)
+            {
+                if (i > 0) ImGui.SameLine();
+                if (ImGui.Button($"{presets[i]}##terrain_lod_preset"))
+                    ApplyLodPreset(obj, presets[i]);
+                if (ImGui.IsItemHovered())
+                {
+                    var plan = LodPresetPlan(obj, presets[i]);
+                    ImGui.SetTooltip($"{plan.Chunks} chunks × {plan.Segments / plan.Chunks} segs/chunk ({plan.Segments} total)\n"
+                        + $"LOD within {plan.D0:F0} / {plan.D1:F0} / {plan.D2:F0} world\n"
+                        + "Also enables Distance LOD.");
+                }
+            }
+        }
+
         public unsafe void Render()
         {
             if (!_visible) return;
@@ -281,6 +341,10 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 ImGui.SameLine();
                 float footCur = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
                 ImGui.TextDisabled($"footprint {footCur:F0} → {footCur * 0.15f:F0} / {footCur * 0.45f:F0} / {footCur * 1.2f:F0}");
+                // Quality presets — each fills chunks + segments + the three distances.
+                ImGui.TextDisabled("Quality preset:");
+                ImGui.SameLine();
+                DrawLodPresets(obj);
                 if (lodOn)
                 {
                     ImGui.Indent();
@@ -342,6 +406,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 }
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("LOD needs a chunk grid. This enables chunks (~1 per 64 m of terrain),\nkeeps at least 32 segments per chunk, and sets the three switch distances\nfrom the footprint (15% / 45% / 120%).");
+                ImGui.TextDisabled("Quality preset (also creates the chunk grid):");
+                ImGui.SameLine();
+                DrawLodPresets(obj);
                 ImGui.TextDisabled("Set 'Chunks per side' > 1 to use LOD — the levels are per chunk.");
             }
             if (string.IsNullOrEmpty(obj.TerrainHeightSourcePath))
