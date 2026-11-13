@@ -3148,6 +3148,8 @@ public unsafe class EditorObject
         public int ShadowFilter, ShadowDir, ShadowMap0, ShadowMap1, ShadowMap2;
         public int LightSpace0, LightSpace1, LightSpace2, CascadeEnds0, CascadeEnds1, CascadeEnds2;
         public int ShowCSMCascadeColor;
+        public int LodDebug;          // u_lodDebug — terrain LOD surface tint ON/OFF
+        public int LodDebugColor;     // u_lodDebugColor — colour of the current LOD run
         public int ParallaxScale;
         public int PomShadowStrength;
         public int RandomTiling;
@@ -3217,6 +3219,8 @@ public unsafe class EditorObject
             CascadeEnds1 = GL.GetUniformLocation(Program, "cascadeEnds[1]");
             CascadeEnds2 = GL.GetUniformLocation(Program, "cascadeEnds[2]");
             ShowCSMCascadeColor = GL.GetUniformLocation(Program, "showCSMCascadeColor");
+            LodDebug = GL.GetUniformLocation(Program, "u_lodDebug");
+            LodDebugColor = GL.GetUniformLocation(Program, "u_lodDebugColor");
             ParallaxScale = GL.GetUniformLocation(Program, "parallaxScale");
             PomShadowStrength = GL.GetUniformLocation(Program, "u_pomShadowStrength");
             RandomTiling = GL.GetUniformLocation(Program, "u_randomTiling");
@@ -3534,9 +3538,11 @@ public unsafe class EditorObject
         return true;
     }
 
-    /// <summary>Session-only debug overlay (not saved): the terrain's LOD grid drawn as a
-    /// colour-coded map above the highest possible peak. Editor-only — drawn from the
-    /// gizmo pass in <see cref="EditorObjectManager"/>.</summary>
+    /// <summary>Session-only debug overlay (not saved): tint the terrain SURFACE with the
+    /// colour of the LOD level each chunk is drawn at — the same idea as the CSM cascade
+    /// debug, so the level map is read off the terrain itself instead of floating wireframes.
+    /// The renderer uploads the per-run colour (<see cref="TerrainLodDebugColor"/>) while
+    /// drawing the chunk ranges; the fragment stage mixes it in only while this is ON.</summary>
     public static bool ShowTerrainLodDebug { get; set; } = false;
 
     /// <summary>Colour of one LOD level in the debug overlay.</summary>
@@ -3547,58 +3553,6 @@ public unsafe class EditorObject
         2 => new Vector3(1.00f, 0.55f, 0.15f),   // orange = quarter
         _ => new Vector3(0.95f, 0.20f, 0.25f),   // red    = one quad per chunk
     };
-
-    /// <summary>Draw one rectangle per chunk at the overlay height, coloured by the LOD the
-    /// draw pass picks for that chunk (same <see cref="SelectLod"/> call, so the overlay can
-    /// never disagree with what renders). One line batch per level keeps it to ≤4 draws.
-    /// Depth test is off so the map stays readable through hills.</summary>
-    public void DrawTerrainLodDebug(Camera camera)
-    {
-        if (!ShowTerrainLodDebug || !IsVisible || PrimitiveType != EditorPrimitiveType.Plane
-            || PbrChunkCount <= 1 || _chunkAABBs.Count != PbrChunkCount)
-            return;
-
-        var model = WorldMatrix;
-        // Above the highest peak the displacement can reach (base + PBR detail + |offset| +
-        // sculpt swing) so the grid floats clear of the terrain instead of being buried.
-        float peakY = Math.Clamp(TerrainBaseHeight, 0f, 500f)
-                    + Math.Clamp(TerrainHeightScale, 0f, 500f)
-                    + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
-                    + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f) + 0.5f;
-
-        bool depthWasOn = GL.IsEnabled(Const.GL_DEPTH_TEST);
-        GL.Disable(Const.GL_DEPTH_TEST);
-        var lines = new List<Vector3>(PbrChunkCount * 8);
-        for (int level = 0; level < TerrainLodLevelCount; level++)
-        {
-            lines.Clear();
-            for (int c = 0; c < PbrChunkCount; c++)
-            {
-                var local = _chunkAABBs[c];
-                var center = Vector3.Transform((local.Min + local.Max) * 0.5f, model);
-                if (SelectLod(camera.Position, center) != level) continue;
-
-                Vector3 Corner(float x, float z)
-                {
-                    var w = Vector3.Transform(new Vector3(x, 0f, z), model);
-                    w.Y = peakY;   // flat overlay plane: readable from any angle
-                    return w;
-                }
-                var a = Corner(local.Min.X, local.Min.Z);
-                var b = Corner(local.Max.X, local.Min.Z);
-                var d = Corner(local.Max.X, local.Max.Z);
-                var e = Corner(local.Min.X, local.Max.Z);
-                lines.Add(a); lines.Add(b);
-                lines.Add(b); lines.Add(d);
-                lines.Add(d); lines.Add(e);
-                lines.Add(e); lines.Add(a);
-            }
-            if (lines.Count > 0)
-                Helpers.DebugDraw.DrawLineSegments(lines, TerrainLodDebugColor(level), camera, 0.85f);
-        }
-        if (depthWasOn) GL.Enable(Const.GL_DEPTH_TEST);
-        GL.UseProgram(Shader.GetShaderProgram());
-    }
 
     /// <summary>Emit one CCW quad (2 tris, shared corners) at (u, v) in mesh-UV units
     /// (mesh spans −0.5..0.5 in X/Z). NOTE: bounds accumulation intentionally REMOVED —
@@ -3619,7 +3573,7 @@ public unsafe class EditorObject
     }
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
-    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cameraPos, float dispScale, float dispHeightNorm, bool twoSided, float dispOffset = 0f)
+    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cameraPos, float dispScale, float dispHeightNorm, bool twoSided, int lodColorLoc, float dispOffset = 0f)
     {
         if (PbrChunkCount <= 1 || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
             return false;
@@ -3639,6 +3593,13 @@ public unsafe class EditorObject
         void FlushRun()
         {
             if (runLod < 0) return;
+            // LOD debug tint: one colour per level, uploaded right before its run so the
+            // fragment stage can mix it in when u_lodDebug is 1.
+            if (lodColorLoc >= 0)
+            {
+                var dc = TerrainLodDebugColor(runLod);
+                GL.Uniform3f(lodColorLoc, dc.X, dc.Y, dc.Z);
+            }
             var m = LodMesh(runLod);
             if (m != null)
             {
@@ -3835,6 +3796,11 @@ public unsafe class EditorObject
 
         if (u.ShowCSMCascadeColor >= 0)
             GL.Uniform1i(u.ShowCSMCascadeColor, Keyboard.GetshowCSMCascadeColor() ? 1 : 0);
+        // Terrain LOD surface tint (Terrain panel → "LOD overlay"). The per-level COLOUR
+        // is uploaded per draw run inside DrawChunkedPlane; this only gates the mix in the
+        // fragment stage, exactly like showCSMCascadeColor does for the cascades.
+        if (u.LodDebug >= 0)
+            GL.Uniform1i(u.LodDebug, ShowTerrainLodDebug ? 1 : 0);
 
         // ── Local point/spot lights (from editor Light markers) ──
         light.UploadLocalLights(pbr);
@@ -4256,7 +4222,7 @@ public unsafe class EditorObject
                        + Math.Clamp(TerrainHeightScale, 0f, 500f)
                        + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
                        + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
-            try { drewChunks = DrawChunkedPlane(model, view * proj, camera.Position, maxY, 1f, twoSided, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
+            try { drewChunks = DrawChunkedPlane(model, view * proj, camera.Position, maxY, 1f, twoSided, u.LodDebugColor, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
             catch (Exception ex)
             {
                 Console.WriteLine($"[PBR] Chunked draw FAILED on '{Name}' → full-draw fallback: {ex.Message}");
