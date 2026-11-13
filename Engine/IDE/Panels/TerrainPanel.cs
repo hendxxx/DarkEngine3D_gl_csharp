@@ -82,11 +82,52 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             obj.TerrainLodDistance2 = plan.D2;
         }
 
+        /// <summary>Rough cost estimate used by the LOD tooltips. Vertex counts are exact
+        /// grid arithmetic (6 verts per quad; the chain adds ½, ¼ and one quad per chunk);
+        /// the per-frame vertex count assumes the camera sits at the terrain CENTRE and the
+        /// draw-call count assumes one or two runs per distance band — which is what the
+        /// neighbouring-chunk run merging actually produces.</summary>
+        private static (double GpuVerts, double FrameVerts, int Draws) LodCost(
+            int segs, int chunks, float footprint, bool lodOn, float d0, float d1, float d2)
+        {
+            chunks = Math.Max(1, chunks);
+            int effSegs = Math.Max(1, Math.Max(chunks, segs) / chunks) * chunks;
+            double grid = 6.0 * effSegs * effSegs;          // every chunk at authored detail
+            double quadPerChunk = 6.0 * chunks * chunks;    // LOD3 "one quad per chunk"
+            double gpu = grid * 1.3125 + quadPerChunk;      // 1 + ¼ + 1/16 of the grid + quads
+            if (!lodOn || chunks <= 1 || effSegs <= chunks)
+                return (grid, grid, chunks);
+
+            double area = Math.Max(1.0, (double)footprint * footprint);
+            double band0 = Math.Min(area, Math.PI * d0 * d0);
+            double band1 = Math.Min(Math.Max(0.0, area - band0), Math.PI * Math.Max(0.0, d1 * d1 - d0 * d0));
+            double band2 = Math.Min(Math.Max(0.0, area - band0 - band1), Math.PI * Math.Max(0.0, d2 * d2 - d1 * d1));
+            double frame = (grid * band0 + grid * 0.25 * band1 + grid * 0.0625 * band2) / area + quadPerChunk;
+            int rings = (band0 > 0 ? 1 : 0) + (band1 > 0 ? 1 : 0) + (band2 > 0 ? 1 : 0) + 1;
+            return (gpu, frame, Math.Min(chunks, rings * 2));
+        }
+
+        /// <summary>Compact count ("1.57M", "42K") for the tooltips.</summary>
+        private static string FmtCount(double v)
+            => v >= 1_000_000 ? $"{v / 1_000_000:0.00}M" : v >= 1_000 ? $"{v / 1_000:0}K" : $"{v:0}";
+
+        /// <summary>"now → after" cost block shared by the LOD tooltips.</summary>
+        private static string LodCostBlock(
+            (double GpuVerts, double FrameVerts, int Draws) now,
+            (double GpuVerts, double FrameVerts, int Draws) after)
+            => $"\n  verts/frame  ≈ {FmtCount(now.FrameVerts)} → ≈ {FmtCount(after.FrameVerts)}\n"
+             + $"  draw calls    ≈ {now.Draws} → ≈ {after.Draws}\n"
+             + $"  GPU verts     ≈ {FmtCount(now.GpuVerts)} → ≈ {FmtCount(after.GpuVerts)}\n"
+             + "(camera at the terrain centre)";
+
         /// <summary>Render the three preset buttons; each tooltip previews the exact chunks /
-        /// segments / distances the click will write for the selected terrain.</summary>
+        /// segments / distances the click will write AND the cost before/after.</summary>
         private static void DrawLodPresets(EditorObject obj)
         {
             TerrainLodPreset[] presets = [TerrainLodPreset.Performance, TerrainLodPreset.Balanced, TerrainLodPreset.Quality];
+            float foot = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+            var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, foot, obj.TerrainLodEnabled,
+                obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2);
             for (int i = 0; i < presets.Length; i++)
             {
                 if (i > 0) ImGui.SameLine();
@@ -95,9 +136,11 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.IsItemHovered())
                 {
                     var plan = LodPresetPlan(obj, presets[i]);
+                    var after = LodCost(plan.Segments, plan.Chunks, foot, true, plan.D0, plan.D1, plan.D2);
                     ImGui.SetTooltip($"{plan.Chunks} chunks × {plan.Segments / plan.Chunks} segs/chunk ({plan.Segments} total)\n"
                         + $"LOD within {plan.D0:F0} / {plan.D1:F0} / {plan.D2:F0} world\n"
-                        + "Also enables Distance LOD.");
+                        + "Also enables Distance LOD."
+                        + LodCostBlock(now, after));
                 }
             }
         }
@@ -337,7 +380,15 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     obj.TerrainLodDistance2 = foot * 1.20f;
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Sets the three switch distances from the terrain size (footprint):\nLOD0 ≤ 15% · LOD1 ≤ 45% · LOD2 ≤ 120% of the larger X/Z size.\nBeyond LOD2 = one quad per chunk and no shadow.\nActs on the numeric fields only — raise LOD0/LOD1 if popping is visible.");
+                {
+                    float footNow = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                    var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, obj.TerrainLodEnabled,
+                        obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2);
+                    var after = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, true,
+                        footNow * 0.15f, footNow * 0.45f, footNow * 1.20f);
+                    ImGui.SetTooltip("Sets the three switch distances from the terrain size (footprint):\nLOD0 ≤ 15% · LOD1 ≤ 45% · LOD2 ≤ 120% of the larger X/Z size.\nBeyond LOD2 = one quad per chunk and no shadow.\nActs on the numeric fields only — raise LOD0/LOD1 if popping is visible."
+                        + LodCostBlock(now, after));
+                }
                 ImGui.SameLine();
                 float footCur = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
                 ImGui.TextDisabled($"footprint {footCur:F0} → {footCur * 0.15f:F0} / {footCur * 0.45f:F0} / {footCur * 1.2f:F0}");
@@ -405,7 +456,17 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     obj.TerrainLodDistance2 = foot * 1.20f;
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("LOD needs a chunk grid. This enables chunks (~1 per 64 m of terrain),\nkeeps at least 32 segments per chunk, and sets the three switch distances\nfrom the footprint (15% / 45% / 120%).");
+                {
+                    float footNow = MathF.Max(1f, MathF.Max(obj.Scale.X, obj.Scale.Z));
+                    int recChunks = Math.Clamp((int)MathF.Round(footNow / 64f), 2, 8);
+                    int recSegs = Math.Clamp(obj.PbrVertexSegments, recChunks * 32, 512);
+                    var now = LodCost(obj.PbrVertexSegments, obj.PbrVertexChunk, footNow, obj.TerrainLodEnabled,
+                        obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2);
+                    var after = LodCost(recSegs, recChunks, footNow, true,
+                        footNow * 0.15f, footNow * 0.45f, footNow * 1.20f);
+                    ImGui.SetTooltip("LOD needs a chunk grid. This enables chunks (~1 per 64 m of terrain),\nkeeps at least 32 segments per chunk, and sets the three switch distances\nfrom the footprint (15% / 45% / 120%)."
+                        + LodCostBlock(now, after));
+                }
                 ImGui.TextDisabled("Quality preset (also creates the chunk grid):");
                 ImGui.SameLine();
                 DrawLodPresets(obj);
