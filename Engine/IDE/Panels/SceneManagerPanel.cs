@@ -1168,6 +1168,9 @@ public class SceneManagerPanel
                         PbrVertexChunk = obj.PbrVertexChunk,
                         TerrainLodEnabled = obj.TerrainLodEnabled,
                         TerrainLodDistances = [obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2],
+                        TerrainStitchEnabled = obj.TerrainStitchEnabled,
+                        TerrainStitchHeight = obj.TerrainStitchHeight,
+                        TerrainStitchCull = obj.TerrainStitchCull,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                     });
@@ -1691,6 +1694,9 @@ public class SceneManagerPanel
                         if (objData.PbrVertexChunk is int ck && ck > 0) obj.PbrVertexChunk = Math.Clamp(ck, 1, 16);
                         // Terrain LOD (draw-time only: no mesh rebuild needed).
                         obj.TerrainLodEnabled = objData.TerrainLodEnabled ?? true;
+                        obj.TerrainStitchEnabled = objData.TerrainStitchEnabled;
+                        obj.TerrainStitchHeight = objData.TerrainStitchHeight;
+                        obj.TerrainStitchCull = objData.TerrainStitchCull;
                         if (objData.TerrainLodDistances is { Length: 3 } lodDist)
                         {
                             obj.TerrainLodDistance0 = lodDist[0];
@@ -2169,6 +2175,9 @@ public class SceneManagerPanel
                             PbrVertexChunk = obj.PbrVertexChunk,
                             TerrainLodEnabled = obj.TerrainLodEnabled,
                             TerrainLodDistances = [obj.TerrainLodDistance0, obj.TerrainLodDistance1, obj.TerrainLodDistance2],
+                            TerrainStitchEnabled = obj.TerrainStitchEnabled,
+                            TerrainStitchHeight = obj.TerrainStitchHeight,
+                            TerrainStitchCull = obj.TerrainStitchCull,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                             // Player2D sizing — twin of the SaveAllEditorScenes block so

@@ -6049,6 +6049,16 @@ ImGui.SameLine();
             Console.WriteLine($"[Viewport] 2D cull debug {(EditorObject.Show2DCullDebug ? "ON" : "OFF")} — culled {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal} (last pass)");
         }
 
+        bool occlusion = EditorObjectManager.ViewportOcclusionEnabled;
+        if (ToolButton(occlusion ? "OC: On" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
+            "Conservative occlusion for non-displaced Box/Sphere and static GLB references.\nUp to 64 previously drawn, untextured solid boxes act as occluders.\nDisabled for wireframe or incompatible depth/cull state.", out y))
+            EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
+
+        bool cull3D = EditorObjectManager.ViewportCullDebug;
+        if (ToolButton(cull3D ? "3D Cull: On" : "3D Cull Debug", cull3D, new Vector4(0.78f, 0.28f, 0.22f, 0.95f),
+            "Box/Sphere, static GLB and terrain chunks: green = submitted, red = frustum culled, amber = occluded.\nCounts are shown in Scene View; skinned GLB and displaced Box/Sphere are not included in the boxes.", out y))
+            EditorObjectManager.ViewportCullDebug = !cull3D;
+
         //  Debug grid + shadow toggles 
         bool debugGrid = _bridge.ShowDebugGrid;
         if (ToolButton(debugGrid ? "Grid: On" : "Grid: Off", debugGrid, new Vector4(0.25f, 0.45f, 0.30f, 0.95f),

@@ -37,6 +37,23 @@ public class SceneViewPanel
             ImGui.Text($"Frame Time:    {_bridge.FrameMs:F1} ms");
             ImGui.Text($"Drawn Objects: {_bridge.DrawnObjects} / {_bridge.TotalObjects}");
             ImGui.Text($"Tris Rendered: {_bridge.RenderedTriangles:N0} / {_bridge.TotalTriangles:N0}");
+            if (_bridge.EditorObjectManager is { } editor)
+            {
+                ImGui.Separator();
+                ImGui.Text("Viewport primitives (Box/Sphere, non-displaced)");
+                ImGui.Text($"Submitted: {editor.ViewportDrawnObjects:N0} objects, {editor.ViewportDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {editor.ViewportFrustumObjects:N0} objects, {editor.ViewportFrustumTriangles:N0} triangles skipped");
+                ImGui.Text($"Occlusion: {editor.ViewportOccludedObjects:N0} objects, {editor.ViewportOccludedTriangles:N0} triangles skipped");
+                ImGui.Text("Viewport GLB references (skinned models always submitted)");
+                ImGui.Text($"Submitted: {editor.GlbDrawnObjects:N0} objects, {editor.GlbDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {editor.GlbFrustumObjects:N0} objects, {editor.GlbFrustumTriangles:N0} triangles skipped");
+                ImGui.Text($"Occlusion: {editor.GlbOccludedObjects:N0} objects, {editor.GlbOccludedTriangles:N0} triangles skipped");
+                ImGui.Text("Viewport planes / terrain");
+                ImGui.Text($"Submitted: {editor.TerrainDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {editor.TerrainFrustumTriangles:N0} triangles skipped");
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Last editor-object draw pass; submitted triangles are not visible fragments.\nTerrain skips use each chunk's selected LOD, not its full-detail count.\nDisplaced Box/Sphere, sprites, effects, shadows and debug draws are excluded.");
+            }
             // GLTF counters are 0/0 in pure 2D scenes — the editor objects are what's
             // actually on screen there. Only shown when the editor manager has content.
             if (_bridge.EditorObjectTotal > 0)

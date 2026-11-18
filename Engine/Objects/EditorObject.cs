@@ -2298,6 +2298,9 @@ public unsafe class EditorObject
     public int PbrChunkCount { get; private set; }
     /// <summary>Chunks skipped by the frustum cull on the last PBR draw (diagnostics).</summary>
     public int PbrChunksCulled { get; private set; }
+    internal long ViewportSubmittedTriangles { get; private set; }
+    internal long ViewportFrustumSkippedTriangles { get; private set; }
+    internal readonly List<(AABB Bounds, int State)> ViewportTerrainCullBoxes = new();
 
     // ── Terrain LOD (per chunk, 4 levels) ──
     // Level 0 is the AUTHORED grid (one chunk = perChunk×perChunk quads). Each further
@@ -2314,6 +2317,28 @@ public unsafe class EditorObject
     private float _terrainLodDistance0 = 100f;
     private float _terrainLodDistance1 = 300f;
     private float _terrainLodDistance2 = 800f;
+    private bool _terrainStitchEnabled;
+    private float _terrainStitchHeight = 20f;
+    private int _terrainStitchCull;
+    private readonly Object3D?[] _terrainStitchMeshes = new Object3D?[TerrainLodLevelCount];
+
+    public bool TerrainStitchEnabled
+    {
+        get => _terrainStitchEnabled;
+        set { if (_terrainStitchEnabled != value) { _terrainStitchEnabled = value; MarkDirty(); } }
+    }
+    public float TerrainStitchHeight
+    {
+        get => _terrainStitchHeight;
+        set
+        {
+            if (!float.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value), "Stitch height must be finite.");
+            var v = Math.Clamp(value, 0f, 500f);
+            if (_terrainStitchHeight != v) { _terrainStitchHeight = v; MarkDirty(); }
+        }
+    }
+    // 0 = two-sided, 1 = cull back faces, 2 = cull front faces.
+    public int TerrainStitchCull { get => _terrainStitchCull; set => _terrainStitchCull = Math.Clamp(value, 0, 2); }
 
     /// <summary>Per-chunk distance LOD for a chunked terrain plane. Draw-time only —
     /// toggling never rebuilds a mesh. OFF = always draw the authored grid.</summary>
@@ -2404,7 +2429,7 @@ public unsafe class EditorObject
             && !string.IsNullOrEmpty(TexturePath)) ||
         !string.IsNullOrEmpty(TerrainHeightSourcePath) || _sculptField != null ||
         (PrimitiveType == EditorPrimitiveType.Plane &&
-            (_splatField != null || _splatFieldForBands != null ||
+            (TerrainStitchEnabled && PbrVertexChunk > 1 || _splatField != null || _splatFieldForBands != null ||
              _splatMapPath.Length > 0 || SplatHeightBandsEnabled || SplatSlopeAnyEnabled ||
              SplatLayerAlbedoPath.Skip(1).Any(p => !string.IsNullOrEmpty(p))));
 
@@ -2414,6 +2439,7 @@ public unsafe class EditorObject
     // ── glb reference GPU object (loaded lazily from GlbFilePath) ──
     private GltfObject? _glbObject;
     private string? _glbLoadedPath;
+    private AABB? _glbStaticLocalBounds;
     /// <summary>Shared GPU data cache (Flyweight) so multiple GLB references to the same
     /// file reuse one set of GPU buffers. Keyed by the resolved absolute path.</summary>
     private static readonly Dictionary<string, GltfModelGpuData> GlbGpuCache = new();
@@ -2877,7 +2903,7 @@ public unsafe class EditorObject
                     // Bottom extends below the flat grid by the maximum possible
                     // displacement extent (height scale + |offset|) so selection and
                     // culling still contain a terrain sunk below / raised above the grid.
-                    new Vector3(-0.5f, -0.5f - TerrainDisplacementExtent, -0.5f),
+                    new Vector3(-0.5f, -0.5f - TerrainDisplacementExtent - (TerrainStitchEnabled && PbrVertexChunk > 1 ? TerrainStitchHeight : 0f), -0.5f),
                     new Vector3( 0.5f,  0.5f + TerrainDisplacementExtent,  0.5f)),
                 EditorPrimitiveType.Box => new AABB(
                     new Vector3(-0.5f, -0.5f, -0.5f),
@@ -2902,6 +2928,9 @@ public unsafe class EditorObject
             return localAABB.Transform(WorldMatrix);
         }
     }
+
+    /// <summary>Triangles in the current primitive mesh after resource initialization.</summary>
+    internal int PrimitiveTriangles => (_object3D?.VertexCount ?? 0) / 3;
 
     /// <summary>Initialize GPU resources (VAO, VBO) if needed.</summary>
     public void EnsureResources()
@@ -3348,6 +3377,8 @@ public unsafe class EditorObject
         // a quarter, then one quad. Built here so a rebuild disposes/recreates them with
         // the level-0 mesh in one place.
         BuildChunkLods(chunks, perChunk, shader);
+        if (TerrainStitchEnabled && TerrainStitchHeight > 0f)
+            BuildTerrainStitchMeshes(chunks, shader);
         return true;
     }
 
@@ -3397,9 +3428,59 @@ public unsafe class EditorObject
         }
     }
 
+    internal static Vertex[] BuildTerrainStitchVertices(int chunks, int segments, float height, Vector3 color)
+    {
+        if (chunks < 1 || segments < 1 || height <= 0f) return [];
+        var vertices = new List<Vertex>(chunks * chunks * segments * 24);
+        float span = 1f / chunks;
+        void Edge(float u0, float v0, float u1, float v1)
+        {
+            Vertex V(float u, float v, float y) => new(u - 0.5f, y, v - 0.5f, 0f, 1f, 0f, color.X, color.Y, color.Z, u, v);
+            var a = V(u0, v0, 0f); var b = V(u1, v1, 0f);
+            var downA = V(u0, v0, -height); var downB = V(u1, v1, -height);
+            vertices.Add(a); vertices.Add(b); vertices.Add(downA);
+            vertices.Add(b); vertices.Add(downB); vertices.Add(downA);
+        }
+        for (int z = 0; z < chunks; z++)
+            for (int x = 0; x < chunks; x++)
+            {
+                float u = x * span, v = z * span, step = span / segments;
+                for (int i = 0; i < segments; i++)
+                {
+                    float a = i * step, b = (i + 1) * step;
+                    Edge(u + a, v, u + b, v);
+                    Edge(u + span, v + a, u + span, v + b);
+                    Edge(u + span - a, v + span, u + span - b, v + span);
+                    Edge(u, v + span - a, u, v + span - b);
+                }
+            }
+        return vertices.ToArray();
+    }
+
+    private void BuildTerrainStitchMeshes(int chunks, uint shader)
+    {
+        for (int level = 0; level < TerrainLodBuiltLevels; level++)
+        {
+            int segments = _lodChunkSegments[level];
+            var vertices = BuildTerrainStitchVertices(chunks, segments, TerrainStitchHeight, Vector3.One);
+            var mesh = new Object3D(0, 0, 0);
+            mesh.Generate(shader, vertices);
+            _terrainStitchMeshes[level] = mesh;
+            TerrainLodTotalVerts += mesh.VertexCount;
+        }
+    }
+
     /// <summary>Free the coarser LOD meshes (shared levels are released once).</summary>
     private void DisposeChunkLods()
     {
+        for (int level = 0; level < TerrainLodLevelCount; level++)
+        {
+            var stitch = _terrainStitchMeshes[level];
+            _terrainStitchMeshes[level] = null;
+            if (stitch == null) continue;
+            if (stitch.VAO != 0) { uint vao = stitch.VAO; GL.DeleteVertexArrays(1, &vao); }
+            if (stitch.VBO != 0) { uint vbo = stitch.VBO; GL.DeleteBuffers(1, &vbo); }
+        }
         for (int level = 1; level < TerrainLodLevelCount; level++)
         {
             var lod = _coarseLods[level];
@@ -3571,6 +3652,13 @@ public unsafe class EditorObject
         P(x0, z0, u, v); P(x1, z1, u + step, v + step); P(x1, z0, u + step, v);
         P(x0, z0, u, v); P(x0, z1, u, v + step); P(x1, z1, u + step, v + step);
     }
+    internal static AABB ExpandTerrainChunkBounds(AABB local, Matrix4x4 model, float pad)
+    {
+        var world = local.Transform(model);
+        var extent = new Vector3(pad);
+        return new AABB(world.Min - extent, world.Max + extent);
+    }
+
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
     private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cameraPos, float dispScale, float dispHeightNorm, bool twoSided, int lodColorLoc, float dispOffset = 0f)
@@ -3583,6 +3671,8 @@ public unsafe class EditorObject
         float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + MathF.Abs(dispOffset) + 0.05f);
         int culled = 0;
         int drawn = 0;
+        int[]? stitchLevels = TerrainStitchEnabled && TerrainStitchHeight > 0f ? new int[PbrChunkCount] : null;
+        if (stitchLevels != null) Array.Fill(stitchLevels, -1);
         Array.Clear(_lodDrawn);
         int boundLod = 0;
         GL.BindVertexArray(_object3D.VAO);
@@ -3605,6 +3695,7 @@ public unsafe class EditorObject
             {
                 if (boundLod != runLod) { GL.BindVertexArray(m.VAO); boundLod = runLod; }
                 GL.DrawArrays(Const.GL_TRIANGLES, runStart, runEnd - runStart);
+                ViewportSubmittedTriangles += (runEnd - runStart) / 3;
                 drawn++;
             }
             runLod = -1;
@@ -3616,41 +3707,68 @@ public unsafe class EditorObject
         for (int c = 0; c < PbrChunkCount; c++)
         {
             var local = _chunkAABBs[c];
-            // Chunk AABB is stored in mesh space — transform ALL 8 corners to world and
-            // re-min/max. Two corners + componentwise min/max is only correct for
-            // scale/translate; a rotated plane under-covers its box and visible chunks
-            // get culled at odd angles.
-            Vector3 wMin = new(float.MaxValue), wMax = new(float.MinValue);
-            for (int ci = 0; ci < 8; ci++)
-            {
-                var corner = Vector3.Transform(new Vector3(
-                    (ci & 1) != 0 ? local.Max.X : local.Min.X,
-                    (ci & 2) != 0 ? local.Max.Y : local.Min.Y,
-                    (ci & 4) != 0 ? local.Max.Z : local.Min.Z), model);
-                wMin = Vector3.Min(wMin, corner);
-                wMax = Vector3.Max(wMax, corner);
-            }
-            var aabb = new AABB(
-                new Vector3(wMin.X, wMin.Y - pad, wMin.Z),
-                new Vector3(wMax.X, wMax.Y + pad, wMax.Z));
-            if (!IsAABBInFrustum(viewProj, aabb))
+            var surfaceBounds = ExpandTerrainChunkBounds(local, model, pad);
+            // The skirt extends down local Y and must be included before world transformation.
+            if (stitchLevels != null) local = new AABB(local.Min - Vector3.UnitY * TerrainStitchHeight, local.Max);
+            // Vertex displacement follows the rotated world normal, not world Y.
+            var aabb = stitchLevels != null ? ExpandTerrainChunkBounds(local, model, pad) : surfaceBounds;
+            // Select the same LOD for skipped and submitted chunks, so skipped triangle
+            // counts represent the draw that would have been made without the frustum test.
+            int lod = SelectLod(cameraPos, (surfaceBounds.Min + surfaceBounds.Max) * 0.5f);
+            if (LodMesh(lod) == null) lod = 0;
+            bool inFrustum = IsAABBInFrustum(viewProj, aabb);
+            if (EditorObjectManager.ViewportCullDebug) ViewportTerrainCullBoxes.Add((aabb, inFrustum ? 0 : 1));
+            if (!inFrustum)
             {
                 culled++;
+                ViewportFrustumSkippedTriangles += LodCount(lod, c) / 3;
+                if (stitchLevels != null) ViewportFrustumSkippedTriangles += _lodChunkSegments[lod] * 8;
                 FlushRun();
                 lastChunk = -2;      // a culled chunk BREAKS the run (its data must not draw)
                 continue;
             }
-            // Per-chunk LOD: near ground keeps the authored grid, far chunks drop to
-            // half / quarter / one quad. SelectLod never returns an unbuilt level.
-            int lod = SelectLod(cameraPos, (wMin + wMax) * 0.5f);
-            if (LodMesh(lod) == null) lod = 0;
             int start = LodStart(lod, c), count = LodCount(lod, c);
             if (runLod == lod && lastChunk == c - 1) runEnd += count;
             else { FlushRun(); runLod = lod; runStart = start; runEnd = start + count; }
             lastChunk = c;
+            if (stitchLevels != null) stitchLevels[c] = lod;
             _lodDrawn[lod]++;
         }
         FlushRun();
+        if (drawn == 0 && twoSided && stitchLevels != null)
+            Array.Fill(stitchLevels, 0);
+        if (stitchLevels != null && (drawn > 0 || twoSided))
+        {
+            int previousFace = 0;
+            GL.GetIntegerv(0x0B45, &previousFace); // GL_CULL_FACE_MODE
+            try
+            {
+                if (TerrainStitchCull == 0) GL.Disable(Const.GL_CULL_FACE);
+                else { GL.Enable(Const.GL_CULL_FACE); GL.CullFace(TerrainStitchCull == 1 ? Const.GL_BACK : Const.GL_FRONT); }
+                int boundStitch = -1;
+                for (int c = 0; c < stitchLevels.Length;)
+                {
+                    int level = stitchLevels[c];
+                    if (level < 0 || _terrainStitchMeshes[level] is not { } mesh) { c++; continue; }
+                    if (boundStitch != level) { GL.BindVertexArray(mesh.VAO); boundStitch = level; }
+                    if (lodColorLoc >= 0)
+                    {
+                        var color = TerrainLodDebugColor(level);
+                        GL.Uniform3f(lodColorLoc, color.X, color.Y, color.Z);
+                    }
+                    int first = c++;
+                    while (c < stitchLevels.Length && stitchLevels[c] == level) c++;
+                    int count = _lodChunkSegments[level] * 24;
+                    GL.DrawArrays(Const.GL_TRIANGLES, first * count, (c - first) * count);
+                    ViewportSubmittedTriangles += (c - first) * count / 3;
+                }
+            }
+            finally
+            {
+                GL.CullFace((uint)previousFace);
+                if (cullWasOn) GL.Enable(Const.GL_CULL_FACE); else GL.Disable(Const.GL_CULL_FACE);
+            }
+        }
         if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
         PbrChunksCulled = culled;
         // SAFETY NET: when EVERY chunk was culled the plane is (theoretically) fully
@@ -3663,6 +3781,10 @@ public unsafe class EditorObject
             GL.Disable(Const.GL_CULL_FACE);
             GL.BindVertexArray(_object3D!.VAO);   // a coarse level's VAO may still be bound
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+            ViewportSubmittedTriangles += _object3D.VertexCount / 3;
+            ViewportFrustumSkippedTriangles = 0;
+            ViewportTerrainCullBoxes.Clear();
+            PbrChunksCulled = 0;
             if (cullWasOn2) GL.Enable(Const.GL_CULL_FACE);
         }
         return true;
@@ -3671,7 +3793,7 @@ public unsafe class EditorObject
     /// <summary>Conservative positive-side AABB-vs-viewProj test (same math as
     /// ObjectManager.IsAABBInFrustum but from the combined view-projection matrix —
     /// GAPI planes extracted from vp rows, y-flip convention included).</summary>
-    private static bool IsAABBInFrustum(Matrix4x4 vp, AABB aabb)
+    internal static bool IsAABBInFrustum(Matrix4x4 vp, AABB aabb)
     {
         // Six planes from the rows of vp (Gribb–Hartmann; System.Numerics is row-major
         // and matrices are transposed on upload, hence M11/M12/M13 with ±).
@@ -4232,7 +4354,11 @@ public unsafe class EditorObject
         if (!drewChunks)
         {
             if (twoSided) GL.Disable(Const.GL_CULL_FACE);
+            GL.BindVertexArray(_object3D.VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+            ViewportSubmittedTriangles += _object3D.VertexCount / 3;
+            ViewportFrustumSkippedTriangles = 0;
+            ViewportTerrainCullBoxes.Clear();
             if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
             PbrChunksCulled = 0;
         }
@@ -4260,6 +4386,8 @@ public unsafe class EditorObject
             int useFogLoc, int fogColorLoc,
             Camera camera, Lights light, CSM? csm = null)
         {
+            ViewportSubmittedTriangles = ViewportFrustumSkippedTriangles = 0;
+            ViewportTerrainCullBoxes.Clear();
             if (!IsVisible) return;
 
             // Rebuild GPU resources if MarkDirty() was called (e.g. color changed in the
@@ -4299,6 +4427,7 @@ public unsafe class EditorObject
             // Render VAO directly (bypass Object3D.Draw to avoid model matrix override)
             GL.BindVertexArray(_object3D.VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
+            ViewportSubmittedTriangles += _object3D.VertexCount / 3;
             GL.BindVertexArray(0);
         }
 
@@ -7032,6 +7161,7 @@ public unsafe class EditorObject
 
         _glbObject = null;
         _glbLoadedPath = null;
+        _glbStaticLocalBounds = null;
         if (string.IsNullOrEmpty(resolvedPath)) return;
 
         try
@@ -7047,11 +7177,14 @@ public unsafe class EditorObject
                 gpuData = new GltfModelGpuData(data);
                 GlbGpuCache[resolvedPath] = gpuData;
             }
-            _glbObject = new GltfObject(gpuData, Position, Quaternion.Identity, 1f)
+            _glbObject = new GltfObject(gpuData, Vector3.Zero, Quaternion.Identity, 1f)
             {
                 IsStatic = true,
             };
             _glbObject.Update(0f); // bake node hierarchy transforms for the bind pose
+            if (_glbObject.GetJointMatrices().Length == 0)
+                _glbStaticLocalBounds = _glbObject.ComputeWorldAABB();
+            SyncGlbTransform();
             _glbLoadedPath = resolvedPath;
         }
         catch (Exception ex)
@@ -7088,6 +7221,24 @@ public unsafe class EditorObject
             return Math.Max(1f, modelRadius * Math.Max(1f, maxScale));
         }
         return Math.Max(1f, 1.5f * Scale.Length() * 0.5f);
+    }
+
+    internal bool TryGetGlbCullData(out AABB? bounds, out long triangles)
+    {
+        EnsureGlb();
+        bounds = null;
+        triangles = 0;
+        if (_glbObject == null) return false;
+        SyncGlbTransform();
+        triangles = _glbObject.DrawableTriangleCount();
+        if (_glbStaticLocalBounds is { } local)
+        {
+            var transform = Matrix4x4.CreateScale(_glbObject.Scale)
+                * Matrix4x4.CreateFromQuaternion(_glbObject.Rotation)
+                * Matrix4x4.CreateTranslation(_glbObject.Position);
+            bounds = local.Transform(transform);
+        }
+        return true;
     }
 
     /// <summary>Skinned joint matrices of the loaded GLB (or null when not skinned/loaded).</summary>

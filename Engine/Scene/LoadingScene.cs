@@ -376,6 +376,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                 obj.CastShadow = objData.CastShadow;
                 obj.IsVisible = objData.IsVisible;
+                if (primType == EditorPrimitiveType.Plane && objData.TerrainStitchEnabled)
+                {
+                    if (objData.PbrVertexSegments is int segments && segments > 0) obj.PbrVertexSegments = segments;
+                    if (objData.PbrVertexChunk is int chunks && chunks > 0) obj.PbrVertexChunk = chunks;
+                    obj.TerrainLodEnabled = objData.TerrainLodEnabled ?? true;
+                    if (objData.TerrainLodDistances is { Length: 3 } distances)
+                    {
+                        obj.TerrainLodDistance0 = distances[0];
+                        obj.TerrainLodDistance1 = distances[1];
+                        obj.TerrainLodDistance2 = distances[2];
+                    }
+                    obj.TerrainStitchEnabled = objData.TerrainStitchEnabled;
+                    obj.TerrainStitchHeight = objData.TerrainStitchHeight;
+                    obj.TerrainStitchCull = objData.TerrainStitchCull;
+                }
 
                 // Restore GLB model path (resolved against the exe folder, same as the IDE path).
                 if (!string.IsNullOrEmpty(objData.GlbFilePath))

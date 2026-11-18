@@ -16,6 +16,54 @@ public unsafe class EditorObjectManager
     // ── 2D sprite pass scratch (per-frame reuse — zero steady-state alloc) ──
     private static readonly List<EditorObject> _scratchSprites2D = new();
     private static readonly List<EditorObject> _scratchCulledPlayers = new();
+    private readonly List<Matrix4x4> _viewportOccluders = new();
+    private readonly List<(AABB Bounds, int State)> _viewportCullBoxes = new();
+
+    public static bool ViewportOcclusionEnabled { get; set; }
+    public static bool ViewportCullDebug { get; set; }
+    public int ViewportDrawnObjects { get; private set; }
+    public int ViewportFrustumObjects { get; private set; }
+    public int ViewportOccludedObjects { get; private set; }
+    public long ViewportDrawnTriangles { get; private set; }
+    public long ViewportFrustumTriangles { get; private set; }
+    public long ViewportOccludedTriangles { get; private set; }
+    public int GlbDrawnObjects { get; private set; }
+    public int GlbFrustumObjects { get; private set; }
+    public int GlbOccludedObjects { get; private set; }
+    public long GlbDrawnTriangles { get; private set; }
+    public long GlbFrustumTriangles { get; private set; }
+    public long GlbOccludedTriangles { get; private set; }
+    public long TerrainDrawnTriangles { get; private set; }
+    public long TerrainFrustumTriangles { get; private set; }
+
+    [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glGetIntegerv")]
+    private static extern void GetGlInteger(uint name, int* value);
+    [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glGetDoublev")]
+    private static extern void GetGlDouble(uint name, double* value);
+
+    private static bool CanUseViewportOcclusion()
+    {
+        int* polygon = stackalloc int[2];
+        double* depthRange = stackalloc double[2];
+        int depthWrite = 0, depthFunc = 0, face = 0, winding = 0, depthBits = 0;
+        GetGlInteger(0x0B40, polygon); // GL_POLYGON_MODE
+        GetGlInteger(0x0B72, &depthWrite); // GL_DEPTH_WRITEMASK
+        GetGlInteger(0x0B74, &depthFunc); // GL_DEPTH_FUNC
+        GetGlInteger(0x0B45, &face); // GL_CULL_FACE_MODE
+        GetGlInteger(0x0B46, &winding); // GL_FRONT_FACE
+        GetGlInteger(0x0D56, &depthBits); // GL_DEPTH_BITS
+        GetGlDouble(0x0B70, depthRange); // GL_DEPTH_RANGE
+        for (uint i = 0; i < 8; i++)
+            if (GL.IsEnabled(0x3000 + i)) return false; // GL_CLIP_DISTANCE0..7
+        return polygon[0] == 0x1B02 && polygon[1] == 0x1B02 && depthWrite != 0 && depthBits >= 16
+            && depthRange[0] == 0.0 && depthRange[1] == 1.0
+            && GL.IsEnabled(Const.GL_DEPTH_TEST) && !GL.IsEnabled(Const.GL_STENCIL_TEST)
+            && !GL.IsEnabled(Const.GL_SCISSOR_TEST) && !GL.IsEnabled(0x8037) // polygon offset fill
+            && !GL.IsEnabled(0x809E) && !GL.IsEnabled(0x80A0) && !GL.IsEnabled(0x8E51) // sample coverage/mask
+            && !GL.IsEnabled(0x8C89) // GL_RASTERIZER_DISCARD
+            && (depthFunc == 0x0201 || depthFunc == 0x0203)
+            && (!GL.IsEnabled(Const.GL_CULL_FACE) || (face == 0x0405 && winding == 0x0901));
+    }
 
     /// <summary>In-place insertion sort of the 2D sprite pass list: layer ascending,
     /// Player2D first on same-layer ties (the exact ordering the old
@@ -54,14 +102,13 @@ public unsafe class EditorObjectManager
     /// <summary>Frustum-cull check SATU PINTU untuk seluruh 2D sprite pass (Player2D,
     /// Sprite2D, portal — pemanggil lain: clock-advance pre-cull DrawPlayer2D).
     /// Kamera = argumen `camera` (pass ini selalu dipanggil dengan kamera yang sedang
-    /// render — active camera aturan user). AABB di-inflate ±0.4 unit (≈2× karakter
-    /// 2 unit + overlay equipment/efek), lalu diuji lewat penerbangan delapan titik
-    /// sudut (aman di bawah rotasi, persis seperti chunk PBR).</summary>
+    /// render — active camera aturan user). The padded art AABB is tested conservatively
+    /// against the frustum planes, including boxes that cross or enclose the view.</summary>
     public static bool Is2DSpriteCulled(EditorObject obj, Camera camera, Matrix4x4? viewProj = null)
     {
         // PERF memo: the 2D pass culls every sprite ONCE (shared viewProj), then the
         // draw methods re-queried the SAME test with the same camera in the same frame
-        // (AABB resolve + 8 clip-space corner transforms each time). The memo keyed
+        // (AABB resolve + frustum test each time). The memo keyed
         // (frame, camera) makes that second query free; a new frame or a DIFFERENT
         // camera (second viewport in the same frame) recomputes. Callers passing an
         // explicit viewProj always compute fresh and refresh the memo.
@@ -71,24 +118,10 @@ public unsafe class EditorObjectManager
             return obj.Cull2DMemoResult;
 
         var vp = viewProj ?? camera.GetViewMatrix() * camera.GetProjectionMatrix();
-        // AABB quad sprite (BUKAN box kapsul seleksi — strip repeat lebar butuh extent art nyata).
+        // Use the art bounds rather than the selection capsule; a repeated strip can
+        // intersect the frustum even when none of its corners lies inside it.
         var (amin, amax) = obj.Get2DSpriteAABB();
-        bool culled = true;
-        for (int i = 0; i < 8; i++)
-        {
-            // Vector4.Transform (bukan Vector3) — hasilnya Vector4 clip-space dengan W.
-            var corner = System.Numerics.Vector4.Transform(new System.Numerics.Vector4(
-                (i & 1) != 0 ? amax.X : amin.X,
-                (i & 2) != 0 ? amax.Y : amin.Y,
-                (i & 4) != 0 ? amax.Z : amin.Z, 1f), vp);
-            if (corner.X >= -corner.W && corner.X <= corner.W
-                && corner.Y >= -corner.W && corner.Y <= corner.W
-                && corner.Z >= -corner.W && corner.Z <= corner.W)
-            {
-                culled = false; // satu sudut pun di dalam → gambar
-                break;
-            }
-        }
+        bool culled = !EditorObject.IsAABBInFrustum(vp, new AABB(amin, amax));
         obj.Cull2DMemoFrame = Glfw.FrameId;
         obj.Cull2DMemoCamera = camera;
         obj.Cull2DMemoResult = culled;
@@ -486,6 +519,9 @@ public unsafe class EditorObjectManager
                 TerrainLodDistance0 = source.TerrainLodDistance0,
                 TerrainLodDistance1 = source.TerrainLodDistance1,
                 TerrainLodDistance2 = source.TerrainLodDistance2,
+                TerrainStitchEnabled = source.TerrainStitchEnabled,
+                TerrainStitchHeight = source.TerrainStitchHeight,
+                TerrainStitchCull = source.TerrainStitchCull,
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
                 // drops its live GPU buffers and re-decodes/recomputes lazily).
@@ -613,6 +649,13 @@ public unsafe class EditorObjectManager
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true)
         {
+            ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
+            ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
+            GlbDrawnObjects = GlbFrustumObjects = GlbOccludedObjects = 0;
+            GlbDrawnTriangles = GlbFrustumTriangles = GlbOccludedTriangles = 0;
+            TerrainDrawnTriangles = TerrainFrustumTriangles = 0;
+            _viewportOccluders.Clear();
+            _viewportCullBoxes.Clear();
             if (_objects.Count == 0) return;
 
             GL.UseProgram(_shaderProgram);
@@ -671,14 +714,64 @@ public unsafe class EditorObjectManager
             // Face culling/winding state is applied by the scene's RenderProperties
             // (see OpenGL.ApplySceneProperties) — do NOT force-enable culling here.
 
+            var primitiveViewProj = view * proj;
+            bool useOcclusion = ViewportOcclusionEnabled && _shaderProgram != 0 && CanUseViewportOcclusion();
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
+                bool measured = obj.IsVisible && !obj.PbrVertexDisplaceEnabled
+                    && obj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere;
+                if (measured)
+                {
+                    obj.EnsureResources();
+                    var bounds = obj.WorldAABB;
+                    int triangles = obj.PrimitiveTriangles;
+                    int state = 0;
+                    if (!EditorObject.IsAABBInFrustum(primitiveViewProj, bounds))
+                    {
+                        state = 1;
+                        ViewportFrustumObjects++;
+                        ViewportFrustumTriangles += triangles;
+                    }
+                    else if (useOcclusion)
+                    {
+                        foreach (var occluder in _viewportOccluders)
+                            if (ViewportOcclusion.IsOccluded(bounds, occluder, camera.Position, primitiveViewProj))
+                            {
+                                state = 2;
+                                ViewportOccludedObjects++;
+                                ViewportOccludedTriangles += triangles;
+                                break;
+                            }
+                    }
+                    if (ViewportCullDebug) _viewportCullBoxes.Add((bounds, state));
+                    if (state != 0) continue;
+                }
                 obj.Draw(
                     _modelLoc, _viewLoc, _projLoc,
                     _sunDirLoc, _lightColorLoc, _viewPosLoc,
                     _useFogLoc, _fogColorLoc,
                     camera, light, csm);
+                if (measured && obj.ViewportSubmittedTriangles > 0)
+                {
+                    ViewportDrawnObjects++;
+                    ViewportDrawnTriangles += obj.ViewportSubmittedTriangles;
+                }
+                if (obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Plane)
+                {
+                    TerrainDrawnTriangles += obj.ViewportSubmittedTriangles;
+                    TerrainFrustumTriangles += obj.ViewportFrustumSkippedTriangles;
+                    if (ViewportCullDebug) _viewportCullBoxes.AddRange(obj.ViewportTerrainCullBoxes);
+                }
+                if (useOcclusion && !CanUseViewportOcclusion())
+                {
+                    useOcclusion = false;
+                    _viewportOccluders.Clear();
+                }
+                if (useOcclusion && measured && obj.ViewportSubmittedTriangles > 0 && _viewportOccluders.Count < 64
+                    && obj.PrimitiveType == EditorPrimitiveType.Box && !obj.HasPbrMaterial
+                    && obj.Scale.X > 0f && obj.Scale.Y > 0f && obj.Scale.Z > 0f)
+                    _viewportOccluders.Add(obj.WorldMatrix);
             }
 
             GL.BindVertexArray(0);
@@ -755,6 +848,18 @@ public unsafe class EditorObjectManager
                 p.DrawPortalSpritesPublic(camera);
 
             if (cullDebug) Draw2DCullDebugBoxes(camera, viewProj);
+            if (ViewportCullDebug)
+            {
+                bool depthWasEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
+                GL.Disable(Const.GL_DEPTH_TEST);
+                foreach (var (bounds, state) in _viewportCullBoxes)
+                {
+                    var color = state == 1 ? new Vector3(1f, 0.2f, 0.2f)
+                        : state == 2 ? new Vector3(1f, 0.7f, 0.1f) : new Vector3(0.2f, 0.9f, 0.3f);
+                    Helpers.DebugDraw.DrawAABBWireframe(bounds, color, camera);
+                }
+                if (depthWasEnabled) GL.Enable(Const.GL_DEPTH_TEST);
+            }
 
             // ── Effect2D particles (world-space quads, one draw call per texture run).
             // Rendered AFTER all sprite layers so the FX sit in front of sprites/portals.
@@ -1041,34 +1146,32 @@ public unsafe class EditorObjectManager
             GL.Uniform1i(GlbUniforms.HasOcclusionTexture, 0);
             GL.Uniform1i(GlbUniforms.HasEmissiveTexture, 0);
 
-            // Precompute view-projection once for per-object frustum culling (editor preview).
             var vp = view * proj;
+            bool useOcclusion = ViewportOcclusionEnabled && CanUseViewportOcclusion();
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
                 if (obj.PrimitiveType != EditorPrimitiveType.GlbReference || !obj.IsVisible) continue;
+                if (!obj.TryGetGlbCullData(out var bounds, out long triangles)) continue;
 
-                // Frustum culling: conservative 8-corner AABB test in clip-space. Skip draw if fully outside.
-                try
+                int state = 0;
+                // Skinning can move vertices outside bind-pose bounds; render it without culling.
+                if (bounds is { } aabb)
                 {
-                    var aabb = obj.GetWorldAABB();
-                    bool culled = true;
-                    for (int c = 0; c < 8; c++)
-                    {
-                        var corner = Vector4.Transform(new Vector4(
-                            (c & 1) != 0 ? aabb.Max.X : aabb.Min.X,
-                            (c & 2) != 0 ? aabb.Max.Y : aabb.Min.Y,
-                            (c & 4) != 0 ? aabb.Max.Z : aabb.Min.Z, 1f), vp);
-                        if (corner.X >= -corner.W && corner.X <= corner.W
-                            && corner.Y >= -corner.W && corner.Y <= corner.W
-                            && corner.Z >= -corner.W && corner.Z <= corner.W)
-                        {
-                            culled = false; break;
-                        }
-                    }
-                    if (culled) continue;
+                    if (!EditorObject.IsAABBInFrustum(vp, aabb)) state = 1;
+                    else if (useOcclusion)
+                        foreach (var occluder in _viewportOccluders)
+                            if (ViewportOcclusion.IsOccluded(aabb, occluder, camera.Position, vp))
+                            {
+                                state = 2;
+                                break;
+                            }
+                    if (ViewportCullDebug) _viewportCullBoxes.Add((aabb, state));
                 }
-                catch { /* conservative: if AABB test fails, render the object */ }
+                if (state == 1) { GlbFrustumObjects++; GlbFrustumTriangles += triangles; continue; }
+                if (state == 2) { GlbOccludedObjects++; GlbOccludedTriangles += triangles; continue; }
+                GlbDrawnObjects++;
+                GlbDrawnTriangles += triangles;
 
                 // A GLB mesh with an emissive texture binds it to unit 6 (GltfObject.Draw,
                 // same as the game) which would clobber shadowMap0 — re-bind the cascade maps
