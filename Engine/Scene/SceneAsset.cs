@@ -533,6 +533,9 @@ public class EditorObjectData
     /// <summary>LOD switch distances in world units: [0] LOD0 max, [1] LOD1 max,
     /// [2] LOD2 max (beyond = one quad per chunk). Null/absent = the panel defaults.</summary>
     public float[]? TerrainLodDistances { get; set; }
+    public bool TerrainStitchEnabled { get; set; }
+    public float TerrainStitchHeight { get; set; } = 20f;
+    public int TerrainStitchCull { get; set; }
     /// <summary>Sampling settings for the SIMPLE texture (min/mag filter, mipmapping,
     /// anisotropy, wrapping, UV tiling/offset). Null/absent = legacy scene → defaults
     /// (tiling falls back to <see cref="PbrTexTiling"/>).</summary>

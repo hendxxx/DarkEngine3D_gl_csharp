@@ -840,6 +840,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void SetBasePosition(Vector3 pos) => Position = pos;
 
+        internal long DrawableTriangleCount() => CountDrawableTriangles(GpuData.Meshes, _hiddenMeshIndices);
+
+        internal static long CountDrawableTriangles(MeshGpu[] meshes, IReadOnlySet<int> hidden)
+        {
+            long triangles = 0;
+            for (int i = 0; i < meshes.Length; i++)
+            {
+                if (hidden.Contains(i)) continue;
+                var mesh = meshes[i];
+                triangles += (mesh.IndexCount > 0 ? mesh.IndexCount : mesh.VertexCount) / 3;
+            }
+            return triangles;
+        }
+
         // Conservative world AABB using the current node globals (used by snapping).
         public AABB ComputeWorldAABB()
         {

@@ -410,6 +410,18 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 if (ImGui.Checkbox("Distance LOD##terrain_lod", ref lodOn)) obj.TerrainLodEnabled = lodOn;
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Each chunk picks its detail level from its distance to the camera:\nLOD0 = authored grid · LOD1 = ½ detail · LOD2 = ¼ detail · LOD3 = 1 quad.\nOFF = always draw the authored grid (pre-LOD behavior).");
+                bool stitch = obj.TerrainStitchEnabled;
+                if (ImGui.Checkbox("Stitch LOD seams##terrain", ref stitch)) obj.TerrainStitchEnabled = stitch;
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Adds downward skirts to chunk edges to hide LOD gaps.\nRaise the height if the relief exceeds the skirt depth.");
+                if (stitch)
+                {
+                    float height = obj.TerrainStitchHeight;
+                    if (ImGui.DragFloat("Stitch height (local)##terrain", ref height, 0.05f, 0f, 500f)) obj.TerrainStitchHeight = height;
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip("Depth along the terrain's local Y axis; object Y scale changes its world depth.\nSkirts are visual only and do not alter collision or shadow geometry.");
+                    ImGui.TextDisabled($"World depth: {obj.TerrainStitchHeight * MathF.Abs(obj.Scale.Y):F2}");
+                    int face = obj.TerrainStitchCull;
+                    if (ImGui.Combo("Stitch face culling##terrain", ref face, new[] { "None (both sides)", "Back", "Front" }, 3)) obj.TerrainStitchCull = face;
+                }
                 // Recommendation: the three rings measured in CHUNK units (1.5 / 4 / 10) because
                 // that is the scale a chunk's geometry error is judged against, stretched by the
                 // terrain relief so a tall ridge keeps its vertices further out. The MESH is left

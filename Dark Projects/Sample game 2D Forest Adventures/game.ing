@@ -567,7 +567,7 @@
                     1
                   ],
                   "alignment": "Center",
-                  "isVisible": true,
+                  "isVisible": false,
                   "opacity": 1,
                   "autoFillWindow": false,
                   "autoCenterX": true,
@@ -959,11 +959,11 @@
                           "name": "btnResume",
                           "type": "Button",
                           "text": "",
-                          "x": -480,
-                          "y": 20,
+                          "x": 1440,
+                          "y": 440,
                           "width": 400,
                           "height": 80,
-                          "imagePath": "Artifacts\\images\\UI\\Buttons.png",
+                          "imagePath": "",
                           "imageMode": "Stretch",
                           "imageFilter": 0,
                           "sliceEnabled": false,
@@ -977,21 +977,21 @@
                           "sliceBorderBottom": 4,
                           "useAtlasCoordinates": true,
                           "atlasImagePath": "",
-                          "atlasX": 13,
+                          "atlasX": 10,
                           "atlasY": 274,
                           "atlasWidth": 60,
                           "atlasHeight": 13,
                           "hoverImagePath": "",
                           "hoverUseAtlasCoordinates": true,
                           "hoverAtlasImagePath": "",
-                          "hoverAtlasX": 13,
+                          "hoverAtlasX": 10,
                           "hoverAtlasY": 274,
                           "hoverAtlasWidth": 60,
                           "hoverAtlasHeight": 13,
                           "clickedImagePath": "",
                           "clickedUseAtlasCoordinates": true,
                           "clickedAtlasImagePath": "",
-                          "clickedAtlasX": 253,
+                          "clickedAtlasX": 250,
                           "clickedAtlasY": 290,
                           "clickedAtlasWidth": 60,
                           "clickedAtlasHeight": 13,
@@ -1008,7 +1008,7 @@
                             0,
                             0,
                             0,
-                            1
+                            0
                           ],
                           "bgColor": [
                             0.1,
@@ -1044,7 +1044,7 @@
                           "isVisible": true,
                           "opacity": 1,
                           "autoFillWindow": false,
-                          "autoCenterX": false,
+                          "autoCenterX": true,
                           "autoCenterY": false,
                           "anchor": "None",
                           "useHover": true,
@@ -1197,8 +1197,8 @@
                           "name": "btnExit",
                           "type": "Button",
                           "text": "",
-                          "x": -500,
-                          "y": 120,
+                          "x": -1100,
+                          "y": 560,
                           "width": 400,
                           "height": 80,
                           "imagePath": "",
@@ -1282,7 +1282,7 @@
                           "isVisible": true,
                           "opacity": 1,
                           "autoFillWindow": false,
-                          "autoCenterX": false,
+                          "autoCenterX": true,
                           "autoCenterY": false,
                           "anchor": "None",
                           "useHover": true,
@@ -3410,6 +3410,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -3543,8 +3549,8 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 21,
-          "posY": 7,
+          "posX": 33.22343,
+          "posY": 6.4,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
@@ -3573,7 +3579,7 @@
           "player2DCapsuleOffsetX": -1,
           "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
-          "player2DFlipFacing": true,
+          "player2DFlipFacing": false,
           "player2DGravity": 25,
           "player2DMoveSpeed": 8,
           "player2DRunSpeed": 14,
@@ -4028,6 +4034,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -4710,6 +4722,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -5392,6 +5410,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -6074,6 +6098,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -6756,6 +6786,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -7438,6 +7474,12 @@
           ],
           "pbrVertexSegments": 256,
           "pbrVertexChunk": 1,
+          "terrainLodEnabled": true,
+          "terrainLodDistances": [
+            100,
+            300,
+            800
+          ],
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -7572,7 +7614,7 @@
       "transitionEasing": "linear",
       "transitionBlockInput": false,
       "editorCameraPosition": [
-        60.636566,
+        61.997982,
         32,
         307.03183
       ],
