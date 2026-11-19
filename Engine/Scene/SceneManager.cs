@@ -1548,7 +1548,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private void UpdateInGameCursor()
         {
             string? sceneName = _currentScene?.Name;
-            bool showMouse = sceneName == "MainMenuScene" || sceneName == null;
+            bool showMouse = sceneName == "MainMenuScene" || sceneName == null
+                || (Bridge?.ShowCursorInGame ?? false);
             Mouse.ShowMouse(showMouse);
             if (showMouse)
                 Mouse.ResetState();

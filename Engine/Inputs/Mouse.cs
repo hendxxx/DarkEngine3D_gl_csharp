@@ -89,6 +89,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
 
             window = _window;
+            _cursorShown = null;   // a (re)created window starts in an unknown cursor mode
 
             lastX = Glfw.WindowWidth / 2;
             lastY = Glfw.WindowHeight / 2;
@@ -103,13 +104,39 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         } 
 
+        /// <summary>Last state applied to GLFW (null = never applied). Several per-frame paths
+        /// call ShowMouse, so it MUST be idempotent: re-applying it every frame would re-centre
+        /// the pointer and zero the delta stream, which silently kills mouse-look.</summary>
+        private static bool? _cursorShown;
+
+        /// <summary>Show/hide the OS cursor. BOTH states park the pointer in the CENTRE of the
+        /// window: while hidden that is where GLFW keeps its virtual cursor (so the delta stream
+        /// starts at zero), and showing it again makes the cursor appear in the middle of the
+        /// screen instead of at whatever spot it was last left.</summary>
         public static void ShowMouse(bool show)
         {
-            if (show)
-                glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_NORMAL);
-            else
-                glfwSetInputMode(window, Const.GLFW_CURSOR, Const.GLFW_CURSOR_DISABLED);
+            if (window == 0) return;
+            if (_cursorShown == show) return;
+            _cursorShown = show;
 
+            glfwSetInputMode(window, Const.GLFW_CURSOR,
+                show ? Const.GLFW_CURSOR_NORMAL : Const.GLFW_CURSOR_DISABLED);
+            CentreCursor();
+        }
+
+        /// <summary>Warp the pointer to the window centre and restart the delta stream from
+        /// there (firstMouse = true makes the next Update report 0 instead of a jump).</summary>
+        private static void CentreCursor()
+        {
+            double cx = Glfw.WindowWidth * 0.5;
+            double cy = Glfw.WindowHeight * 0.5;
+            if (cx <= 0 || cy <= 0) return;
+            glfwSetCursorPos(window, cx, cy);
+            lastX = cx;
+            lastY = cy;
+            firstMouse = true;
+            DeltaX = 0;
+            DeltaY = 0;
         }
         public static unsafe void Update(nint window, Camera camera)
         {
