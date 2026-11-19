@@ -376,7 +376,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                 obj.CastShadow = objData.CastShadow;
                 obj.IsVisible = objData.IsVisible;
-                if (primType == EditorPrimitiveType.Plane && objData.TerrainStitchEnabled)
+                if (primType == EditorPrimitiveType.Plane)
                 {
                     if (objData.PbrVertexSegments is int segments && segments > 0) obj.PbrVertexSegments = segments;
                     if (objData.PbrVertexChunk is int chunks && chunks > 0) obj.PbrVertexChunk = chunks;
@@ -401,6 +401,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.CameraFov = objData.CameraFov;
                 obj.CameraNear = objData.CameraNear;
                 obj.CameraFar = objData.CameraFar;
+                obj.IsDefaultCamera = objData.IsDefaultCamera;
                 obj.LightDirection = new System.Numerics.Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
                 obj.LightIntensity = objData.LightIntensity;
                 obj.LightTypeEnum = (LightType)Math.Clamp(objData.LightType, 0, 2);

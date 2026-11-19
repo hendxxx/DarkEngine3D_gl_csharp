@@ -54,6 +54,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
         // ── Default camera + lights for rendering editor objects when no scene is active  ──
         private Camera? _editorCamera;
+        private Camera? _markerRenderCamera;
+        private Camera? _previewMarkerCamera;
+        private double _cameraMarkerLastX;
+        private double _cameraMarkerLastY;
+        private string _cameraMarkerInputName = "";
+        private bool _cameraMarkerMousePrimed;
         private Lights? _editorLights;
         // ── CSM shadow maps for the bare-editor viewport (mirrors GameScene's shadow pass
         // so editor objects cast shadows matching the sky/light sun in this view too) ──
@@ -63,6 +69,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Skybox? _editorSkybox;
         private Texture[]? _editorSkyTextures;
         private bool _editorSkyboxInitFailed = false;
+
+        private const int CameraPreviewWidth = 640;
+        private const int CameraPreviewHeight = 360;
+        private uint _cameraPreviewFbo;
+        private uint _cameraPreviewTexture;
+        private uint _cameraPreviewDepth;
+        private bool _cameraPreviewTargetReady;
 
         // ── Editor grid (ground plane + axis helpers for viewport when no scene is active) ──
         private uint _editorGridVAO = 0;
@@ -215,6 +228,216 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             DestroySharedFBO();
         }
 
+        private void EnsureCameraPreviewTarget()
+        {
+            if (_cameraPreviewTargetReady) return;
+
+            uint texture = 0, fbo = 0, depth = 0;
+            GL.GenTextures(1, &texture);
+            GL.BindTexture(Const.GL_TEXTURE_2D, texture);
+            GL.TexImage2D(Const.GL_TEXTURE_2D, 0, (int)Const.GL_RGBA8,
+                CameraPreviewWidth, CameraPreviewHeight, 0, Const.GL_RGBA, Const.GL_UNSIGNED_BYTE, (void*)0);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MIN_FILTER, (int)Const.GL_LINEAR);
+            GL.TexParameteri(Const.GL_TEXTURE_2D, Const.GL_TEXTURE_MAG_FILTER, (int)Const.GL_LINEAR);
+
+            GL.GenFramebuffers(1, &fbo);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, fbo);
+            GL.FramebufferTexture2D(Const.GL_FRAMEBUFFER, Const.GL_COLOR_ATTACHMENT0,
+                Const.GL_TEXTURE_2D, texture, 0);
+            GL.GenRenderbuffers(1, &depth);
+            GL.BindRenderbuffer(Const.GL_RENDERBUFFER, depth);
+            GL.RenderbufferStorage(Const.GL_RENDERBUFFER, Const.GL_DEPTH24_STENCIL8,
+                CameraPreviewWidth, CameraPreviewHeight);
+            GL.FramebufferRenderbuffer(Const.GL_FRAMEBUFFER, Const.GL_DEPTH_STENCIL_ATTACHMENT,
+                Const.GL_RENDERBUFFER, depth);
+
+            int status = GL.CheckFramebufferStatus(Const.GL_FRAMEBUFFER);
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+            if (status != Const.GL_FRAMEBUFFER_COMPLETE)
+            {
+                Console.WriteLine($"[SceneManager] Camera preview FBO incomplete: 0x{status:X}");
+                GL.DeleteFramebuffers(1, &fbo);
+                GL.DeleteTextures(1, &texture);
+                GL.DeleteRenderbuffers(1, &depth);
+                return;
+            }
+
+            _cameraPreviewFbo = fbo;
+            _cameraPreviewTexture = texture;
+            _cameraPreviewDepth = depth;
+            _cameraPreviewTargetReady = true;
+        }
+
+        private Camera? ResolveMarkerCamera(string name, EditorObjectManager? manager, int width, int height,
+            bool preview = false)
+        {
+            if (string.IsNullOrWhiteSpace(name) || manager == null) return null;
+            foreach (var marker in manager.Objects)
+            {
+                if (marker.PrimitiveType != EditorPrimitiveType.Camera ||
+                    !string.Equals(marker.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
+
+                Camera? markerCamera = preview ? _previewMarkerCamera : _markerRenderCamera;
+                markerCamera ??= new Camera(0f, 0f, 0f, 180f, 0f,
+                    (float)width / Math.Max(1, height), marker.CameraFov, marker.CameraNear, marker.CameraFar);
+                var forward = marker.Forward;
+                float pitch = MathF.Asin(Math.Clamp(forward.Y, -1f, 1f)) * 180f / MathF.PI;
+                float yaw = MathF.Atan2(forward.X, forward.Z) * 180f / MathF.PI;
+                markerCamera.SetEditorViewTransform(marker.Position, yaw, pitch,
+                    marker.CameraFov, marker.CameraNear, marker.CameraFar);
+                markerCamera.UpdateAspectRatio(width, height);
+                if (preview) _previewMarkerCamera = markerCamera;
+                else _markerRenderCamera = markerCamera;
+                return markerCamera;
+            }
+            return null;
+        }
+
+        private bool UpdateCameraMarkerInput(nint window, float dt, IDEBridge bridge)
+        {
+            bridge.CameraMarkerControlActive = false;
+            bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
+                            Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
+            bool previewControl = bridge.CameraPreviewControlActive && ctrlHeld;
+            bool playSession = bridge.InGameActive || bridge.IsPreviewMode;
+            bool inputAllowed = bridge.IsViewportFocused && bridge.IsViewportImageHovered &&
+                                !bridge.IsOverlayVisible && !bridge.SuppressViewportInput &&
+                                !bridge.ScrollCapturedByUI && !bridge.MenuOwnsInput;
+
+            string cameraName;
+            if (previewControl)
+            {
+                cameraName = bridge.ViewportPreviewCameraName;
+            }
+            else if (playSession)
+            {
+                var cameras = bridge.EditorObjectManager?.Objects.Where(obj =>
+                    obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera).ToList();
+                var activeCamera = cameras?.FirstOrDefault(obj => obj.IsDefaultCamera)
+                    ?? cameras?.FirstOrDefault(obj => string.Equals(obj.Name,
+                        bridge.ViewportMainCameraName, StringComparison.OrdinalIgnoreCase))
+                    ?? cameras?.FirstOrDefault();
+                cameraName = activeCamera?.Name ?? "";
+            }
+            else
+            {
+                cameraName = bridge.ViewportMainCameraName;
+                if (string.IsNullOrWhiteSpace(cameraName) &&
+                    bridge.SelectedEditorObject?.PrimitiveType == EditorPrimitiveType.Camera)
+                    cameraName = bridge.SelectedEditorObject.Name;
+            }
+
+            bool controlRequested = inputAllowed && (previewControl || (playSession
+                ? !ctrlHeld && !bridge.CameraPreviewControlActive
+                : ctrlHeld && !bridge.CameraPreviewControlActive));
+            var manager = bridge.EditorObjectManager;
+            var marker = controlRequested && !string.IsNullOrWhiteSpace(cameraName) && manager != null
+                ? manager.Objects.FirstOrDefault(obj => obj.IsVisible &&
+                    obj.PrimitiveType == EditorPrimitiveType.Camera &&
+                    string.Equals(obj.Name, cameraName, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            if (marker == null)
+            {
+                _cameraMarkerMousePrimed = false;
+                _cameraMarkerInputName = "";
+                return false;
+            }
+
+            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+            float deltaX = 0f;
+            float deltaY = 0f;
+            if (!_cameraMarkerMousePrimed || !string.Equals(_cameraMarkerInputName, marker.Name,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _cameraMarkerMousePrimed = true;
+                _cameraMarkerInputName = marker.Name;
+            }
+            else
+            {
+                deltaX = (float)(mouseX - _cameraMarkerLastX);
+                deltaY = (float)(mouseY - _cameraMarkerLastY);
+            }
+            _cameraMarkerLastX = mouseX;
+            _cameraMarkerLastY = mouseY;
+
+            var rotation = marker.RotationEuler;
+            rotation.Y -= deltaX * Mouse.Sensitivity;
+            rotation.X = Math.Clamp(rotation.X - deltaY * Mouse.Sensitivity, -89f, 89f);
+            marker.RotationEuler = rotation;
+
+            var orientation = Matrix4x4.CreateFromYawPitchRoll(
+                rotation.Y * MathF.PI / 180f,
+                rotation.X * MathF.PI / 180f,
+                rotation.Z * MathF.PI / 180f);
+            Vector3 forward = Vector3.Transform(-Vector3.UnitZ, orientation);
+            Vector3 right = Vector3.Transform(Vector3.UnitX, orientation);
+            Vector3 move = Vector3.Zero;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W)) move += forward;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S)) move -= forward;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) move -= right;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) move += right;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_E)) move += Vector3.UnitY;
+            if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_Q)) move -= Vector3.UnitY;
+            if (move.LengthSquared() > 0f)
+                marker.Position += Vector3.Normalize(move) * Config.CameraConfig.CameraFlySpeed * dt;
+
+            if (!previewControl)
+                bridge.Camera?.SetEditorViewTransform(marker.Position, rotation.Y, rotation.X,
+                    marker.CameraFov, marker.CameraNear, marker.CameraFar);
+            bridge.CameraMarkerControlActive = true;
+            Mouse.ResetState();
+            return true;
+        }
+
+        private void RenderCameraPreview(nint window, IDEBridge bridge, EditorObjectManager manager,
+            SceneRenderProperties? renderProperties, Lights lights, CSM? csm, float dt)
+        {
+            EnsureCameraPreviewTarget();
+            if (!_cameraPreviewTargetReady) return;
+
+            var camera = ResolveMarkerCamera(bridge.ViewportPreviewCameraName, manager,
+                CameraPreviewWidth, CameraPreviewHeight, preview: true) ?? _editorCamera;
+            if (camera == null) return;
+
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _cameraPreviewFbo);
+            GL.Viewport(0, 0, CameraPreviewWidth, CameraPreviewHeight);
+            renderProperties?.Apply();
+            GL.ClearColor(renderProperties?.BackgroundColor.X ?? 0f,
+                renderProperties?.BackgroundColor.Y ?? 0f,
+                renderProperties?.BackgroundColor.Z ?? 0f, 1f);
+            GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT | Const.GL_STENCIL_BUFFER_BIT);
+
+            EditorObject? sky = null;
+            foreach (var obj in manager.Objects)
+                if (obj.PrimitiveType == EditorPrimitiveType.Sky) { sky = obj; break; }
+            if (sky != null && _editorSkybox != null && _editorSkyTextures != null)
+                _editorSkybox.Draw(camera, lights, dt, _editorSkyTextures);
+
+            manager.Draw(camera, lights, csm, null, null, showSkyGizmo: false,
+                showEditorGizmos: false, captureViewportCullSnapshot: false);
+
+            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+            renderProperties?.Apply();
+            var background = renderProperties?.BackgroundColor ?? Vector3.Zero;
+            GL.ClearColor(background.X, background.Y, background.Z, 1f);
+            GL.Enable(Const.GL_DEPTH_TEST);
+            if (csm != null)
+            {
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 6);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[0]);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 7);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[1]);
+                GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
+                GL.BindTexture(Const.GL_TEXTURE_2D, csm.ShadowTextures[2]);
+            }
+
+            bridge.CameraPreviewTextureID = _cameraPreviewTexture;
+            bridge.CameraPreviewTextureWidth = CameraPreviewWidth;
+            bridge.CameraPreviewTextureHeight = CameraPreviewHeight;
+        }
+
         /// <summary>The currently active scene.</summary>
         public IScene? CurrentScene => _currentScene;
 
@@ -280,6 +503,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // scene.Exit()/Dispose() do NOT leave a stale _currentScene
                 // that could be accessed by Render() below.
                 // The deferred scene switch (_nextScene) is applied AFTER render.
+                var inputBridge = _ide is { IsActive: true } ? _ide.Bridge : null;
+                if (inputBridge != null)
+                    UpdateCameraMarkerInput(window, dt, inputBridge);
+                else if (_ide != null)
+                    _ide.Bridge.CameraMarkerControlActive = false;
+
                 _currentScene?.Update(dt);
 
                 // ── If no scene is active, provide free-fly camera (WASD + mouse look) ──
@@ -329,7 +558,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         bool playSession = bridge is { InGameActive: true }
                                            || bridge is { IsPreviewMode: true };
 
-                        if (playSession)
+                        if (bridge.CameraMarkerControlActive)
+                        {
+                            Mouse.ResetState();
+                        }
+                        else if (playSession)
                         {
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, true);
@@ -506,6 +739,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (_currentScene == null && _ide != null && _ide.IsActive && _sharedFBOCreated)
                 {
                     var bridge = _ide.Bridge;
+                    bridge.CameraPreviewTextureID = 0;
 
                     // Lazy-init editor camera with a good default view
                     if (_editorCamera == null)
@@ -526,6 +760,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
 
                     _editorCamera.UpdateAspectRatio(Glfw.WindowWidth, Glfw.WindowHeight);
+                    bool playingView = bridge.InGameActive || bridge.IsPreviewMode;
+                    var defaultCamera = playingView
+                        ? bridge.EditorObjectManager?.Objects.FirstOrDefault(obj =>
+                            obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera && obj.IsDefaultCamera)
+                        : null;
+                    string viewportCameraName = defaultCamera?.Name ?? bridge.ViewportMainCameraName;
+                    var viewportCamera = ResolveMarkerCamera(viewportCameraName,
+                        bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight) ?? _editorCamera;
+                    var viewportCullCamera = ResolveMarkerCamera(viewportCameraName,
+                        bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
+                        ?? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
+                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
+                        ?? viewportCamera;
+                    bridge.Camera = viewportCamera;
 
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                     GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
@@ -577,7 +825,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             _editorLights.CollectLocalLights(bridge.EditorObjectManager.Objects);
 
                             // Ensure lighting uniforms are computed for the editor lights
-                            _editorLights.Update(dt, _editorCamera.Position);
+                            _editorLights.Update(dt, viewportCamera.Position);
                         }
 
                         // ── Skybox render (behind the grid, drawn first). The skybox was
@@ -587,7 +835,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         {
                             if (_editorSkybox != null && _editorSkyTextures != null && _editorLights != null)
                             {
-                                _editorSkybox.Draw(_editorCamera, _editorLights, dt, _editorSkyTextures);
+                                _editorSkybox.Draw(viewportCamera, _editorLights, dt, _editorSkyTextures);
                             }
                         }
                     }
@@ -596,7 +844,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // camera-centered editor grid hides when the viewport toolbar toggle is off.
                     // Also hidden in preview mode.
                     if ((bridge?.ShowDebugGrid ?? true) && !(bridge?.IsPreviewMode ?? false))
-                        RenderEditorGrid();
+                        RenderEditorGrid(viewportCamera);
 
                     // ── Editor-mode weather: spawn + integrate rain/snow while the user
                     // DESIGNS weather (Effects panel). The gameplay tick only runs in
@@ -604,7 +852,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // "Partikel aktif: 0" and rain/snow never appeared. Cheap no-op when
                     // every layer is off; the fog/tint overlay already renders here.
                     if (bridge is { IsPreviewMode: false, InGameActive: false })
-                        Visual.Effect2DSystem.TickEditorWeather(_editorCamera, dt,
+                        Visual.Effect2DSystem.TickEditorWeather(viewportCamera, dt,
                             bridge.ActiveTilemap, bridge.EditorObjectManager);
 
                     // ── CSM shadow pass + render editor 3D objects (only when the editor
@@ -619,16 +867,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         _editorLights.LocalShadowsEnabled = bridge.ShowShadows;
                         if (bridge.ShowShadows)
                         {
-                            editorObjMgr.RenderShadowPass(_editorCamera, _editorLights, _editorCsm);
+                            editorObjMgr.RenderShadowPass(viewportCamera, _editorLights, _editorCsm);
 
                             // Local light (Point/Spot) shadow pass — each light casts its
                             // own shadow map (editor objects are the only casters here).
                             _editorLights.LocalShadow ??= new LocalLightShadow();
                             _editorLights.LocalShadow.RenderShadowPass(
-                                _editorCamera, _editorLights.LocalLights,
+                                viewportCamera, _editorLights.LocalLights,
                                 Shader.GetShadowShaderProgram(), Shader.GetShadowSkinnedShaderProgram(),
                                 Shader.GetShadowStaticAlphaShaderProgram(),
-                                (CSM csm, int ci) => editorObjMgr.RenderShadow(_editorCamera, csm, ci));
+                                (CSM csm, int ci) => editorObjMgr.RenderShadow(viewportCamera, csm, ci));
                         }
                         else
                         {
@@ -650,11 +898,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         GL.ActiveTexture(Const.GL_TEXTURE0 + 8);
                         GL.BindTexture(Const.GL_TEXTURE_2D, _editorCsm.ShadowTextures[2]);
 
+                        if (bridge.CameraPreviewEnabled &&
+                            (!string.IsNullOrWhiteSpace(bridge.ViewportPreviewCameraName) ||
+                             !string.IsNullOrWhiteSpace(bridge.ViewportMainCameraName)))
+                            RenderCameraPreview(window, bridge, editorObjMgr, editorProps, _editorLights, _editorCsm, dt);
+
                         // Pass selection highlight color so selected objects get a mesh wireframe outline
                         Vector3? wireCol = bridge is { SelectedEditorObjects.Count: > 0 }
                             ? bridge.SelectionHighlights.EditorObject : null;
                         bool showGizmos = !(bridge?.IsPreviewMode ?? false);
-                        editorObjMgr.Draw(_editorCamera, _editorLights, _editorCsm, wireCol, bridge.SelectedEditorObjects, showEditorGizmos: showGizmos);
+                        editorObjMgr.Draw(viewportCamera, _editorLights, _editorCsm, wireCol,
+                            bridge.SelectedEditorObjects, showEditorGizmos: showGizmos,
+                            viewportCullCamera: viewportCullCamera);
 
                         // ── Z-order: the 2D map grid overlays disable depth test while they
                         // draw, so they would paint OVER a gizmo drawn earlier. Clear the
@@ -665,7 +920,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                     // ── Render ONE gizmo at the selection center (group average for
                     // multi-select) — a single gizmo drives the whole selection.
-                    if (bridge?.SelectedEditorObject != null && bridge.EditorGizmo != null && _editorCamera != null)
+                    if (bridge?.SelectedEditorObject != null && bridge.EditorGizmo != null && viewportCamera != null)
                     {
                         var gizmo = bridge.EditorGizmo;
                         // Sky markers can't be rotated/scaled — lock the gizmo to Translate
@@ -682,7 +937,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             (bridge.GetEditorGizmoCenter() ?? Vector3.Zero);
                         if (bridge.SelectedEditorObjects.Count > 0)
                         {
-                            gizmo.Render(_editorCamera, gizmoCenter, vpW, vpH);
+                            gizmo.Render(viewportCamera, gizmoCenter, vpW, vpH);
                         }
 
                         // Draw crosshair indicators on every SELECTED object that has a
@@ -695,11 +950,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
 
                     // Update bridge camera so the IDE panels can show camera info
-                    bridge.Camera = _editorCamera;
                     ApplyPendingEditorCamera(_editorCamera, bridge); // restore saved freefly pos when available
-                    bridge.CameraPosition = _editorCamera.Position;
-                    bridge.CameraYaw = _editorCamera.Yaw;
-                    bridge.CameraPitch = _editorCamera.Pitch;
+                    bridge.Camera = viewportCamera;
+                    bridge.CameraPosition = viewportCamera.Position;
+                    bridge.CameraYaw = viewportCamera.Yaw;
+                    bridge.CameraPitch = viewportCamera.Pitch;
 
                     // Mark texture as rendered so the fallback below doesn't override with a cleared FBO
                     bridge.SceneTextureID = _sharedColorTex;
@@ -722,7 +977,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // GameScene normally sets this in its render pass — that pass never
                         // runs on the no-scene path, so prompts would stay hidden forever.
                         DialogueSystem.ShowPrompts = true;
-                        DialogueSystem.TickState(dt, _editorCamera, bridge.EditorObjectManager);
+                        DialogueSystem.TickState(dt, viewportCamera, bridge.EditorObjectManager);
                     }
                 }
 
@@ -1181,19 +1436,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// centered at an integer position spans -N/2..N/2 and covers exactly NxN grid squares.
         /// Axes stay at world origin.
         /// </summary>
-        private void RenderEditorGrid()
+        private void RenderEditorGrid(Camera? camera = null)
         {
+            camera ??= _editorCamera;
             if (!_editorGridCreated) CreateEditorGrid();
             if (_editorGridVAO == 0 || _editorAxisVAO == 0) return;
-            if (_editorCamera == null) return;
+            if (camera == null) return;
 
             uint prog = Shader.GetLineShaderProgram();
             if (prog == 0) return;
 
             GL.UseProgram(prog);
 
-            Matrix4x4 viewMatrix = _editorCamera.GetViewMatrix();
-            Matrix4x4 projMatrix = _editorCamera.GetProjectionMatrix();
+            Matrix4x4 viewMatrix = camera.GetViewMatrix();
+            Matrix4x4 projMatrix = camera.GetProjectionMatrix();
             Matrix4x4 ident = Matrix4x4.Identity;
 
             int viewLoc = GL.GetUniformLocation(prog, "view");
@@ -1209,8 +1465,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Offsetting by 0.5 makes each 1-unit grid square centered on an integer position,
             // so an NxN plane placed at an integer coordinate covers exactly NxN squares.
             const int halfLines = 250;        // 250 lines on each side = 501 total
-            float centerX = MathF.Round(_editorCamera.Position.X - 0.5f) + 0.5f;
-            float centerZ = MathF.Round(_editorCamera.Position.Z - 0.5f) + 0.5f;
+            float centerX = MathF.Round(camera.Position.X - 0.5f) + 0.5f;
+            float centerZ = MathF.Round(camera.Position.Z - 0.5f) + 0.5f;
 
             var verts = new List<float>((halfLines * 2 + 1) * 4 * 3);
             for (int i = -halfLines; i <= halfLines; i++)

@@ -164,8 +164,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// (degrees), syncing the internal smoothing targets so fly-mode doesn't snap back
         /// next frame. Used by the Inspector's "Preview from Camera" button to place the
         /// editor camera exactly at a placed camera marker (position + rotation + FOV).
-        /// Also sets the FOV to match the marker's camera.</summary>
-        public void SetEditorViewTransform(Vector3 pos, float yawDeg, float pitchDeg, float fovDeg)
+        /// Also sets the projection parameters when supplied, so culling uses the same
+        /// frustum as the placed camera.</summary>
+        public void SetEditorViewTransform(Vector3 pos, float yawDeg, float pitchDeg, float fovDeg,
+            float? nearDist = null, float? farDist = null)
         {
             Position = pos;
             Yaw = yawDeg;
@@ -175,6 +177,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             smoothCamPos = pos;
             if (fovDeg > 0f)
                 FoV = fovDeg; // setter already marks the projection dirty
+            if (nearDist.HasValue)
+                NearDist = MathF.Max(0.01f, nearDist.Value);
+            if (farDist.HasValue)
+                FarDist = MathF.Max(NearDist + 0.01f, farDist.Value);
+            if (nearDist.HasValue || farDist.HasValue)
+                _projectionDirty = true;
             UpdateCameraVectorsFly();
         }
 

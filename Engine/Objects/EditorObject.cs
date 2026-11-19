@@ -2260,7 +2260,7 @@ public unsafe class EditorObject
     // The displaced plane is a dense grid of quads; splitting it into chunks lets the
     // frustum cull whole blocks of geometry instead of always drawing the full mesh.
     private int _pbrVertexSegments = PbrDisplaceSegments;
-    private int _pbrVertexChunk = 1;
+    private int _pbrVertexChunk = 8;
     /// <summary>Tessellation segments per side for the displaced plane grid (16..512).
     /// More segments = finer displacement detail, heavier mesh.</summary>
     public int PbrVertexSegments
@@ -2298,9 +2298,19 @@ public unsafe class EditorObject
     public int PbrChunkCount { get; private set; }
     /// <summary>Chunks skipped by the frustum cull on the last PBR draw (diagnostics).</summary>
     public int PbrChunksCulled { get; private set; }
+    public int PbrChunksOccluded { get; private set; }
+    public int PbrChunksTested { get; private set; }
+    public int PbrChunksDrawn { get; private set; }
+    public int PbrOctreeNodesTested { get; private set; }
+    public int PbrOctreeNodesPruned { get; private set; }
     internal long ViewportSubmittedTriangles { get; private set; }
     internal long ViewportFrustumSkippedTriangles { get; private set; }
+    internal long ViewportOcclusionSkippedTriangles { get; private set; }
     internal readonly List<(AABB Bounds, int State)> ViewportTerrainCullBoxes = new();
+    internal IReadOnlyList<ViewportOcclusion.OccluderData>? ViewportOccluders { get; set; }
+    internal bool ViewportCullDebugCapture { get; set; }
+    internal Matrix4x4? ViewportCullViewProjection { get; set; }
+    internal Vector3 ViewportCullPosition { get; set; }
 
     // ── Terrain LOD (per chunk, 4 levels) ──
     // Level 0 is the AUTHORED grid (one chunk = perChunk×perChunk quads). Each further
@@ -2489,6 +2499,8 @@ public unsafe class EditorObject
     public float CameraNear { get; set; } = 0.1f;
     /// <summary>Far clip distance for the placed camera.</summary>
     public float CameraFar { get; set; } = 500f;
+    /// <summary>Whether this placed camera is the scene's default Preview/In-Game camera.</summary>
+    public bool IsDefaultCamera { get; set; }
     /// <summary>Whether the view-frustum wireframe gizmo is drawn in the viewport.</summary>
     public bool ShowFrustum { get; set; } = true;
 
@@ -2929,6 +2941,23 @@ public unsafe class EditorObject
         }
     }
 
+    /// <summary>Conservative bounds for viewport culling, including possible vertex
+    /// displacement on tessellated Box/Sphere primitives.</summary>
+    internal AABB ViewportCullBounds
+    {
+        get
+        {
+            var bounds = WorldAABB;
+            if (!PbrVertexDisplaceEnabled || PrimitiveType is not (EditorPrimitiveType.Box or EditorPrimitiveType.Sphere))
+                return bounds;
+
+            float scale = MathF.Max(MathF.Abs(Scale.X), MathF.Max(MathF.Abs(Scale.Y), MathF.Abs(Scale.Z)));
+            float pad = (MathF.Abs(PbrVertexDisplaceScale) + MathF.Abs(PbrVertexOffset)) * scale;
+            var extent = new Vector3(pad);
+            return new AABB(bounds.Min - extent, bounds.Max + extent);
+        }
+    }
+
     /// <summary>Triangles in the current primitive mesh after resource initialization.</summary>
     internal int PrimitiveTriangles => (_object3D?.VertexCount ?? 0) / 3;
 
@@ -2962,14 +2991,13 @@ public unsafe class EditorObject
         {
             case EditorPrimitiveType.Plane:
             {
-                // FORCED displacement: a dense grid is required whenever a TERRAIN
-                // ELEVATION heightmap exists (vertex displacement is always active on
-                // planes — the elevation IS the base shape) or chunks are requested.
-                // The resolution slider (PbrVertexSegments) therefore ALWAYS takes
-                // effect on a terrain plane.
-                bool dense = PbrVertexChunk > 1 || !string.IsNullOrEmpty(TerrainHeightSourcePath)
-                             || HasSculptDelta;   // path-based: a stored delta bake needs the dense grid too
-                int segs = dense ? Math.Clamp(PbrVertexSegments, 16, 512) : 1;
+                // Height displacement needs the authored dense grid. A flat chunked
+                // plane only needs one quad per chunk; using the displacement resolution
+                // there would create hundreds of thousands of unnecessary vertices.
+                bool hasTerrainDisplacement = !string.IsNullOrEmpty(TerrainHeightSourcePath) || HasSculptDelta;
+                int segs = hasTerrainDisplacement
+                    ? Math.Clamp(PbrVertexSegments, 16, 512)
+                    : PbrVertexChunk > 1 ? PbrVertexChunk : 1;
                 BuildChunkedPlaneMesh(ref segs, shader, out var verts);
                 if (verts == null)
                 {
@@ -3309,6 +3337,9 @@ public unsafe class EditorObject
     private readonly List<int> _chunkStarts = [];
     private readonly List<int> _chunkCounts = [];
     private readonly List<AABB> _chunkAABBs = [];
+    private TerrainChunkOctree.Node? _terrainChunkOctreeRoot;
+    private byte[] _terrainChunkCullStates = [];
+    private int[] _terrainStitchLevelsScratch = [];
 
     /// <summary>Build the displaced-plane grid split into chunk×chunk vertex blocks.
     /// Each chunk becomes a CONTIGUOUS vertex range inside a single VBO (reordered
@@ -3325,6 +3356,9 @@ public unsafe class EditorObject
         if (PrimitiveType != EditorPrimitiveType.Plane || PbrVertexChunk <= 1)
         {
             _chunkStarts.Clear(); _chunkCounts.Clear(); _chunkAABBs.Clear();
+            _terrainChunkOctreeRoot = null;
+            _terrainChunkCullStates = [];
+            _terrainStitchLevelsScratch = [];
             PbrChunkCount = 0;
             // Chunks per side went back to 1: the coarse LOD meshes must not survive
             // the rebuild (their VAOs would leak and LodMesh would return dead meshes).
@@ -3355,24 +3389,18 @@ public unsafe class EditorObject
                 }
                 _chunkStarts.Add(start);
                 _chunkCounts.Add(all.Count - start);
-                // Local AABB of the block — computed ANALYTICALLY from the chunk span
-                // (u0..u0+chunkSpan, v0..v0+chunkSpan in mesh-UV units; mesh spans
-                // −0.5..0.5). Accumulating per-vertex through EmitPlaneQuad CANNOT work:
-                // Vector3 is a struct, so passing min/max by value silently wrote the
-                // bounds into a copy → every chunk got an inverted garbage AABB → the
-                // frustum test rejected ALL chunks → plane vanished when displacement
-                // was ON (bug report: "Displaced Plane Grid = on, plane hilang").
-                // Flat plane pre-displacement; the draw pass inflates Y by the
-                // displacement height so off-screen peaks stay culled correctly.
-                var bMin = new Vector3(u0 - 0.5f, 0f, v0 - 0.5f);
-                var bMax = new Vector3(u0 + chunkSpan - 0.5f, 0f, v0 + chunkSpan - 0.5f);
-                _chunkAABBs.Add(new AABB(bMin - new Vector3(0.5f, 0f, 0.5f), bMax + new Vector3(0.5f, 0f, 0.5f)));
+                // Tight local bounds are essential: padding each chunk by half a world
+                // unit made every small chunk overlap almost the entire terrain.
+                _chunkAABBs.Add(GetTerrainChunkLocalBounds(cx, cz, chunks));
             }
         }
         fullVerts = [.. all];
         _object3D = new Object3D(0, 0, 0);
         _object3D.Generate(shader, fullVerts);
         PbrChunkCount = chunks * chunks;
+        _terrainChunkOctreeRoot = TerrainChunkOctree.Build(_chunkAABBs, chunks);
+        _terrainChunkCullStates = new byte[PbrChunkCount];
+        _terrainStitchLevelsScratch = new int[PbrChunkCount];
         // LOD levels 1..3 come from the SAME chunk split: half the segments per chunk,
         // a quarter, then one quad. Built here so a rebuild disposes/recreates them with
         // the level-0 mesh in one place.
@@ -3655,13 +3683,137 @@ public unsafe class EditorObject
     internal static AABB ExpandTerrainChunkBounds(AABB local, Matrix4x4 model, float pad)
     {
         var world = local.Transform(model);
-        var extent = new Vector3(pad);
+        var displacementAxis = Vector3.TransformNormal(Vector3.UnitY, model);
+        var extent = Vector3.Abs(displacementAxis) * MathF.Max(0f, pad);
         return new AABB(world.Min - extent, world.Max + extent);
+    }
+
+    internal static AABB GetTerrainChunkLocalBounds(int chunkX, int chunkZ, int chunksPerSide)
+    {
+        int chunks = Math.Max(1, chunksPerSide);
+        float span = 1f / chunks;
+        const float epsilon = 1e-4f;
+        return new AABB(
+            new Vector3(chunkX * span - 0.5f - epsilon, 0f, chunkZ * span - 0.5f - epsilon),
+            new Vector3((chunkX + 1) * span - 0.5f + epsilon, 0f,
+                (chunkZ + 1) * span - 0.5f + epsilon));
+    }
+
+    private void MarkTerrainSubtree(TerrainChunkOctree.Node node, byte state)
+    {
+        if (node.ChunkIndex >= 0)
+        {
+            _terrainChunkCullStates[node.ChunkIndex] = state;
+            return;
+        }
+        foreach (var child in node.Children)
+            if (child != null) MarkTerrainSubtree(child, state);
+    }
+
+    private void CullTerrainOctreeNode(TerrainChunkOctree.Node node, Matrix4x4 model,
+        Matrix4x4 viewProj, float displacementPad, bool includeStitch, ref int testedLeaves,
+        ref int testedNodes, ref int prunedNodes)
+    {
+        testedNodes++;
+        var local = node.Bounds;
+        if (includeStitch) local = new AABB(local.Min - Vector3.UnitY * TerrainStitchHeight, local.Max);
+        var bounds = ExpandTerrainChunkBounds(local, model, displacementPad);
+        byte state = !IsAABBInFrustum(viewProj, bounds) ? (byte)1 : (byte)0;
+        if (state == 0 && ViewportOccluders is { Count: > 0 } occluders)
+        {
+            foreach (var occluder in occluders)
+                if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, viewProj))
+                {
+                    state = 2;
+                    break;
+                }
+        }
+
+        if (state != 0)
+        {
+            prunedNodes++;
+            MarkTerrainSubtree(node, state);
+            return;
+        }
+        if (node.ChunkIndex >= 0)
+        {
+            testedLeaves++;
+            return;
+        }
+        foreach (var child in node.Children)
+            if (child != null)
+                CullTerrainOctreeNode(child, model, viewProj, displacementPad, includeStitch,
+                    ref testedLeaves, ref testedNodes, ref prunedNodes);
+    }
+
+    private void DrawChunkedPlaneBasic(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cullCameraPos)
+    {
+        if (_object3D == null || _chunkAABBs.Count != PbrChunkCount) return;
+
+        int culled = 0, occluded = 0, drawnChunks = 0;
+        int testedChunks = 0, testedNodes = 0, prunedNodes = 0;
+        Array.Clear(_terrainChunkCullStates);
+        if (_terrainChunkOctreeRoot != null)
+            CullTerrainOctreeNode(_terrainChunkOctreeRoot, model, viewProj, 0f, false,
+                ref testedChunks, ref testedNodes, ref prunedNodes);
+        int runStart = 0, runEnd = 0, lastChunk = -2;
+        void FlushRun()
+        {
+            if (runEnd <= runStart) return;
+            GL.DrawArrays(Const.GL_TRIANGLES, runStart, runEnd - runStart);
+            ViewportSubmittedTriangles += (runEnd - runStart) / 3;
+            runStart = runEnd = 0;
+        }
+
+        GL.BindVertexArray(_object3D.VAO);
+        for (int c = 0; c < PbrChunkCount; c++)
+        {
+            var bounds = _chunkAABBs[c].Transform(model);
+            int state = _terrainChunkCullStates[c];
+            if (state == 1)
+            {
+                culled++;
+                ViewportFrustumSkippedTriangles += _chunkCounts[c] / 3;
+            }
+            else if (state == 2)
+            {
+                occluded++;
+                ViewportOcclusionSkippedTriangles += _chunkCounts[c] / 3;
+            }
+
+            if (ViewportCullDebugCapture) ViewportTerrainCullBoxes.Add((bounds, state));
+            if (state != 0)
+            {
+                FlushRun();
+                lastChunk = -2;
+                continue;
+            }
+
+            int start = _chunkStarts[c], count = _chunkCounts[c];
+            if (lastChunk == c - 1) runEnd = start + count;
+            else
+            {
+                FlushRun();
+                runStart = start;
+                runEnd = start + count;
+            }
+            lastChunk = c;
+            drawnChunks++;
+        }
+        FlushRun();
+        GL.BindVertexArray(0);
+        PbrChunksCulled = culled;
+        PbrChunksOccluded = occluded;
+        PbrChunksTested = testedChunks;
+        PbrChunksDrawn = drawnChunks;
+        PbrOctreeNodesTested = testedNodes;
+        PbrOctreeNodesPruned = prunedNodes;
     }
 
     /// <summary>Draw the displaced plane chunk-by-chunk with frustum culling.
     /// Returns false when there is nothing chunked (caller falls back to one full draw).</summary>
-    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 cameraPos, float dispScale, float dispHeightNorm, bool twoSided, int lodColorLoc, float dispOffset = 0f)
+    private bool DrawChunkedPlane(Matrix4x4 model, Matrix4x4 viewProj, Vector3 lodCameraPos,
+        Vector3 cullCameraPos, float dispScale, float dispHeightNorm, bool twoSided, int lodColorLoc, float dispOffset = 0f)
     {
         if (PbrChunkCount <= 1 || _object3D == null || _chunkAABBs.Count != PbrChunkCount)
             return false;
@@ -3670,11 +3822,19 @@ public unsafe class EditorObject
         // peaks never disappear while looking at the flat block edge.
         float pad = MathF.Max(0.05f, dispScale * dispHeightNorm + MathF.Abs(dispOffset) + 0.05f);
         int culled = 0;
+        int occluded = 0;
         int drawn = 0;
-        int[]? stitchLevels = TerrainStitchEnabled && TerrainStitchHeight > 0f ? new int[PbrChunkCount] : null;
+        int drawnChunks = 0;
+        int testedChunks = 0;
+        int[]? stitchLevels = TerrainStitchEnabled && TerrainStitchHeight > 0f ? _terrainStitchLevelsScratch : null;
         if (stitchLevels != null) Array.Fill(stitchLevels, -1);
+        Array.Clear(_terrainChunkCullStates);
         Array.Clear(_lodDrawn);
         int boundLod = 0;
+        int octreeNodesTested = 0, octreeNodesPruned = 0;
+        if (_terrainChunkOctreeRoot != null)
+            CullTerrainOctreeNode(_terrainChunkOctreeRoot, model, viewProj, pad, stitchLevels != null,
+                ref testedChunks, ref octreeNodesTested, ref octreeNodesPruned);
         GL.BindVertexArray(_object3D.VAO);
         // Chunk ranges are contiguous inside each level's VBO, so neighbouring chunks
         // that end up at the SAME level are merged into one DrawArrays run — a uniform
@@ -3714,30 +3874,40 @@ public unsafe class EditorObject
             var aabb = stitchLevels != null ? ExpandTerrainChunkBounds(local, model, pad) : surfaceBounds;
             // Select the same LOD for skipped and submitted chunks, so skipped triangle
             // counts represent the draw that would have been made without the frustum test.
-            int lod = SelectLod(cameraPos, (surfaceBounds.Min + surfaceBounds.Max) * 0.5f);
+            int lod = SelectLod(lodCameraPos, (surfaceBounds.Min + surfaceBounds.Max) * 0.5f);
             if (LodMesh(lod) == null) lod = 0;
-            bool inFrustum = IsAABBInFrustum(viewProj, aabb);
-            if (EditorObjectManager.ViewportCullDebug) ViewportTerrainCullBoxes.Add((aabb, inFrustum ? 0 : 1));
-            if (!inFrustum)
+            int state = _terrainChunkCullStates[c];
+            if (state == 1)
             {
                 culled++;
                 ViewportFrustumSkippedTriangles += LodCount(lod, c) / 3;
                 if (stitchLevels != null) ViewportFrustumSkippedTriangles += _lodChunkSegments[lod] * 8;
+                if (ViewportCullDebugCapture) ViewportTerrainCullBoxes.Add((aabb, 1));
                 FlushRun();
                 lastChunk = -2;      // a culled chunk BREAKS the run (its data must not draw)
                 continue;
             }
+            if (state == 2)
+            {
+                occluded++;
+                ViewportOcclusionSkippedTriangles += LodCount(lod, c) / 3;
+                if (stitchLevels != null) ViewportOcclusionSkippedTriangles += _lodChunkSegments[lod] * 8;
+                if (ViewportCullDebugCapture) ViewportTerrainCullBoxes.Add((aabb, 2));
+                FlushRun();
+                lastChunk = -2;
+                continue;
+            }
+            if (ViewportCullDebugCapture) ViewportTerrainCullBoxes.Add((aabb, 0));
             int start = LodStart(lod, c), count = LodCount(lod, c);
             if (runLod == lod && lastChunk == c - 1) runEnd += count;
             else { FlushRun(); runLod = lod; runStart = start; runEnd = start + count; }
             lastChunk = c;
+            drawnChunks++;
             if (stitchLevels != null) stitchLevels[c] = lod;
             _lodDrawn[lod]++;
         }
         FlushRun();
-        if (drawn == 0 && twoSided && stitchLevels != null)
-            Array.Fill(stitchLevels, 0);
-        if (stitchLevels != null && (drawn > 0 || twoSided))
+        if (stitchLevels != null && drawn > 0)
         {
             int previousFace = 0;
             GL.GetIntegerv(0x0B45, &previousFace); // GL_CULL_FACE_MODE
@@ -3771,22 +3941,11 @@ public unsafe class EditorObject
         }
         if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
         PbrChunksCulled = culled;
-        // SAFETY NET: when EVERY chunk was culled the plane is (theoretically) fully
-        // off-screen — drawing the whole mesh is then visually free and guarantees a
-        // frustum/culling math bug can never blank the plane entirely again
-        // ("Displaced Plane Grid = on → hilang" class of bugs becomes impossible).
-        if (drawn == 0 && twoSided)
-        {
-            bool cullWasOn2 = GL.IsEnabled(Const.GL_CULL_FACE);
-            GL.Disable(Const.GL_CULL_FACE);
-            GL.BindVertexArray(_object3D!.VAO);   // a coarse level's VAO may still be bound
-            GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
-            ViewportSubmittedTriangles += _object3D.VertexCount / 3;
-            ViewportFrustumSkippedTriangles = 0;
-            ViewportTerrainCullBoxes.Clear();
-            PbrChunksCulled = 0;
-            if (cullWasOn2) GL.Enable(Const.GL_CULL_FACE);
-        }
+        PbrChunksOccluded = occluded;
+        PbrChunksTested = testedChunks;
+        PbrChunksDrawn = drawnChunks;
+        PbrOctreeNodesTested = octreeNodesTested;
+        PbrOctreeNodesPruned = octreeNodesPruned;
         return true;
     }
 
@@ -4344,7 +4503,8 @@ public unsafe class EditorObject
                        + Math.Clamp(TerrainHeightScale, 0f, 500f)
                        + Math.Abs(Math.Clamp(TerrainHeightOffset, -250f, 250f))
                        + 2f * Math.Clamp(TerrainSculptAmp, 0f, 250f);
-            try { drewChunks = DrawChunkedPlane(model, view * proj, camera.Position, maxY, 1f, twoSided, u.LodDebugColor, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
+            try { drewChunks = DrawChunkedPlane(model, ViewportCullViewProjection ?? (view * proj), camera.Position,
+                ViewportCullPosition, maxY, 1f, twoSided, u.LodDebugColor, Math.Clamp(TerrainHeightOffset, -250f, 250f)); }
             catch (Exception ex)
             {
                 Console.WriteLine($"[PBR] Chunked draw FAILED on '{Name}' → full-draw fallback: {ex.Message}");
@@ -4358,9 +4518,13 @@ public unsafe class EditorObject
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
             ViewportSubmittedTriangles += _object3D.VertexCount / 3;
             ViewportFrustumSkippedTriangles = 0;
+            ViewportOcclusionSkippedTriangles = 0;
             ViewportTerrainCullBoxes.Clear();
             if (twoSided && cullWasOn) GL.Enable(Const.GL_CULL_FACE);
             PbrChunksCulled = 0;
+            PbrChunksOccluded = 0;
+            PbrChunksTested = 0;
+            PbrChunksDrawn = PbrChunkCount > 1 ? PbrChunkCount : 0;
         }
         GL.BindVertexArray(0);
 
@@ -4387,7 +4551,11 @@ public unsafe class EditorObject
             Camera camera, Lights light, CSM? csm = null)
         {
             ViewportSubmittedTriangles = ViewportFrustumSkippedTriangles = 0;
+            ViewportOcclusionSkippedTriangles = 0;
             ViewportTerrainCullBoxes.Clear();
+            PbrChunksCulled = PbrChunksOccluded = 0;
+            PbrChunksTested = PbrChunksDrawn = 0;
+            PbrOctreeNodesTested = PbrOctreeNodesPruned = 0;
             if (!IsVisible) return;
 
             // Rebuild GPU resources if MarkDirty() was called (e.g. color changed in the
@@ -4424,6 +4592,13 @@ public unsafe class EditorObject
             int useTexLoc = GL.GetUniformLocation(Shader.GetShaderProgram(), "useTexture");
             GL.Uniform1i(useTexLoc, 0);
 
+            if (PrimitiveType == EditorPrimitiveType.Plane && PbrChunkCount > 1)
+            {
+                DrawChunkedPlaneBasic(model, ViewportCullViewProjection ??
+                    (camera.GetViewMatrix() * camera.GetProjectionMatrix()), ViewportCullPosition);
+                return;
+            }
+
             // Render VAO directly (bypass Object3D.Draw to avoid model matrix override)
             GL.BindVertexArray(_object3D.VAO);
             GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
@@ -4454,7 +4629,7 @@ public unsafe class EditorObject
         var right = Vector3.Transform(Vector3.UnitX, rot);
 
         float fovRad = CameraFov * MathF.PI / 180f;
-        float aspect = 16f / 9f; // assumed viewport aspect for the preview frustum
+        float aspect = MathF.Max(0.01f, camera.GetAspect());
 
         // Display distances: keep the real near plane exact, but clamp the *displayed*
         // far distance so a 500-unit far clip doesn't produce a giant wireframe that
@@ -7794,11 +7969,14 @@ void main() {
         float layerZ = Map2dLayerIndex >= 0 ? Map2dLayerIndex * 0.001f : 0f;
         var model = Matrix4x4.CreateTranslation(0f, 0f, layerZ)
                   * Matrix4x4.CreateRotationX(-MathF.PI / 2f);
+        var mapBounds = new AABB(new Vector3(0f, 0f, layerZ), new Vector3(extentW, extentH, layerZ));
+        bool mapInFrustum = IsAABBInFrustum(ViewportCullViewProjection
+            ?? (camera.GetViewMatrix() * camera.GetProjectionMatrix()), mapBounds);
 
         // Draw the tiles only when the map has some; the grid pass below still runs
         // for an empty map so "New Map" immediately shows the upright plane outline
         // with square cells in the 3D viewport.
-        if (_map2dVAO != 0 && _map2dVertCount != 0)
+        if (mapInFrustum && _map2dVAO != 0 && _map2dVertCount != 0)
         {
             EnsureMap2DShader();
             if (_map2dShader != 0)
@@ -8095,7 +8273,7 @@ void main() {
         //    sticking OUT of the grid plane toward the viewer so the player can "stand"
         //    on it (like Unreal's collision previews). A tile whose ID has NO collision
         //    flag draws NO box. Uses the Map2D tint shader with the shared white texture.
-        if (Map2dShowCollision && !Editor2DAidsHidden && Map2dTilemap != null)
+        if (mapInFrustum && Map2dShowCollision && !Editor2DAidsHidden && Map2dTilemap != null)
         {
             // UNION OF ALL LAYERS — the collision preview must match the runtime physics
             // (Player2DSystem resolves against EVERY layer that carries collision tile

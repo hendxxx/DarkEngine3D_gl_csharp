@@ -61,6 +61,29 @@ public class IDE : IDisposable
 
     // ── Mode toggles ──
     private bool _inGameMode = false;
+    private CameraViewSnapshot? _editorCameraBeforeInGame;
+    private CameraViewSnapshot? _editorCameraBeforePreview;
+    private sealed record CameraViewSnapshot(
+        Camera Camera,
+        Vector3 Position,
+        Vector3 ViewOffset,
+        float Yaw,
+        float Pitch,
+        float FoV,
+        float BaseFoV,
+        float NearDist,
+        float FarDist,
+        bool IsOrthographic,
+        float OrthoSize,
+        CameraMode CurrentMode,
+        bool FreeLook,
+        bool FlyMode,
+        bool IsFlyMode,
+        bool FlyMouseLook,
+        bool LockTranslation,
+        bool IsADS,
+        float SavedYaw);
+
     // ── IDE font scan cache ──
     private string[]? _ideFontNames;
     private string[]? _ideFontPaths;
@@ -143,6 +166,10 @@ public class IDE : IDisposable
                         _inGameMode = false;
                         return;
                     }
+                    _preferredGameCameraName = Bridge.SelectedEditorObject is
+                        { PrimitiveType: EditorPrimitiveType.Camera, IsVisible: true } selectedCamera
+                        ? selectedCamera.Name : null;
+                    _editorCameraBeforeInGame = _editorCameraBeforePreview ?? CaptureCameraSnapshot();
                     // Save all editor scenes to game.ing first, then reload for in-game mode
                     Console.WriteLine($"[IDE] Saving editor scenes to {(Bridge.ActiveSaveFile ?? "game.ing")} before entering in-game mode...");
                     string previousScene = Bridge.SelectedEditorScene ?? "";
@@ -171,7 +198,7 @@ public class IDE : IDisposable
                     if (Bridge.Camera != null && Bridge.ActiveTilemap == null)
                         Bridge.Camera.FlyMouseLook = true;
 
-                    // ── Switch editor camera to the first Camera object in the scene ──
+                    // ── Use the selected scene Camera, or fall back to the first visible one ──
                     _lastInGameSceneName = Bridge.SelectedEditorScene;
                     SwitchToGameCamera();
 
@@ -201,6 +228,12 @@ public class IDE : IDisposable
                     _focusedInGameElement = null;
                     _focusedInGameIndex = -1;
                     _lastInGameSceneName = null;
+                    _preferredGameCameraName = null;
+                    _levelCameraApplied = false;
+                    _levelCameraMap = null;
+                    _levelCameraMoved = false;
+                    _levelCameraReframePending = false;
+                    RestoreEditorCamera();
                     // Return focus to the panel the user was working in (e.g. the
                     // Inspector while editing the player). Without this, every panel
                     // becomes "appearing" again after in-game mode and the LAST-Begun
@@ -245,7 +278,7 @@ public class IDE : IDisposable
         if (Bridge.Camera != null)
             Bridge.Camera.FlyMouseLook = true;
 
-        // ── Switch editor camera to the first Camera object in the scene ──
+        // ── Use the selected scene Camera, or fall back to the first visible one ──
         _lastInGameSceneName = Bridge.SelectedEditorScene;
         SwitchToGameCamera();
 
@@ -266,6 +299,80 @@ public class IDE : IDisposable
         Console.WriteLine($"[IDE] Reloading current save file for in-game mode...");
         _sceneManagerPanel.LoadGameIngScenes();
         Console.WriteLine($"[IDE] Reloaded ({Bridge.EditorScenes.Count} scenes)");
+    }
+
+    private CameraViewSnapshot? CaptureCameraSnapshot()
+    {
+        if (Bridge.Camera is not Camera camera) return null;
+
+        return new CameraViewSnapshot(
+            camera,
+            camera.Position,
+            camera.ViewOffset,
+            camera.Yaw,
+            camera.Pitch,
+            camera.FoV,
+            camera.BaseFoV,
+            camera.NearDist,
+            camera.FarDist,
+            camera.IsOrthographic,
+            camera.OrthoSize,
+            camera.CurrentMode,
+            camera.freeLook,
+            camera.FlyMode,
+            camera.IsFlyMode,
+            camera.FlyMouseLook,
+            camera.LockTranslation,
+            camera.IsADS,
+            camera.savedYaw);
+    }
+
+    private void RestoreCameraSnapshot(CameraViewSnapshot snapshot)
+    {
+        Camera camera = snapshot.Camera;
+        camera.BaseFoV = snapshot.BaseFoV;
+        camera.IsOrthographic = snapshot.IsOrthographic;
+        camera.OrthoSize = snapshot.OrthoSize;
+        camera.CurrentMode = snapshot.CurrentMode;
+        camera.freeLook = snapshot.FreeLook;
+        camera.FlyMode = snapshot.FlyMode;
+        camera.IsFlyMode = snapshot.IsFlyMode;
+        camera.FlyMouseLook = snapshot.FlyMouseLook;
+        camera.LockTranslation = snapshot.LockTranslation;
+        camera.IsADS = snapshot.IsADS;
+        camera.savedYaw = snapshot.SavedYaw;
+        camera.ViewOffset = snapshot.ViewOffset;
+        camera.SetEditorViewTransform(snapshot.Position, snapshot.Yaw, snapshot.Pitch,
+            snapshot.FoV, snapshot.NearDist, snapshot.FarDist);
+        camera.SyncSmoothVectors();
+
+        Bridge.Camera = camera;
+        Bridge.CameraPosition = camera.Position;
+        Bridge.CameraYaw = camera.Yaw;
+        Bridge.CameraPitch = camera.Pitch;
+    }
+
+    private void RestoreEditorCamera()
+    {
+        if (_editorCameraBeforeInGame is not CameraViewSnapshot snapshot) return;
+        _editorCameraBeforeInGame = null;
+        RestoreCameraSnapshot(snapshot);
+    }
+
+    private void HandlePreviewModeChanged(bool previewMode)
+    {
+        if (_inGameMode) return;
+
+        if (previewMode)
+        {
+            _editorCameraBeforePreview = CaptureCameraSnapshot();
+            SwitchToGameCamera(allowPreviewMode: true);
+            return;
+        }
+
+        if (_editorCameraBeforePreview is not CameraViewSnapshot snapshot) return;
+        _editorCameraBeforePreview = null;
+        RestoreCameraSnapshot(snapshot);
     }
 
     /// <summary>
@@ -711,6 +818,7 @@ public class IDE : IDisposable
     /// <summary>Tracks the last in-game scene so we can switch camera when the user
     /// navigates to a different scene via in-game UI buttons.</summary>
     private string? _lastInGameSceneName = null;
+    private string? _preferredGameCameraName;
 
     // ── Auto ortho + Front camera for the 2D level editor ──
     /// <summary>Whether the level camera (orthographic front view anchored to the map's
@@ -731,21 +839,23 @@ public class IDE : IDisposable
     private bool _levelCameraSavedOrtho;
     private bool _levelCameraSavedFly, _levelCameraSavedFlyLook;
 
-    /// <summary>Switch the editor freefly camera to the first placed Camera object in the current scene.
-    /// If no Camera object exists, shows a warning overlay for 5 seconds.
-    /// Called when entering in-game mode (F8 or startup).</summary>
-    private void SwitchToGameCamera()
+    /// <summary>Switch to the selected placed Camera, or the first visible Camera when
+    /// no camera was selected. If the scene has no Camera, retain the viewport camera.
+    /// Called when entering Preview or In-Game mode.</summary>
+    private void SwitchToGameCamera(bool allowPreviewMode = false)
     {
+        if (!_inGameMode && !(allowPreviewMode && Bridge.IsPreviewMode)) return;
+
         _inGameCameraWarning = null;
         _inGameCameraWarningTimer = 0f;
 
-        // Only GameScene type requires camera switch + warning
-        // MainMenu and Loading are pure UI — no camera needed
-        if (Bridge.SelectedEditorScene != null &&
+        // F8 only switches GameScene cameras. F5 Preview can preview any selected scene.
+        if (_inGameMode && Bridge.SelectedEditorScene != null &&
             Bridge.EditorScenes.TryGetValue(Bridge.SelectedEditorScene, out var checkScene))
         {
             if (checkScene.Type != IDEBridge.SceneType.GameScene)
             {
+                _preferredGameCameraName = null;
                 Console.WriteLine($"[IDE] In-Game Mode: {checkScene.Type} scene — skipping camera switch");
                 return;
             }
@@ -753,28 +863,38 @@ public class IDE : IDisposable
 
         if (Bridge.EditorObjectManager == null)
         {
-            _inGameCameraWarning = "No Camera found in scene — add a Camera object (Model → Camera) for in-game view.";
-            _inGameCameraWarningTimer = 5f;
-            Console.WriteLine("[IDE] In-Game Mode: no EditorObjectManager, cannot find Camera");
+            if (_inGameMode)
+            {
+                _inGameCameraWarning = "No scene Camera — using the viewport camera.";
+                _inGameCameraWarningTimer = 5f;
+            }
+            _preferredGameCameraName = null;
+            Console.WriteLine($"[IDE] {(_inGameMode ? "In-Game" : "Preview")} Mode: no EditorObjectManager; keeping the viewport camera");
             return;
         }
 
-        // Find the first visible Camera object in the current scene
-        EditorObject? gameCamera = null;
-        foreach (var obj in Bridge.EditorObjectManager.Objects)
-        {
-            if (obj.PrimitiveType == EditorPrimitiveType.Camera && obj.IsVisible)
-            {
-                gameCamera = obj;
-                break;
-            }
-        }
+        // The explicitly marked default wins in both Preview and In-Game. Otherwise
+        // preserve the F8 Inspector selection, then the main viewport camera selection.
+        var cameras = Bridge.EditorObjectManager.Objects.Where(obj =>
+            obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera).ToList();
+        EditorObject? gameCamera = cameras.FirstOrDefault(obj => obj.IsDefaultCamera);
+        if (gameCamera == null && !string.IsNullOrEmpty(_preferredGameCameraName))
+            gameCamera = cameras.FirstOrDefault(obj =>
+                string.Equals(obj.Name, _preferredGameCameraName, StringComparison.Ordinal));
+        if (gameCamera == null && !string.IsNullOrWhiteSpace(Bridge.ViewportMainCameraName))
+            gameCamera = cameras.FirstOrDefault(obj =>
+                string.Equals(obj.Name, Bridge.ViewportMainCameraName, StringComparison.OrdinalIgnoreCase));
+        _preferredGameCameraName = null;
+        gameCamera ??= cameras.FirstOrDefault();
 
         if (gameCamera == null)
         {
-            _inGameCameraWarning = "No Camera found in scene — add a Camera object (Model → Camera) for in-game view.";
-            _inGameCameraWarningTimer = 5f;
-            Console.WriteLine("[IDE] In-Game Mode: no Camera object found in scene");
+            if (_inGameMode)
+            {
+                _inGameCameraWarning = "No scene Camera — using the viewport camera.";
+                _inGameCameraWarningTimer = 5f;
+            }
+            Console.WriteLine($"[IDE] {(_inGameMode ? "In-Game" : "Preview")} Mode: no Camera object found; keeping the viewport camera");
             return;
         }
 
@@ -786,20 +906,18 @@ public class IDE : IDisposable
             return;
         }
 
-        cam.Position = gameCamera.Position;
-
         // Carry the Camera object's 2D view offset into the runtime camera so the 2D
         // follow code (Player2DSystem) can apply it on top of the framed position.
         cam.ViewOffset = gameCamera.CameraViewOffset;
 
         // Convert the Camera object's Euler rotation to editor fly-camera Yaw/Pitch.
         // Both use CreateFromYawPitchRoll convention: Y = yaw, X = pitch (positive = look up).
-        cam.Yaw = gameCamera.RotationEuler.Y;
-        cam.Pitch = gameCamera.RotationEuler.X;
-        cam.UpdateVectors();
+        cam.BaseFoV = gameCamera.CameraFov;
+        cam.SetEditorViewTransform(gameCamera.Position, gameCamera.RotationEuler.Y,
+            gameCamera.RotationEuler.X, gameCamera.CameraFov, gameCamera.CameraNear, gameCamera.CameraFar);
         cam.SyncSmoothVectors();
 
-        Console.WriteLine($"[IDE] In-Game Mode: switched to Camera '{gameCamera.Name}' at {gameCamera.Position}"
+        Console.WriteLine($"[IDE] {(_inGameMode ? "In-Game" : "Preview")} Mode: switched to Camera '{gameCamera.Name}' at {gameCamera.Position}"
             + $" (yaw={cam.Yaw:F1}°, pitch={cam.Pitch:F1}°)");
     }
 
@@ -837,6 +955,7 @@ public class IDE : IDisposable
             Console.WriteLine("[IDE] ImGuiController OK");
 
             _viewport = new ViewportPanel(Bridge);
+            Bridge.PreviewModeChanged = HandlePreviewModeChanged;
 
             _sceneView = new SceneViewPanel(Bridge);
             _inspector = new InspectorPanel(Bridge);

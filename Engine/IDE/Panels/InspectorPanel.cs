@@ -2789,24 +2789,29 @@ public class InspectorPanel
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Show/hide the view-frustum wireframe gizmo for this camera in the viewport");
 
-            ImGui.Spacing();
-            //  Preview from this camera: teleport the editor camera to the marker 
-            if (ImGui.Button("Preview from Camera", new Vector2(-1, 28)))
+            bool isDefaultCamera = editorObj.IsDefaultCamera;
+            if (ImGui.Checkbox("Make this camera as default", ref isDefaultCamera))
             {
-                var cam = _bridge.Camera;
-                if (cam != null)
-                {
-                    // Convert the marker's forward direction back to camera yaw/pitch
-                    // (inverse of Front = (sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))).
-                    var fwd = editorObj.Forward;
-                    float pitchDeg = MathF.Asin(Math.Clamp(fwd.Y, -1f, 1f)) * 180f / MathF.PI;
-                    float yawDeg = MathF.Atan2(fwd.X, fwd.Z) * 180f / MathF.PI;
-                    cam.SetEditorViewTransform(editorObj.Position, yawDeg, pitchDeg, editorObj.CameraFov);
-                    Console.WriteLine($"[Inspector] Previewed from camera marker '{editorObj.Name}' (pos {editorObj.Position})");
-                }
+                if (isDefaultCamera && _bridge.EditorObjectManager != null)
+                    foreach (var camera in _bridge.EditorObjectManager.Objects)
+                        if (camera.PrimitiveType == EditorPrimitiveType.Camera)
+                            camera.IsDefaultCamera = false;
+                editorObj.IsDefaultCamera = isDefaultCamera;
+                Console.WriteLine(isDefaultCamera
+                    ? $"[Inspector] Default Preview/In-Game camera: '{editorObj.Name}'"
+                    : $"[Inspector] Default camera cleared: '{editorObj.Name}'");
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Move the editor camera to this marker's position and look direction (also sets FOV)");
+                ImGui.SetTooltip("Use this camera by default when entering Preview or In-Game mode.");
+
+            ImGui.Spacing();
+            if (ImGui.Button("Use as Preview Camera", new Vector2(-1, 28)))
+            {
+                _bridge.ViewportPreviewCameraName = editorObj.Name;
+                Console.WriteLine($"[Inspector] Camera preview: '{editorObj.Name}'");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Render the inset Camera Preview from this marker, independently of the main viewport camera.");
 
             ImGui.Spacing();
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1f),

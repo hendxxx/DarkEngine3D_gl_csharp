@@ -3416,6 +3416,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -3549,7 +3552,7 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 33.22343,
+          "posX": 20.320982,
           "posY": 6.4,
           "posZ": 0,
           "rotX": 0,
@@ -3576,7 +3579,7 @@
           "player2DHeight": 16,
           "player2DCapsuleRadius": 1,
           "player2DCapsuleHeight": 11,
-          "player2DCapsuleOffsetX": -1,
+          "player2DCapsuleOffsetX": 0,
           "player2DCapsuleOffsetY": 0,
           "player2DShowCapsule": true,
           "player2DFlipFacing": false,
@@ -3614,7 +3617,7 @@
           "sprite2DRenderLayer": 0,
           "sprite2DWorldWidth": 0,
           "player2DRenderLayer": 0,
-          "cameraFollowSpeed": 6,
+          "cameraFollowSpeed": 30,
           "cameraDeadZoneWidth": 0,
           "cameraDeadZoneHeight": 0,
           "cameraVerticalThreshold": 64,
@@ -4040,6 +4043,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -4728,6 +4734,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -4861,15 +4870,15 @@
           "tilemapGridColorB": 0.68,
           "tilemapGridColorA": 0.5,
           "glbFilePath": "",
-          "posX": 60.636566,
-          "posY": 32,
+          "posX": 38,
+          "posY": 20.5,
           "posZ": 0,
           "rotX": 0,
           "rotY": 0,
           "rotZ": 0,
-          "scaleX": 0.5,
-          "scaleY": 0.4,
-          "scaleZ": 0.6,
+          "scaleX": 1,
+          "scaleY": 1,
+          "scaleZ": 1,
           "colorR": 0.2,
           "colorG": 0.7,
           "colorB": 0.8,
@@ -5416,6 +5425,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -6104,6 +6116,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -6792,6 +6807,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -7480,6 +7498,9 @@
             300,
             800
           ],
+          "terrainStitchEnabled": false,
+          "terrainStitchHeight": 20,
+          "terrainStitchCull": 0,
           "texSettings": {
             "filterPreset": 2,
             "minFilter": 5,
@@ -7616,7 +7637,7 @@
       "editorCameraPosition": [
         61.997982,
         32,
-        307.03183
+        40
       ],
       "editorCameraYaw": 180,
       "editorCameraPitch": 0,
