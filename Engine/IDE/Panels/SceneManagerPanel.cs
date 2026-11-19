@@ -991,6 +991,7 @@ public class SceneManagerPanel
                         CameraFov = obj.CameraFov,
                         CameraNear = obj.CameraNear,
                         CameraFar = obj.CameraFar,
+                        IsDefaultCamera = obj.IsDefaultCamera,
                         LightDirX = obj.LightDirection.X,
                         LightDirY = obj.LightDirection.Y,
                         LightDirZ = obj.LightDirection.Z,
@@ -1553,6 +1554,7 @@ public class SceneManagerPanel
                         obj.CameraFov = objData.CameraFov;
                         obj.CameraNear = objData.CameraNear;
                         obj.CameraFar = objData.CameraFar;
+                        obj.IsDefaultCamera = objData.IsDefaultCamera;
                         obj.LightDirection = new Vector3(objData.LightDirX, objData.LightDirY, objData.LightDirZ);
                         obj.LightIntensity = objData.LightIntensity;
                         obj.LightTypeEnum = (LightType)Math.Clamp(objData.LightType, 0, 2);
@@ -1778,6 +1780,7 @@ public class SceneManagerPanel
                         obj.CameraReturnSpeed = objData.CameraReturnSpeed;
                         obj.CameraLookAhead = objData.CameraLookAhead;
                         obj.CameraViewOffset = objData.CameraViewOffset;
+                        obj.IsDefaultCamera = objData.IsDefaultCamera;
                         if (objData.Actions is { Count: > 0 } savedActions)
                             obj.Actions = savedActions.Select(a => new Player2DAction
                             {
@@ -2087,6 +2090,7 @@ public class SceneManagerPanel
                             CameraFov = obj.CameraFov,
                             CameraNear = obj.CameraNear,
                             CameraFar = obj.CameraFar,
+                            IsDefaultCamera = obj.IsDefaultCamera,
                             LightDirX = obj.LightDirection.X,
                             LightDirY = obj.LightDirection.Y,
                             LightDirZ = obj.LightDirection.Z,

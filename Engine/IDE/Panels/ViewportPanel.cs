@@ -101,6 +101,7 @@ public unsafe class ViewportPanel
     private TilemapTriggerArea? _triggerClipboard;
     // Show/hide the floating "▲ Views" menu + corner axis indicator.
     private bool _showViewsOverlay = true;
+    private bool _showCameraPreview = true;
     // Collapse the whole left tool toolbar strip to a single expand chip (edit mode).
     private bool _leftToolbarCollapsed = false;
     // Post-popup suppress: after any popup/menu closes, suppress scene interactions
@@ -2380,9 +2381,12 @@ public unsafe class ViewportPanel
                     _bridge.EditorGizmo.EndDrag();
                 }
             }
+            bool modeChanged = _previewMode != value;
             _previewMode = value;
-            // Set preview mode flag  hides editor gizmos/helpers without changing camera behavior.
+            // Set preview mode before notifying IDE so it can resolve the selected default camera.
             _bridge.IsPreviewMode = value;
+            if (modeChanged)
+                _bridge.PreviewModeChanged?.Invoke(value);
         }
     }
     /// <summary>Whether snap-to-grid is enabled.</summary>
@@ -3175,6 +3179,9 @@ public unsafe class ViewportPanel
 
     private void RenderViewportPanel()
     {
+        _bridge.CameraPreviewControlActive = false;
+        _bridge.IsViewportImageHovered = false;
+
         //  Initial sync: ensure IsPreviewMode matches _previewMode on first frame 
         if (!_initialSyncDone)
         {
@@ -3221,6 +3228,7 @@ public unsafe class ViewportPanel
         if (!tabShown)
         {
             _bridge.IsViewportFocused = false;
+            _bridge.IsViewportImageHovered = false;
             _bridge.SuppressViewportInput = true;   // camera + scene input stay frozen
             _bridge.ScrollCapturedByUI = true;      // wheel belongs to the panel in front
             ImGui.End();
@@ -4362,6 +4370,7 @@ ImGui.SameLine();
             //  Viewport click/hover detection 
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
+            _bridge.IsViewportImageHovered = mouseOverImage;
 
             // WORLD INPUT is blocked only by MODAL UI — a visible Container marked
             // "Capture Input While Visible" (or one containing such a control). A decorative
@@ -5479,7 +5488,64 @@ ImGui.SameLine();
         //  Type labels above placed Camera markers (edit mode only) 
         DrawEditorObjectTypeLabels(hasSceneTexture);
 
+        //  Picture-in-picture camera view, matching the editor/game preview layout.
+        DrawViewportCameraPreview(hasSceneTexture);
+
         ImGui.End();
+    }
+
+    private void DrawViewportCameraPreview(bool hasSceneTexture)
+    {
+        _bridge.CameraPreviewControlActive = false;
+        if (!_showCameraPreview || !hasSceneTexture || _bridge.SceneTextureID == 0
+            || _imageSize.X < 180f || _imageSize.Y < 120f)
+            return;
+
+        uint previewTexture = _bridge.CameraPreviewTextureID != 0
+            ? _bridge.CameraPreviewTextureID : _bridge.SceneTextureID;
+        float texW = Math.Max(1, _bridge.CameraPreviewTextureID != 0
+            ? _bridge.CameraPreviewTextureWidth : _bridge.SceneTextureWidth);
+        float texH = Math.Max(1, _bridge.CameraPreviewTextureID != 0
+            ? _bridge.CameraPreviewTextureHeight : _bridge.SceneTextureHeight);
+        float aspect = texW / texH;
+        const float margin = 10f;
+        const float headerH = 22f;
+        const float framePad = 5f;
+        float maxW = MathF.Min(280f, _imageSize.X * 0.30f) - framePad * 2f;
+        float maxH = MathF.Min(180f, _imageSize.Y * 0.30f) - headerH - framePad * 2f;
+        if (maxW <= 0f || maxH <= 0f) return;
+
+        float previewW = MathF.Min(maxW, maxH * aspect);
+        float previewH = previewW / aspect;
+        var imageMin = new Vector2(_imageMax.X - margin - previewW - framePad,
+            _imageMax.Y - margin - previewH - headerH - framePad);
+        var imageMax = imageMin + new Vector2(previewW, previewH);
+        var panelMin = imageMin - new Vector2(framePad, headerH);
+        var panelMax = imageMax + new Vector2(framePad);
+
+        var drawList = ImGui.GetWindowDrawList();
+        uint panel = ImGui.ColorConvertFloat4ToU32(new Vector4(0.035f, 0.045f, 0.055f, 0.94f));
+        uint header = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.10f, 0.13f, 0.97f));
+        uint border = ImGui.ColorConvertFloat4ToU32(new Vector4(0.42f, 0.48f, 0.56f, 0.95f));
+        uint text = ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.94f, 0.97f, 1f));
+
+        drawList.AddRectFilled(panelMin, panelMax, panel, 4f);
+        drawList.AddRectFilled(panelMin, new Vector2(panelMax.X, panelMin.Y + headerH), header, 4f);
+        drawList.AddImage((nint)previewTexture, imageMin, imageMax,
+            new Vector2(0f, 1f), new Vector2(1f, 0f));
+        drawList.AddRect(imageMin, imageMax, border, 0f, ImDrawFlags.None, 1f);
+        drawList.AddRect(panelMin, panelMax, border, 4f, ImDrawFlags.None, 1f);
+        string cameraLabel = string.IsNullOrEmpty(_bridge.ViewportPreviewCameraName)
+            ? "Editor Camera" : _bridge.ViewportPreviewCameraName;
+        if (cameraLabel.Length > 20) cameraLabel = cameraLabel[..17] + "...";
+        drawList.AddText(panelMin + new Vector2(7f, 4f), text, $"Camera Preview: {cameraLabel}");
+
+        var mouse = ImGui.GetMousePos();
+        bool previewHovered = mouse.X >= imageMin.X && mouse.X <= imageMax.X
+            && mouse.Y >= imageMin.Y && mouse.Y <= imageMax.Y;
+        _bridge.CameraPreviewControlActive = previewHovered;
+        if (previewHovered)
+            ImGui.SetTooltip("Hold Ctrl + WASD and move the mouse to move/aim this camera. Choose Main and Preview Cameras separately in Views.");
     }
 
     /// <summary>Draw a small type tag ("Camera" / "Light" / "Sky") above every placed
@@ -5797,6 +5863,24 @@ ImGui.SameLine();
         ImGui.SetNextWindowPos(new Vector2(btnMin.X, btnMax.Y + 2f), ImGuiCond.Appearing);
         if (ImGui.BeginPopup("viewport_camera_views"))
         {
+            ImGui.TextDisabled("Viewport: Ctrl+WASD + mouse | Preview/In-Game: WASD + mouse");
+            ImGui.Separator();
+            DrawViewportCameraSelectionMenu("Main Camera", preview: false);
+            DrawViewportCameraSelectionMenu("Preview Camera", preview: true);
+            if (ImGui.MenuItem("Use Preview Camera as Main"))
+            {
+                if (!string.IsNullOrWhiteSpace(_bridge.ViewportPreviewCameraName))
+                {
+                    _bridge.ViewportMainCameraName = _bridge.ViewportPreviewCameraName;
+                    Console.WriteLine($"[Viewport] Main camera → preview camera '{_bridge.ViewportMainCameraName}'");
+                }
+                else
+                {
+                    Console.WriteLine("[Viewport] Select a Preview Camera before using it as the Main Camera.");
+                }
+            }
+            ImGui.Separator();
+
             string[] viewLabels =
             [
                 " Perspective    \t7", " Top-Down       \t1", " Bottom-Up      \t6",
@@ -5815,6 +5899,7 @@ ImGui.SameLine();
                     Console.WriteLine($"[Viewport] Camera preset: {viewPresets[vi]}");
                 }
             }
+
             ImGui.Separator();
 
             //  Projection: Perspective vs Orthographic 
@@ -5854,6 +5939,37 @@ ImGui.SameLine();
             }
             ImGui.EndPopup();
         }
+    }
+
+    private void DrawViewportCameraSelectionMenu(string menuLabel, bool preview)
+    {
+        var manager = _bridge.EditorObjectManager;
+        string selectedName = preview ? _bridge.ViewportPreviewCameraName : _bridge.ViewportMainCameraName;
+        string selectedLabel = string.IsNullOrEmpty(selectedName) ? "Editor Camera" : selectedName;
+        if (!ImGui.BeginMenu($"{menuLabel}: {selectedLabel}")) return;
+
+        if (ImGui.MenuItem("Editor Camera", null, string.IsNullOrEmpty(selectedName)))
+        {
+            if (preview) _bridge.ViewportPreviewCameraName = "";
+            else _bridge.ViewportMainCameraName = "";
+        }
+
+        if (manager != null)
+        {
+            int cameraIndex = 0;
+            foreach (var marker in manager.Objects)
+            {
+                if (marker.PrimitiveType != EditorPrimitiveType.Camera) continue;
+                string itemId = $"{marker.Name}##camera_{(preview ? "preview" : "main")}_{cameraIndex++}";
+                if (ImGui.MenuItem(itemId, null, string.Equals(selectedName, marker.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (preview) _bridge.ViewportPreviewCameraName = marker.Name;
+                    else _bridge.ViewportMainCameraName = marker.Name;
+                }
+            }
+        }
+
+        ImGui.EndMenu();
     }
 
     /// <summary>True when the mouse currently hovers the floating left-edge toolbar.
@@ -6050,14 +6166,51 @@ ImGui.SameLine();
         }
 
         bool occlusion = EditorObjectManager.ViewportOcclusionEnabled;
-        if (ToolButton(occlusion ? "OC: On" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
-            "Conservative occlusion for non-displaced Box/Sphere and static GLB references.\nUp to 64 previously drawn, untextured solid boxes act as occluders.\nDisabled for wireframe or incompatible depth/cull state.", out y))
+        int occluders = _bridge.EditorObjectManager?.ViewportOccluderCount ?? 0;
+        bool occlusionActive = _bridge.EditorObjectManager?.ViewportOcclusionActive ?? false;
+        if (ToolButton(occlusion ? $"OC: On ({occluders})" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
+            $"Conservative occlusion for Box/Sphere (including displaced targets), terrain chunks and static GLB references. Occluders are solid, non-displaced untextured Boxes.\n{(occlusionActive ? "Active this frame" : occlusion ? "Enabled but unavailable this frame" : "Disabled")}; {occluders} visible untextured Box occluders (maximum 64).\nDisabled for wireframe or incompatible depth/cull state.", out y))
             EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
 
         bool cull3D = EditorObjectManager.ViewportCullDebug;
-        if (ToolButton(cull3D ? "3D Cull: On" : "3D Cull Debug", cull3D, new Vector4(0.78f, 0.28f, 0.22f, 0.95f),
-            "Box/Sphere, static GLB and terrain chunks: green = submitted, red = frustum culled, amber = occluded.\nCounts are shown in Scene View; skinned GLB and displaced Box/Sphere are not included in the boxes.", out y))
+        var cullManager = _bridge.EditorObjectManager;
+        var cullStats = cullManager?.ViewportCullDisplayStatistics ?? default;
+        int frustumSkipped = cullStats.ViewportFrustumObjects + cullStats.GlbFrustumObjects
+            + cullStats.TerrainFrustumPlanes + cullStats.TerrainFrustumChunks
+            + cullStats.EditorMarkerFrustumObjects;
+        int occlusionSkipped = cullStats.ViewportOccludedObjects + cullStats.GlbOccludedObjects
+            + cullStats.TerrainOccludedPlanes + cullStats.TerrainOccludedChunks;
+        if (ToolButton(cull3D ? $"Cull Viz F:{frustumSkipped} OC:{occlusionSkipped}" : "Cull Viz",
+            cull3D, new Vector4(0.78f, 0.28f, 0.22f, 0.95f),
+            "Toggle the viewport frustum/occlusion debug overlay. Turning it on also enables OC.\nGreen = submitted, red = frustum culled, amber = occluded. Counts include terrain chunks and editor markers; skipped terrain triangles are shown in Scene View.\nFully off-screen frustum bounds are clipped by the viewport; use the count to see those skips. Skinned GLB and displaced Box/Sphere are not included in the boxes.", out y))
+        {
             EditorObjectManager.ViewportCullDebug = !cull3D;
+            if (!cull3D) EditorObjectManager.ViewportOcclusionEnabled = true;
+        }
+        bool freezeCull = cullManager?.ViewportCullFreezeEnabled ?? false;
+        if (ToolButton(freezeCull ? "Unfreeze Cull" : "Freeze Cull", freezeCull,
+            new Vector4(0.55f, 0.32f, 0.70f, 0.95f),
+            "Freeze the current frustum/occlusion overlay and counts for inspection. Scene rendering continues normally.\nEnabling this also turns on Cull Viz and OC; the snapshot is captured on the next frame.", out y))
+        {
+            if (cullManager != null)
+            {
+                cullManager.ViewportCullFreezeEnabled = !freezeCull;
+                if (!freezeCull)
+                {
+                    EditorObjectManager.ViewportCullDebug = true;
+                    EditorObjectManager.ViewportOcclusionEnabled = true;
+                    cullManager.RequestViewportCullSnapshot();
+                }
+            }
+        }
+
+        if (ToolButton(_showCameraPreview ? "Camera Preview: On" : "Camera Preview: Off",
+            _showCameraPreview, new Vector4(0.25f, 0.48f, 0.64f, 0.95f),
+            "Show or hide a picture-in-picture view of the current rendered camera output.", out y))
+        {
+            _showCameraPreview = !_showCameraPreview;
+            _bridge.CameraPreviewEnabled = _showCameraPreview;
+        }
 
         //  Debug grid + shadow toggles 
         bool debugGrid = _bridge.ShowDebugGrid;

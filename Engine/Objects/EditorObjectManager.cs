@@ -7,6 +7,18 @@ using static DarkEngine3D_gl_csharp.Engine.Helpers.ObjectHelpers;
 
 namespace DarkEngine3D_gl_csharp.Engine.Objects
 {
+    public readonly record struct ViewportCullStatistics(
+        int ViewportDrawnObjects, int ViewportFrustumObjects, int ViewportOccludedObjects,
+        long ViewportDrawnTriangles, long ViewportFrustumTriangles, long ViewportOccludedTriangles,
+        int GlbDrawnObjects, int GlbFrustumObjects, int GlbOccludedObjects,
+        long GlbDrawnTriangles, long GlbFrustumTriangles, long GlbOccludedTriangles,
+        long TerrainDrawnTriangles, long TerrainFrustumTriangles, long TerrainOccludedTriangles,
+        int TerrainPlanes, int TerrainFrustumPlanes, int TerrainOccludedPlanes,
+        int TerrainChunkCount, int TerrainChunkTests, int TerrainDrawnChunks,
+        int TerrainFrustumChunks, int TerrainOccludedChunks, int TerrainOctreeNodesTested,
+        int TerrainOctreeNodesPruned, int EditorMarkerFrustumObjects,
+        int OccluderCount, bool OcclusionActive);
+
     /// <summary>
     /// Manages all editor-placed 3D objects (primitives + glb references).
     /// Handles lifecycle, rendering, shadow pass, and selection.
@@ -16,11 +28,26 @@ public unsafe class EditorObjectManager
     // ── 2D sprite pass scratch (per-frame reuse — zero steady-state alloc) ──
     private static readonly List<EditorObject> _scratchSprites2D = new();
     private static readonly List<EditorObject> _scratchCulledPlayers = new();
-    private readonly List<Matrix4x4> _viewportOccluders = new();
+    private readonly List<ViewportOcclusion.OccluderData> _viewportOccluders = new();
     private readonly List<(AABB Bounds, int State)> _viewportCullBoxes = new();
+    private readonly List<(AABB Bounds, int State)> _frozenViewportCullBoxes = new();
+    private ViewportCullStatistics _frozenViewportCullStatistics;
+    private bool _captureCullSnapshot;
 
     public static bool ViewportOcclusionEnabled { get; set; }
     public static bool ViewportCullDebug { get; set; }
+    public bool ViewportOcclusionActive { get; private set; }
+    public int ViewportOccluderCount { get; private set; }
+    public bool ViewportCullFreezeEnabled { get; set; }
+    public ViewportCullStatistics ViewportCullDisplayStatistics => ViewportCullFreezeEnabled
+        ? _frozenViewportCullStatistics
+        : CaptureViewportCullStatistics();
+
+    public void RequestViewportCullSnapshot()
+    {
+        _captureCullSnapshot = true;
+        _frozenViewportCullBoxes.Clear();
+    }
     public int ViewportDrawnObjects { get; private set; }
     public int ViewportFrustumObjects { get; private set; }
     public int ViewportOccludedObjects { get; private set; }
@@ -35,6 +62,18 @@ public unsafe class EditorObjectManager
     public long GlbOccludedTriangles { get; private set; }
     public long TerrainDrawnTriangles { get; private set; }
     public long TerrainFrustumTriangles { get; private set; }
+    public long TerrainOccludedTriangles { get; private set; }
+    public int TerrainPlanes { get; private set; }
+    public int TerrainFrustumPlanes { get; private set; }
+    public int TerrainOccludedPlanes { get; private set; }
+    public int TerrainChunkCount { get; private set; }
+    public int TerrainChunkTests { get; private set; }
+    public int TerrainDrawnChunks { get; private set; }
+    public int TerrainFrustumChunks { get; private set; }
+    public int TerrainOccludedChunks { get; private set; }
+    public int TerrainOctreeNodesTested { get; private set; }
+    public int TerrainOctreeNodesPruned { get; private set; }
+    public int EditorMarkerFrustumObjects { get; private set; }
 
     [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glGetIntegerv")]
     private static extern void GetGlInteger(uint name, int* value);
@@ -485,6 +524,7 @@ public unsafe class EditorObjectManager
                 CameraFov = source.CameraFov,
                 CameraNear = source.CameraNear,
                 CameraFar = source.CameraFar,
+                IsDefaultCamera = false,
                 LightDirection = source.LightDirection,
                 LightIntensity = source.LightIntensity,
                 LightTypeEnum = source.LightTypeEnum,
@@ -647,13 +687,21 @@ public unsafe class EditorObjectManager
         /// (multi-select supported via <paramref name="selectedObjects"/>).
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
-            IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true)
+            IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
+            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null)
         {
             ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
             ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
             GlbDrawnObjects = GlbFrustumObjects = GlbOccludedObjects = 0;
             GlbDrawnTriangles = GlbFrustumTriangles = GlbOccludedTriangles = 0;
-            TerrainDrawnTriangles = TerrainFrustumTriangles = 0;
+            TerrainDrawnTriangles = TerrainFrustumTriangles = TerrainOccludedTriangles = 0;
+            TerrainPlanes = TerrainFrustumPlanes = TerrainOccludedPlanes = 0;
+            TerrainChunkCount = TerrainChunkTests = TerrainDrawnChunks = 0;
+            TerrainFrustumChunks = TerrainOccludedChunks = 0;
+            TerrainOctreeNodesTested = TerrainOctreeNodesPruned = 0;
+            EditorMarkerFrustumObjects = 0;
+            ViewportOcclusionActive = false;
+            ViewportOccluderCount = 0;
             _viewportOccluders.Clear();
             _viewportCullBoxes.Clear();
             if (_objects.Count == 0) return;
@@ -662,6 +710,8 @@ public unsafe class EditorObjectManager
 
             var view = camera.GetViewMatrix();
             var proj = camera.GetProjectionMatrix();
+            var cullCamera = viewportCullCamera ?? camera;
+            var viewportCullViewProj = cullCamera.GetViewMatrix() * cullCamera.GetProjectionMatrix();
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_projLoc, 1, false, (float*)&proj);
 
@@ -714,37 +764,78 @@ public unsafe class EditorObjectManager
             // Face culling/winding state is applied by the scene's RenderProperties
             // (see OpenGL.ApplySceneProperties) — do NOT force-enable culling here.
 
-            var primitiveViewProj = view * proj;
+            var primitiveViewProj = viewportCullViewProj;
             bool useOcclusion = ViewportOcclusionEnabled && _shaderProgram != 0 && CanUseViewportOcclusion();
+            if (useOcclusion)
+            {
+                // Build the current-frame occluder set before visiting targets. Otherwise,
+                // a sphere/box earlier in Hierarchy order is tested before a later wall
+                // has been submitted and can never be occluded by it.
+                for (int i = 0; i < _objects.Count && _viewportOccluders.Count < 64; i++)
+                {
+                    var candidate = _objects[i];
+                    if (!candidate.IsVisible || candidate.PrimitiveType != EditorPrimitiveType.Box
+                        || candidate.PbrVertexDisplaceEnabled || candidate.HasPbrMaterial
+                        || candidate.Scale.X <= 0f || candidate.Scale.Y <= 0f || candidate.Scale.Z <= 0f)
+                        continue;
+
+                    candidate.EnsureResources();
+                    if (candidate.PrimitiveTriangles <= 0
+                        || !EditorObject.IsAABBInFrustum(primitiveViewProj, candidate.WorldAABB))
+                        continue;
+                    var prepared = ViewportOcclusion.Prepare(candidate.WorldMatrix, cullCamera.Position, primitiveViewProj);
+                    if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                }
+            }
+            ViewportOcclusionActive = useOcclusion;
+            ViewportOccluderCount = _viewportOccluders.Count;
+            bool captureCullDebug = ViewportCullDebug && (!ViewportCullFreezeEnabled || _captureCullSnapshot);
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
-                bool measured = obj.IsVisible && !obj.PbrVertexDisplaceEnabled
+                obj.ViewportOccluders = useOcclusion ? _viewportOccluders : null;
+                obj.ViewportCullDebugCapture = captureCullDebug;
+                obj.ViewportCullViewProjection = viewportCullViewProj;
+                obj.ViewportCullPosition = cullCamera.Position;
+                bool terrainPlane = obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Plane;
+                if (terrainPlane) TerrainPlanes++;
+                bool measured = obj.IsVisible
                     && obj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere;
-                if (measured)
+                // Chunked planes must reach their draw path even when the aggregate
+                // bounds miss the view, so each chunk gets its own cull/debug result.
+                bool wholePlaneCull = terrainPlane && obj.PbrVertexChunk <= 1;
+                if (measured || wholePlaneCull)
                 {
                     obj.EnsureResources();
-                    var bounds = obj.WorldAABB;
+                    var bounds = obj.ViewportCullBounds;
                     int triangles = obj.PrimitiveTriangles;
                     int state = 0;
                     if (!EditorObject.IsAABBInFrustum(primitiveViewProj, bounds))
                     {
                         state = 1;
-                        ViewportFrustumObjects++;
-                        ViewportFrustumTriangles += triangles;
+                        if (measured)
+                        {
+                            ViewportFrustumObjects++;
+                            ViewportFrustumTriangles += triangles;
+                        }
+                        else { TerrainFrustumPlanes++; TerrainFrustumTriangles += triangles; }
                     }
                     else if (useOcclusion)
                     {
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccluded(bounds, occluder, camera.Position, primitiveViewProj))
+                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj))
                             {
                                 state = 2;
-                                ViewportOccludedObjects++;
-                                ViewportOccludedTriangles += triangles;
+                                if (measured)
+                                {
+                                    ViewportOccludedObjects++;
+                                    ViewportOccludedTriangles += triangles;
+                                }
+                                else { TerrainOccludedPlanes++; TerrainOccludedTriangles += triangles; }
                                 break;
                             }
                     }
-                    if (ViewportCullDebug) _viewportCullBoxes.Add((bounds, state));
+                    if (captureCullDebug) _viewportCullBoxes.Add((bounds, state));
                     if (state != 0) continue;
                 }
                 obj.Draw(
@@ -757,27 +848,36 @@ public unsafe class EditorObjectManager
                     ViewportDrawnObjects++;
                     ViewportDrawnTriangles += obj.ViewportSubmittedTriangles;
                 }
-                if (obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Plane)
+                if (terrainPlane)
                 {
                     TerrainDrawnTriangles += obj.ViewportSubmittedTriangles;
                     TerrainFrustumTriangles += obj.ViewportFrustumSkippedTriangles;
-                    if (ViewportCullDebug) _viewportCullBoxes.AddRange(obj.ViewportTerrainCullBoxes);
+                    TerrainOccludedTriangles += obj.ViewportOcclusionSkippedTriangles;
+                    if (obj.PbrChunkCount > 1)
+                    {
+                        TerrainChunkCount += obj.PbrChunkCount;
+                        TerrainChunkTests += obj.PbrChunksTested;
+                        TerrainDrawnChunks += obj.PbrChunksDrawn;
+                        TerrainOctreeNodesTested += obj.PbrOctreeNodesTested;
+                        TerrainOctreeNodesPruned += obj.PbrOctreeNodesPruned;
+                    }
+                    TerrainFrustumChunks += obj.PbrChunksCulled;
+                    TerrainOccludedChunks += obj.PbrChunksOccluded;
+                    if (captureCullDebug) _viewportCullBoxes.AddRange(obj.ViewportTerrainCullBoxes);
                 }
                 if (useOcclusion && !CanUseViewportOcclusion())
                 {
                     useOcclusion = false;
+                    ViewportOcclusionActive = false;
                     _viewportOccluders.Clear();
+                    ViewportOccluderCount = 0;
                 }
-                if (useOcclusion && measured && obj.ViewportSubmittedTriangles > 0 && _viewportOccluders.Count < 64
-                    && obj.PrimitiveType == EditorPrimitiveType.Box && !obj.HasPbrMaterial
-                    && obj.Scale.X > 0f && obj.Scale.Y > 0f && obj.Scale.Z > 0f)
-                    _viewportOccluders.Add(obj.WorldMatrix);
             }
 
             GL.BindVertexArray(0);
 
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
-            DrawGlbReferences(camera, light, csm);
+            DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug);
 
             // ── 2D sprites: Player2D + Sprite2D in ONE layer-sorted pass ──
             // Digabung dari dua pass terpisah (semua player dulu, lalu semua sprite):
@@ -819,7 +919,7 @@ public unsafe class EditorObjectManager
 
             foreach (var obj in sprites2D)
             {
-                bool culled = Is2DSpriteCulled(obj, camera, viewProj);
+                bool culled = Is2DSpriteCulled(obj, cullCamera, viewportCullViewProj);
                 if (culled) EditorObject.Cull2DCulled++;
                 EditorObject.Cull2DTotal++;
                 if (cullDebug)
@@ -848,19 +948,6 @@ public unsafe class EditorObjectManager
                 p.DrawPortalSpritesPublic(camera);
 
             if (cullDebug) Draw2DCullDebugBoxes(camera, viewProj);
-            if (ViewportCullDebug)
-            {
-                bool depthWasEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
-                GL.Disable(Const.GL_DEPTH_TEST);
-                foreach (var (bounds, state) in _viewportCullBoxes)
-                {
-                    var color = state == 1 ? new Vector3(1f, 0.2f, 0.2f)
-                        : state == 2 ? new Vector3(1f, 0.7f, 0.1f) : new Vector3(0.2f, 0.9f, 0.3f);
-                    Helpers.DebugDraw.DrawAABBWireframe(bounds, color, camera);
-                }
-                if (depthWasEnabled) GL.Enable(Const.GL_DEPTH_TEST);
-            }
-
             // ── Effect2D particles (world-space quads, one draw call per texture run).
             // Rendered AFTER all sprite layers so the FX sit in front of sprites/portals.
             Effect2DSystem.Render(camera);
@@ -928,7 +1015,22 @@ public unsafe class EditorObjectManager
             // ray + spotlight cone for lights, and a horizon + sun icon for skies. ──
             foreach (var obj in _objects)
             {
-                if (obj == null) continue;
+                if (obj == null || !obj.IsVisible) continue;
+
+                bool marker = obj.PrimitiveType is EditorPrimitiveType.Camera or EditorPrimitiveType.Light
+                    or EditorPrimitiveType.Sky or EditorPrimitiveType.Player2D or EditorPrimitiveType.Start2D
+                    or EditorPrimitiveType.Sprite2D or EditorPrimitiveType.Effect2D or EditorPrimitiveType.CameraStart2D;
+                if (marker)
+                {
+                    var bounds = GetEditorMarkerCullBounds(obj, cullCamera);
+                    bool culled = !EditorObject.IsAABBInFrustum(viewportCullViewProj, bounds);
+                    if (captureCullDebug) _viewportCullBoxes.Add((bounds, culled ? 1 : 0));
+                    if (culled)
+                    {
+                        EditorMarkerFrustumObjects++;
+                        continue;
+                    }
+                }
 
                 // Camera/Light/Sky markers are 2D billboard icons (always face the camera)
                 // Hidden in preview/in-game mode via showEditorGizmos flag.
@@ -968,6 +1070,26 @@ public unsafe class EditorObjectManager
                         obj.DrawSkyGizmo(camera);
                 }
 
+            }
+
+            if (captureViewportCullSnapshot && ViewportCullFreezeEnabled && _captureCullSnapshot)
+            {
+                _frozenViewportCullBoxes.AddRange(_viewportCullBoxes);
+                _frozenViewportCullStatistics = CaptureViewportCullStatistics();
+                _captureCullSnapshot = false;
+            }
+            if (ViewportCullDebug)
+            {
+                bool depthWasEnabled = GL.IsEnabled(Const.GL_DEPTH_TEST);
+                GL.Disable(Const.GL_DEPTH_TEST);
+                var boxes = ViewportCullFreezeEnabled ? _frozenViewportCullBoxes : _viewportCullBoxes;
+                foreach (var (bounds, state) in boxes)
+                {
+                    var color = state == 1 ? new Vector3(1f, 0.2f, 0.2f)
+                        : state == 2 ? new Vector3(1f, 0.7f, 0.1f) : new Vector3(0.2f, 0.9f, 0.3f);
+                    Helpers.DebugDraw.DrawAABBWireframe(bounds, color, camera);
+                }
+                if (depthWasEnabled) GL.Enable(Const.GL_DEPTH_TEST);
             }
 
             // ── Stencil-based inverted-hull outline on ALL selected objects (with pulsing effect).
@@ -1079,7 +1201,76 @@ public unsafe class EditorObjectManager
         /// (PBR materials + CSM shadow reception), mirroring ObjectManager.Draw's uniform
         /// setup. Called once per frame from <see cref="Draw"/> so all GLB refs share a
         /// single shader bind. Restores the main shader afterwards.</summary>
-        private void DrawGlbReferences(Camera camera, Lights light, CSM? csm)
+        private ViewportCullStatistics CaptureViewportCullStatistics() => new(
+            ViewportDrawnObjects, ViewportFrustumObjects, ViewportOccludedObjects,
+            ViewportDrawnTriangles, ViewportFrustumTriangles, ViewportOccludedTriangles,
+            GlbDrawnObjects, GlbFrustumObjects, GlbOccludedObjects,
+            GlbDrawnTriangles, GlbFrustumTriangles, GlbOccludedTriangles,
+            TerrainDrawnTriangles, TerrainFrustumTriangles, TerrainOccludedTriangles,
+            TerrainPlanes, TerrainFrustumPlanes, TerrainOccludedPlanes,
+            TerrainChunkCount, TerrainChunkTests, TerrainDrawnChunks,
+            TerrainFrustumChunks, TerrainOccludedChunks, TerrainOctreeNodesTested,
+            TerrainOctreeNodesPruned, EditorMarkerFrustumObjects,
+            ViewportOccluderCount, ViewportOcclusionActive);
+
+        private static AABB GetEditorMarkerCullBounds(EditorObject obj, Camera camera)
+        {
+            if (obj.PrimitiveType is EditorPrimitiveType.Player2D or EditorPrimitiveType.Sprite2D)
+            {
+                var (min, max) = obj.Get2DSpriteAABB();
+                return new AABB(min, max);
+            }
+
+            if (obj.PrimitiveType is EditorPrimitiveType.Start2D or EditorPrimitiveType.Effect2D
+                or EditorPrimitiveType.CameraStart2D)
+            {
+                float billboardRadius = 0.45f * MathF.Max(MathF.Abs(obj.Scale.X),
+                    MathF.Max(MathF.Abs(obj.Scale.Y), MathF.Abs(obj.Scale.Z)));
+                var extent = new Vector3(billboardRadius);
+                return new AABB(obj.Position - extent, obj.Position + extent);
+            }
+
+            var bounds = obj.WorldAABB;
+            float markerRadius = 0.45f * MathF.Max(MathF.Abs(obj.Scale.X),
+                MathF.Max(MathF.Abs(obj.Scale.Y), MathF.Abs(obj.Scale.Z)));
+            float radius = obj.PrimitiveType switch
+            {
+                EditorPrimitiveType.Camera => MathF.Max(CameraGizmoRadius(obj, camera), markerRadius),
+                EditorPrimitiveType.Light => LightGizmoRadius(obj),
+                EditorPrimitiveType.Sky => 3.5f * MathF.Max(MathF.Abs(obj.Scale.X),
+                    MathF.Max(MathF.Abs(obj.Scale.Y), MathF.Abs(obj.Scale.Z)))
+                    + obj.SkySunDiscRadius,
+                _ => 0f,
+            };
+            if (radius <= 0f) return bounds;
+            var pad = new Vector3(radius);
+            return new AABB(bounds.Min - pad, bounds.Max + pad);
+        }
+
+        private static float CameraGizmoRadius(EditorObject obj, Camera camera)
+        {
+            float far = MathF.Min(obj.CameraFar, 100f);
+            float tanHalfFov = MathF.Tan(Math.Clamp(obj.CameraFov, 1f, 179f) * MathF.PI / 360f);
+            float aspect = MathF.Max(0.01f, camera.GetAspect());
+            return far * MathF.Sqrt(1f + tanHalfFov * tanHalfFov * (1f + aspect * aspect));
+        }
+
+        private static float LightGizmoRadius(EditorObject obj)
+        {
+            if (obj.LightTypeEnum == LightType.Point)
+                return MathF.Max(0.5f, obj.LightPointRadius > 0f ? obj.LightPointRadius : 50f);
+            float length = Math.Clamp(4f + obj.LightIntensity * 3f, 4f, 24f);
+            if (obj.LightTypeEnum != LightType.Spotlight) return MathF.Max(length, 0.45f * MathF.Max(
+                MathF.Abs(obj.Scale.X), MathF.Max(MathF.Abs(obj.Scale.Y), MathF.Abs(obj.Scale.Z))));
+            float coneRadius = MathF.Tan(Math.Clamp(obj.LightConeAngle, 1f, 89f) * MathF.PI / 180f) * length;
+            float coneExtent = MathF.Sqrt(length * length + coneRadius * coneRadius);
+            float markerRadius = 0.45f * MathF.Max(MathF.Abs(obj.Scale.X),
+                MathF.Max(MathF.Abs(obj.Scale.Y), MathF.Abs(obj.Scale.Z)));
+            return MathF.Max(coneExtent, markerRadius);
+        }
+
+        private void DrawGlbReferences(Camera camera, Camera cullCamera, Matrix4x4 cullViewProj,
+            Lights light, CSM? csm, bool captureCullDebug)
         {
             bool any = false;
             for (int i = 0; i < _objects.Count; i++)
@@ -1146,7 +1337,6 @@ public unsafe class EditorObjectManager
             GL.Uniform1i(GlbUniforms.HasOcclusionTexture, 0);
             GL.Uniform1i(GlbUniforms.HasEmissiveTexture, 0);
 
-            var vp = view * proj;
             bool useOcclusion = ViewportOcclusionEnabled && CanUseViewportOcclusion();
             for (int i = 0; i < _objects.Count; i++)
             {
@@ -1158,15 +1348,15 @@ public unsafe class EditorObjectManager
                 // Skinning can move vertices outside bind-pose bounds; render it without culling.
                 if (bounds is { } aabb)
                 {
-                    if (!EditorObject.IsAABBInFrustum(vp, aabb)) state = 1;
+                    if (!EditorObject.IsAABBInFrustum(cullViewProj, aabb)) state = 1;
                     else if (useOcclusion)
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccluded(aabb, occluder, camera.Position, vp))
+                            if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj))
                             {
                                 state = 2;
                                 break;
                             }
-                    if (ViewportCullDebug) _viewportCullBoxes.Add((aabb, state));
+                    if (captureCullDebug) _viewportCullBoxes.Add((aabb, state));
                 }
                 if (state == 1) { GlbFrustumObjects++; GlbFrustumTriangles += triangles; continue; }
                 if (state == 2) { GlbOccludedObjects++; GlbOccludedTriangles += triangles; continue; }

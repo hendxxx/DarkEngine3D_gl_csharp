@@ -362,6 +362,8 @@ public class EditorObjectData
     public float CameraNear { get; set; } = 0.1f;
     /// <summary>Far clip distance (Camera).</summary>
     public float CameraFar { get; set; } = 500f;
+    /// <summary>Marks the placed camera used by default in Preview and In-Game mode.</summary>
+    public bool IsDefaultCamera { get; set; }
     /// <summary>Light direction (Light).</summary>
     public float LightDirX { get; set; } = -0.5f;
     public float LightDirY { get; set; } = 0.8f;
@@ -525,7 +527,7 @@ public class EditorObjectData
     /// Null/absent = legacy scene → <see cref="EditorObject.PbrDisplaceSegments"/> (256).</summary>
     public int? PbrVertexSegments { get; set; }
     /// <summary>Split the displaced grid into chunk×chunk vertex blocks (1..16), each
-    /// frustum-culled independently at draw time. Null/absent = 1 (single mesh).</summary>
+    /// frustum-culled independently at draw time. Null/absent = 8 (default terrain split).</summary>
     public int? PbrVertexChunk { get; set; }
     /// <summary>Per-chunk distance LOD (levels 0-3: authored / half / quarter / one quad).
     /// Null/absent = legacy scene → ON.</summary>

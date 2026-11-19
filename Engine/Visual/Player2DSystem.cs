@@ -259,6 +259,7 @@ public static class Player2DSystem
             // the single source of truth; no ortho check needed here.)
             bool conversationActive = DialogueSystem.IsConversationActive || ShopHud.IsOpen;
             bool rmbLookOwnsInput = Camera.RmbFreeflyActive;
+            bool cameraOwnsInput = bridge?.CameraMarkerControlActive == true;
             // ── A MENU owns the screen (main menu / loading scene — SceneManager refreshes
             // Bridge.MenuOwnsInput from the active scene) ── gameplay keys must be dead,
             // exactly like 3D where no player exists to react. Same as dialogue: freeze
@@ -266,7 +267,7 @@ public static class Player2DSystem
             bool menuOwnsInput = bridge?.MenuOwnsInput == true;
             float walkSpeed = (conversationActive || menuOwnsInput) ? 0.001f : MathF.Max(0.1f, player.Player2DMoveSpeed);
             float runSpeed = (conversationActive || menuOwnsInput) ? 0.001f : MathF.Max(walkSpeed, player.Player2DRunSpeed);
-            bool inputFrozen = conversationActive || rmbLookOwnsInput || menuOwnsInput;
+            bool inputFrozen = conversationActive || rmbLookOwnsInput || menuOwnsInput || cameraOwnsInput;
             bool left = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.A) || ImGui.IsKeyDown(ImGuiKey.LeftArrow));
             bool right = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.D) || ImGui.IsKeyDown(ImGuiKey.RightArrow));
             bool runHeld = !inputFrozen && (ImGui.IsKeyDown(ImGuiKey.LeftShift) || ImGui.IsKeyDown(ImGuiKey.RightShift));

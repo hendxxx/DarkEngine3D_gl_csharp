@@ -673,6 +673,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         {
             nint window = Glfw.GetWindow();
             _deltaTime = deltaTime;
+            bool cameraMarkerOwnsInput = _sceneManager.Bridge?.CameraMarkerControlActive == true;
 
             // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
@@ -761,7 +762,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Visible") also freezes keyboard/mouse here: the menu owns the focus, so no
             // camera look or key action may reach the game world behind it.
             bool menuOwnsInput = _sceneManager.Bridge?.MenuOwnsInput == true;
-            if (!_paused && !menuOwnsInput)
+            if (!_paused && !menuOwnsInput && !cameraMarkerOwnsInput)
             {
                 //  Input cooldown: skip game input for ~0.15s after unpausing to prevent menu click bleed 
                 if (_inputCooldown > 0f)
@@ -823,6 +824,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             var ideGate = _sceneManager.Bridge;
             bool playingSession = ideGate is { InGameActive: true } || ideGate is { IsPreviewMode: true };
             bool editorFlyMode = !playingSession
+                && !(ideGate?.CameraMarkerControlActive ?? false)
                 && (ideGate?.IsViewportFocused ?? false) && !(ideGate?.IsOverlayVisible ?? false);
 
             // ── 3D WASD gate: during a play session the camera must NEVER stay in
@@ -876,7 +878,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 _objectManager.Update(deltaTime);
 
                 // 4A. Update player movement — skip when in editor fly mode
-                if (!editorFlyMode && !_paused && _inputCooldown <= 0f)
+                if (!editorFlyMode && !cameraMarkerOwnsInput && !_paused && _inputCooldown <= 0f)
                 {
                     _objectManager.PlayerAgent.Move(window, _camera, deltaTime, Vector3.Zero, 0f);
                 }
@@ -900,7 +902,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     _cameraFocusPivot = null;
                     _focusHoldTimer = 0f;
                 }
-                else
+                else if (!cameraMarkerOwnsInput)
                 {
                     Vector3 camPivot = _cameraFocusPivot ?? _objectManager.PlayerAgent.Position;
                     _camera.SetCamera(window, camPivot, deltaTime, null);

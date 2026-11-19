@@ -39,20 +39,28 @@ public class SceneViewPanel
             ImGui.Text($"Tris Rendered: {_bridge.RenderedTriangles:N0} / {_bridge.TotalTriangles:N0}");
             if (_bridge.EditorObjectManager is { } editor)
             {
+                var cull = editor.ViewportCullDisplayStatistics;
                 ImGui.Separator();
-                ImGui.Text("Viewport primitives (Box/Sphere, non-displaced)");
-                ImGui.Text($"Submitted: {editor.ViewportDrawnObjects:N0} objects, {editor.ViewportDrawnTriangles:N0} triangles");
-                ImGui.Text($"Frustum:   {editor.ViewportFrustumObjects:N0} objects, {editor.ViewportFrustumTriangles:N0} triangles skipped");
-                ImGui.Text($"Occlusion: {editor.ViewportOccludedObjects:N0} objects, {editor.ViewportOccludedTriangles:N0} triangles skipped");
+                ImGui.TextDisabled(editor.ViewportCullFreezeEnabled ? "Cull debug: FROZEN snapshot" : $"Cull debug: live ({(cull.OcclusionActive ? "OC active" : "OC inactive")}, {cull.OccluderCount} Box occluders)");
+                ImGui.Text("Viewport primitives (Box/Sphere, including displaced)");
+                ImGui.Text($"Submitted: {cull.ViewportDrawnObjects:N0} objects, {cull.ViewportDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {cull.ViewportFrustumObjects:N0} objects, {cull.ViewportFrustumTriangles:N0} triangles skipped");
+                ImGui.Text($"Occlusion: {cull.ViewportOccludedObjects:N0} objects, {cull.ViewportOccludedTriangles:N0} triangles skipped");
+                ImGui.Text($"Editor markers frustum skipped: {cull.EditorMarkerFrustumObjects:N0}");
                 ImGui.Text("Viewport GLB references (skinned models always submitted)");
-                ImGui.Text($"Submitted: {editor.GlbDrawnObjects:N0} objects, {editor.GlbDrawnTriangles:N0} triangles");
-                ImGui.Text($"Frustum:   {editor.GlbFrustumObjects:N0} objects, {editor.GlbFrustumTriangles:N0} triangles skipped");
-                ImGui.Text($"Occlusion: {editor.GlbOccludedObjects:N0} objects, {editor.GlbOccludedTriangles:N0} triangles skipped");
+                ImGui.Text($"Submitted: {cull.GlbDrawnObjects:N0} objects, {cull.GlbDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {cull.GlbFrustumObjects:N0} objects, {cull.GlbFrustumTriangles:N0} triangles skipped");
+                ImGui.Text($"Occlusion: {cull.GlbOccludedObjects:N0} objects, {cull.GlbOccludedTriangles:N0} triangles skipped");
                 ImGui.Text("Viewport planes / terrain");
-                ImGui.Text($"Submitted: {editor.TerrainDrawnTriangles:N0} triangles");
-                ImGui.Text($"Frustum:   {editor.TerrainFrustumTriangles:N0} triangles skipped");
+                ImGui.Text($"Planes: {cull.TerrainPlanes:N0}; chunked: {cull.TerrainChunkCount:N0} total, {cull.TerrainChunkTests:N0} tested");
+                ImGui.Text($"Terrain octree: {cull.TerrainOctreeNodesTested:N0} nodes tested, {cull.TerrainOctreeNodesPruned:N0} pruned");
+                ImGui.Text($"Whole planes skipped: {cull.TerrainFrustumPlanes:N0} frustum, {cull.TerrainOccludedPlanes:N0} occluded");
+                ImGui.Text($"Chunks submitted: {cull.TerrainDrawnChunks:N0}/{cull.TerrainChunkCount:N0}");
+                ImGui.Text($"Submitted: {cull.TerrainDrawnTriangles:N0} triangles");
+                ImGui.Text($"Frustum:   {cull.TerrainFrustumChunks:N0}/{cull.TerrainChunkCount:N0} chunks skipped, {cull.TerrainFrustumTriangles:N0} triangles");
+                ImGui.Text($"Occlusion: {cull.TerrainOccludedChunks:N0}/{cull.TerrainChunkCount:N0} chunks skipped, {cull.TerrainOccludedTriangles:N0} triangles");
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Last editor-object draw pass; submitted triangles are not visible fragments.\nTerrain skips use each chunk's selected LOD, not its full-detail count.\nDisplaced Box/Sphere, sprites, effects, shadows and debug draws are excluded.");
+                    ImGui.SetTooltip("Last editor-object draw pass; terrain totals sum every visible Plane object. Chunk count is the total built across all planes; tested, submitted, frustum-skipped and occlusion-skipped are per chunk. Octree node counts include aggregate bounds; descendants of a pruned node are not individually tested. Unchunked planes are culled as a whole and included in skipped triangle totals.\nSubmitted triangles are not visible fragments and use each chunk's selected LOD, including enabled skirts. Geometry rejected by the frustum or occlusion test is not submitted.\nSprites, effects, shadows and debug draws are excluded.");
             }
             // GLTF counters are 0/0 in pure 2D scenes — the editor objects are what's
             // actually on screen there. Only shown when the editor manager has content.

@@ -90,6 +90,15 @@ public class IDEBridge
     public Vector3 CameraPosition { get; set; }
     public float CameraYaw { get; set; }
     public float CameraPitch { get; set; }
+    public string ViewportMainCameraName { get; set; } = "";
+    public string ViewportPreviewCameraName { get; set; } = "";
+    public bool CameraPreviewControlActive { get; set; }
+    public bool CameraMarkerControlActive { get; set; }
+    public Action<bool>? PreviewModeChanged { get; set; }
+    public bool CameraPreviewEnabled { get; set; } = true;
+    public uint CameraPreviewTextureID { get; set; }
+    public int CameraPreviewTextureWidth { get; set; }
+    public int CameraPreviewTextureHeight { get; set; }
 
     // ── Pending freefly-camera restore (set by SceneManagerPanel when a .ing file with a
     // saved camera position is loaded BEFORE the editor camera exists; SceneManager applies
@@ -113,6 +122,7 @@ public class IDEBridge
 
     // ── Viewport focus state (set by ViewportPanel each frame) ──
     public bool IsViewportFocused { get; set; }
+    public bool IsViewportImageHovered { get; set; }
     /// <summary>True when viewport input should be suppressed (popup/menu was just open).
     /// Set by ViewportPanel after detecting a popup close, cleared after a few frames.</summary>
     public bool SuppressViewportInput { get; set; }
