@@ -85,6 +85,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Libs
             GL.GenFramebuffersPtr = GetProcAddress(glLib, "glGenFramebuffers");
             GL.BindFramebufferPtr = GetProcAddress(glLib, "glBindFramebuffer");
             GL.FramebufferTexture2DPtr = GetProcAddress(glLib, "glFramebufferTexture2D");
+            //  glBlitFramebuffer was declared but never loaded: GL.BlitFramebuffer silently
+            //  returned false, so the MSAA resolve and the OC: HZB depth copy could not run.
+            GL.BlitFramebufferPtr = GetProcAddress(glLib, "glBlitFramebuffer");
             GL.DrawBuffersPtr = GetProcAddress(glLib, "glDrawBuffers");
             GL.CheckFramebufferStatusPtr = GetProcAddress(glLib, "glCheckFramebufferStatus");
             GL.DepthMaskPtr = GetProcAddress(glLib, "glDepthMask");

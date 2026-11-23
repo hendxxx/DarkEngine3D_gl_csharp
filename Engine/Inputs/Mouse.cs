@@ -129,9 +129,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             CentreCursor();
         }
 
-        /// <summary>Warp the pointer to the window centre and restart the delta stream from
-        /// there (firstMouse = true makes the next Update report 0 instead of a jump).</summary>
-        private static void CentreCursor()
+        /// <summary>Park the pointer in the middle of the window and restart the delta stream
+        /// from there. Used by the camera-preview look: it re-centres EVERY frame, so the
+        /// captured cursor never drifts and the ImGui mouse position stays on screen.</summary>
+        public static void CentreCursor()
         {
             double cx = Glfw.WindowWidth * 0.5;
             double cy = Glfw.WindowHeight * 0.5;

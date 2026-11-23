@@ -2336,6 +2336,15 @@ public unsafe class EditorObject
     internal Matrix4x4? ViewportCullViewProjection { get; set; }
     internal Vector3 ViewportCullPosition { get; set; }
 
+    /// <summary>Result of the LAST viewport draw pass for this object: 0 = drawn,
+    /// 1 = frustum-culled, 2 = occlusion-culled. Set by EditorObjectManager.Draw.</summary>
+    internal int ViewportCullState { get; set; }
+
+    /// <summary>Glfw.FrameId of the draw pass that produced <see cref="ViewportCullState"/>.
+    /// Picking trusts the state only while it belongs to the current frame, so a frame that
+    /// never ran a draw pass can never make the whole scene unselectable.</summary>
+    internal int ViewportCullStateFrame { get; set; } = -1;
+
     // ── Terrain LOD (per chunk, 4 levels) ──
     // Level 0 is the AUTHORED grid (one chunk = perChunk×perChunk quads). Each further
     // level keeps the same chunk grid but halves the segments per chunk, and the last
@@ -3743,6 +3752,7 @@ public unsafe class EditorObject
         if (includeStitch) local = new AABB(local.Min - Vector3.UnitY * TerrainStitchHeight, local.Max);
         var bounds = ExpandTerrainChunkBounds(local, model, displacementPad);
         byte state = !IsAABBInFrustum(viewProj, bounds) ? (byte)1 : (byte)0;
+        if (state == 0 && UseViewportHZB && ViewportHZB.IsOccluded(bounds, viewProj)) state = 2;
         if (state == 0 && ViewportOccluders is { Count: > 0 } occluders)
         {
             foreach (var occluder in occluders)
@@ -5292,6 +5302,11 @@ public unsafe class EditorObject
     /// RED = culled this frame (draw skipped), GREEN = rendered. Also shows the
     /// culled/total badge on the button.</summary>
     public static bool Show2DCullDebug { get; set; }
+
+    /// <summary>Terrain chunk culling reads the same OC source as the manager: when this is
+    /// true (OC: HZB, and the pass culls with the camera that produced the depth) chunks are
+    /// tested against the previous frame's depth pyramid instead of the hull occluders.</summary>
+    internal static bool UseViewportHZB { get; set; }
 
     /// <summary>Cull telemetry from the LAST 2D sprite pass — culled sprite count.
     /// Both edit pass and per-camera gameplay passes overwrite; read right after

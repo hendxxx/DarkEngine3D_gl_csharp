@@ -3165,6 +3165,10 @@ public unsafe class ViewportPanel
         foreach (var obj in mgr.Objects)
         {
             if (obj == null) continue;
+            // Only objects the viewport actually draws are marquee-selectable: the cull
+            // pass may have skipped this one (outside the culling camera / behind an
+            // occluder), and selecting invisible geometry would be a lie.
+            if (!EditorObjectManager.IsViewportPickable(obj)) continue;
             // Project to viewport pixels (Y=0=bottom in GL), then flip to scene Y-down
             Vector2 p = TransformGizmo.ProjectToScreen(cam, obj.GizmoPivotOverride ?? obj.Position, texW, texH);
             float sy = texH - p.Y;
@@ -6344,6 +6348,19 @@ ImGui.SameLine();
             $"{(occlusionActive ? "Active this frame" : occlusion ? "Enabled, but no occluder is visible in the frustum" : "Disabled")}; {occluders} occluder(s) submitted (maximum {EditorObjectManager.ViewportOccluderLimit}).\n" +
             "Every Box occludes by default; tick Occluder in Inspector → Flags for Sphere/GLB. Occluded targets are skipped completely (no draw call).", out y))
             EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
+
+        //  Occlusion SOURCE: hull (default) or the previous frame's depth pyramid.
+        bool hzb = EditorObjectManager.ViewportOcclusionHzb;
+        if (ToolButton(hzb ? "OC: HZB" : "OC: Hull", hzb, new Vector4(0.30f, 0.55f, 0.45f, 0.95f),
+            "Occlusion source for the OC toggle.\n" +
+            "Hull = analytic convex-hull test against Boxes (and objects flagged Occluder in Inspector); only flagged shapes can hide anything.\n" +
+            "HZB = max-depth pyramid of the previous viewport frame: every drawn pixel occludes (terrain, GLB meshes, sprites), no Occluder flag needed. One frame of latency.\n" +
+            $"HZB copies the viewport depth with glBlitFramebuffer, so the viewport renders single-sample while it is on ({EditorObjectManager.ViewportOcclusionHzb} mode). It is skipped while a Preview Camera drives culling or in the camera-preview inset (their depth buffer is the viewport's).", out y))
+        {
+            EditorObjectManager.ViewportOcclusionHzb = !hzb;
+            if (!hzb) EditorObjectManager.ViewportOcclusionEnabled = true;
+            Console.WriteLine($"[Viewport] OC source → {(EditorObjectManager.ViewportOcclusionHzb ? "HZB (previous-frame depth pyramid)" : "Hull (analytic)")}");
+        }
 
         bool cull3D = EditorObjectManager.ViewportCullDebug;
         var cullManager = _bridge.EditorObjectManager;
