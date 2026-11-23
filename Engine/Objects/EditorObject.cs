@@ -310,6 +310,30 @@ public unsafe class EditorObject
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
 
+    // ── Occlusion culling roles (ViewportPanel → OC) ──
+    /// <summary>Submit this object's volume as an occluder for the viewport occlusion
+    /// pass. Default ON for a Box, whose mesh IS its AABB, so the silhouette test is
+    /// exact. Sphere/GLB default OFF: their world AABB is larger than the mesh, which
+    /// could hide something that is still visible. Toggle in Inspector → Flags.</summary>
+    private bool? _isOccluder;
+    public bool IsOccluder
+    {
+        get => _isOccluder ?? PrimitiveType == EditorPrimitiveType.Box;
+        set => _isOccluder = value;
+    }
+    /// <summary>Explicit value stored in the scene file (null = keep the per-type
+    /// default) so loading an older scene never turns Box occluders off.</summary>
+    public bool? IsOccluderOverride { get => _isOccluder; set => _isOccluder = value; }
+    /// <summary>May be skipped by the occlusion test. OFF = always drawn while inside the
+    /// frustum (frustum culling still applies) — the escape hatch for geometry that must
+    /// never pop.</summary>
+    public bool IsOccludee { get; set; } = true;
+
+    private static int _nextOcclusionTag;
+    /// <summary>Stable per-object identity: an object is never occlusion-culled by its
+    /// own volume (every Box is an occluder by default).</summary>
+    internal int OcclusionTag { get; } = System.Threading.Interlocked.Increment(ref _nextOcclusionTag);
+
     // ── NPC dialogue binding (Dialogue System) ──
     /// <summary>Dialogue asset id shown when the player presses the interact key (E)
     /// within range. Empty = not an NPC (no prompt, no interaction). Set in the
@@ -3722,7 +3746,7 @@ public unsafe class EditorObject
         if (state == 0 && ViewportOccluders is { Count: > 0 } occluders)
         {
             foreach (var occluder in occluders)
-                if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, viewProj))
+                if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, viewProj, OcclusionTag))
                 {
                     state = 2;
                     break;

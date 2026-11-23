@@ -2120,6 +2120,7 @@ public class IDE : IDisposable
             _savedIDEFontSize = saved.IDEFontSize;
             _cachedIDEFontPath = saved.IDEFontPath ?? "";
             Bridge.ViewportFontSize = saved.ViewportFontSize > 0f ? saved.ViewportFontSize : 16f;
+            Bridge.CameraPreviewWidth = saved.CameraPreviewWidth;
             _fontCacheLoaded = true;
         }
 
