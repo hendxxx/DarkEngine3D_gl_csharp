@@ -1647,13 +1647,16 @@ public class InspectorPanel
 
             //  Wireframe Mode 
             bool wireframe = renderProps.WireframeMode;
-            if (ImGui.Checkbox("Wireframe Mode", ref wireframe))
+            if (ImGui.Checkbox("Wireframe Mode (F2)", ref wireframe))
             {
                 renderProps.WireframeMode = wireframe;
+                // Same state the F2 shortcut flips: the in-game pass reads it and
+                // SceneManager re-applies it to the viewport, so both stay in sync.
+                DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.SetIsWireframe(wireframe);
                 changed = true;
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Render polygons as lines (wireframe)");
+                ImGui.SetTooltip("Render polygons as lines (wireframe) — shortcut: F2");
 
             ImGui.Spacing();
 
@@ -1881,6 +1884,7 @@ public class InspectorPanel
                 renderProps.FaceCulling = CullMode.Back;
                 renderProps.FrontFaceWinding = WindingOrder.CCW;
                 renderProps.WireframeMode = false;
+                DarkEngine3D_gl_csharp.Engine.Inputs.Keyboard.SetIsWireframe(false);
                 renderProps.DepthTest = true;
                 renderProps.Blending = false;
                 renderProps.Apply();
@@ -3470,6 +3474,23 @@ public class InspectorPanel
             bool shadow = editorObj.CastShadow;
             if (ImGui.Checkbox("Cast Shadow", ref shadow))
                 editorObj.CastShadow = shadow;
+
+            //  Occlusion culling roles (3D only) — consumed by the viewport OC test  
+            if (editorObj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere
+                or EditorPrimitiveType.Plane or EditorPrimitiveType.GlbReference)
+            {
+                bool occluder = editorObj.IsOccluder;
+                if (ImGui.Checkbox("Occluder", ref occluder))
+                    editorObj.IsOccluder = occluder;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("This object can HIDE other objects: it is submitted to the viewport occlusion test\nwhen it is nearer and fully covers them.\nBox = exact volume. Sphere/terrain/GLB use a bounding hull, so ticking those\ncan also hide small things that poke out of the hull.\nVisibility: viewport button 'OC: On/Off' (maximum 64 occluders per frame).");
+
+                bool occludee = editorObj.IsOccludee;
+                if (ImGui.Checkbox("Occludee", ref occludee))
+                    editorObj.IsOccludee = occludee;
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("This object can be SKIPPED when a nearer Occluder fully covers it\n(Box/Sphere, each terrain chunk, static GLB references).\nTurn it off for geometry that must never pop out of view.\nRequires the viewport 'OC: On' button; frustum culling still applies.");
+            }
         }
     }
 

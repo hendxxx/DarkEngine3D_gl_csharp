@@ -91,7 +91,12 @@ public class IDEBridge
     public float CameraYaw { get; set; }
     public float CameraPitch { get; set; }
     public string ViewportMainCameraName { get; set; } = "";
-    public string ViewportPreviewCameraName { get; set; } = "";
+        public string ViewportPreviewCameraName { get; set; } = "";
+
+    // ── Camera movement mode + source for WASD/freefly navigation ──
+    public Config.MoveMode MoveMode { get; set; } = Config.MoveMode.FreeFly;
+    public Config.MoveCameraSource MoveCameraSource { get; set; } = Config.MoveCameraSource.Editor;
+
     public bool CameraPreviewControlActive { get; set; }
     public bool CameraMarkerControlActive { get; set; }
     public Action<bool>? PreviewModeChanged { get; set; }

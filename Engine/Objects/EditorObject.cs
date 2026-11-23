@@ -2285,6 +2285,27 @@ public unsafe class EditorObject
     /// OFF (default) = legacy behavior: planes displace only when a height source
     /// exists; Box/Sphere stay closed low-poly meshes.</summary>
     public bool PbrVertexDisplaceEnabled { get; set; } = false;
+    /// <summary>OCCLUSION CULLING — occluder role: this object contributes its volume to
+    /// the current frame's occluder set, so nearer geometry can hide objects behind it.
+    /// Defaults ON for a Box (an exact closed volume) and OFF for Sphere/Plane/GLB, whose
+    /// proxy is a HULL — ticking those is a deliberate trade. Terrain as an occluder is
+    /// intentionally NOT wired up yet. A displaced Box/Sphere never occludes: its vertices
+    /// leave the base box, so the box would stop being a valid volume.</summary>
+    private bool? _isOccluder;
+    public bool IsOccluder
+    {
+        get => _isOccluder ?? PrimitiveType == EditorPrimitiveType.Box;
+        set => _isOccluder = value;
+    }
+    /// <summary>OCCLUSION CULLING — occludee role: this object may be skipped when a nearer
+    /// occluder fully covers it (Box/Sphere, terrain chunks, static GLB references).
+    /// Turn it off for geometry that must never pop out of view.</summary>
+    public bool IsOccludee { get; set; } = true;
+
+    private static int _nextOcclusionTag;
+    /// <summary>Stable per-instance identity for the occlusion test: an object's own
+    /// occluder volume must never cull it (every Box submits one by default).</summary>
+    internal int OcclusionTag { get; } = System.Threading.Interlocked.Increment(ref _nextOcclusionTag);
     /// <summary>Tessellation segments for Box/Sphere when vertex displacement is ON
     /// (slices/stacks per sphere face, segments per box edge — low values displace
     /// nothing). 1 = the legacy low-poly mesh. Rebuilds the mesh on change.</summary>
@@ -2942,13 +2963,30 @@ public unsafe class EditorObject
     }
 
     /// <summary>Conservative bounds for viewport culling, including possible vertex
-    /// displacement on tessellated Box/Sphere primitives.</summary>
+    /// displacement on tessellated Box/Sphere primitives AND on planes.
+    /// A Plane's <see cref="WorldAABB"/> already pays the terrain elevation extent
+    /// (base shape + detail + |offset| + sculpt) in local units, but a PBR-height-displaced
+    /// plane ("toggle + PBR height", no terrain heightmap) swings by
+    /// `PbrVertexDisplaceScale`/`PbrVertexOffset` instead — data that extent knows
+    /// nothing about. Without this pad the whole-plane frustum/occlusion test (which now
+    /// covers unchunked planes) rejects a peak or a valley that is still on screen.</summary>
     internal AABB ViewportCullBounds
     {
         get
         {
             var bounds = WorldAABB;
-            if (!PbrVertexDisplaceEnabled || PrimitiveType is not (EditorPrimitiveType.Box or EditorPrimitiveType.Sphere))
+            if (PrimitiveType == EditorPrimitiveType.Plane)
+            {
+                if (!PbrVertexDisplaceEnabled) return bounds;
+                float pbrPad = MathF.Abs(PbrVertexDisplaceScale) + MathF.Abs(PbrVertexOffset);
+                if (pbrPad <= 0f) return bounds;
+                // Displacement happens along LOCAL Y, so the world pad follows the
+                // transformed normal (length = Y scale, direction = rotation).
+                var planeExtent = Vector3.Abs(Vector3.TransformNormal(Vector3.UnitY, WorldMatrix)) * pbrPad;
+                return new AABB(bounds.Min - planeExtent, bounds.Max + planeExtent);
+            }
+            if (!PbrVertexDisplaceEnabled
+                || PrimitiveType is not (EditorPrimitiveType.Box or EditorPrimitiveType.Sphere))
                 return bounds;
 
             float scale = MathF.Max(MathF.Abs(Scale.X), MathF.Max(MathF.Abs(Scale.Y), MathF.Abs(Scale.Z)));
@@ -3722,7 +3760,7 @@ public unsafe class EditorObject
         if (state == 0 && ViewportOccluders is { Count: > 0 } occluders)
         {
             foreach (var occluder in occluders)
-                if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, viewProj))
+                if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, viewProj, OcclusionTag))
                 {
                     state = 2;
                     break;

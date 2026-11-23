@@ -554,7 +554,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
         /// RMB hold is a TEMPORARY freefly-style look that never enables FlyMouseLook/FlyMode itself.
         /// Pressing ESC cancels the Fly toggle. While CTRL is held, both mouse-look and WASD movement
         /// are suppressed so editor shortcuts (Ctrl+D duplicate, Ctrl+Z undo, etc.) don't move the camera.</summary>
-        public void SetCameraFlyMode(nint window, float dt, bool processInput = true)
+        public void SetCameraFlyMode(nint window, float dt, bool processInput = true,
+            bool processScroll = true)
         {
             if (processInput)
             {
@@ -701,7 +702,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
                     // though WASD movement is deliberately slower). In orthographic the
                     // view distance does nothing, so scroll scales the ortho volume
                     // (OrthoSize) instead — the classic ortho zoom.
-                    if (Mouse.ScrollY != 0)
+                    if (processScroll && Mouse.ScrollY != 0)
                     {
                         if (IsOrthographic)
                         {

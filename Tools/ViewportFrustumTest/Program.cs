@@ -156,6 +156,43 @@ if (displacedPrimitiveBounds.Min.X > -3f || displacedPrimitiveBounds.Max.X < 3f
     throw new InvalidOperationException("Displaced Box viewport bounds do not include the scaled displacement envelope");
 Console.WriteLine("PASS displaced primitive viewport bounds");
 
+// Whole-plane cull (unchunked planes) must contain the DISPLACED surface: a plane
+// displaced by its PBR height map swings by PbrVertexDisplaceScale/Offset on top of the
+// terrain elevation extent that WorldAABB already pays.
+var displacedPlane = new EditorObject(EditorPrimitiveType.Plane)
+{
+    PbrVertexDisplaceEnabled = true,
+    PbrVertexDisplaceScale = 3f,
+    PbrVertexOffset = -1f,
+    Scale = new Vector3(4f, 2f, 4f),
+};
+var planeCullBounds = (AABB)(viewportCullBoundsProperty.GetValue(displacedPlane)
+    ?? throw new InvalidOperationException("Plane cull bounds returned null"));
+var planeFlatBounds = displacedPlane.WorldAABB;
+float planePad = (3f + 1f) * 2f; // local swing × Y scale
+if (planeCullBounds.Max.Y < planeFlatBounds.Max.Y + planePad - 0.001f
+    || planeCullBounds.Min.Y > planeFlatBounds.Min.Y - planePad + 0.001f)
+    throw new InvalidOperationException("Displaced Plane viewport bounds do not include the PBR displacement envelope");
+Console.WriteLine("PASS displaced Plane viewport bounds");
+
+// Rotated 90° about Z: the same swing must land on the WORLD X axis (the pad follows the
+// transformed normal, not a hard-coded +Y).
+var rotatedDisplacedPlane = new EditorObject(EditorPrimitiveType.Plane)
+{
+    PbrVertexDisplaceEnabled = true,
+    PbrVertexDisplaceScale = 3f,
+    PbrVertexOffset = -1f,
+    Scale = new Vector3(4f, 2f, 4f),
+    RotationEuler = new Vector3(0f, 0f, 90f),
+};
+var rotatedPlaneCullBounds = (AABB)(viewportCullBoundsProperty.GetValue(rotatedDisplacedPlane)
+    ?? throw new InvalidOperationException("Rotated plane cull bounds returned null"));
+var rotatedPlaneFlatBounds = rotatedDisplacedPlane.WorldAABB;
+if (rotatedPlaneCullBounds.Max.X < rotatedPlaneFlatBounds.Max.X + planePad - 0.001f
+    || rotatedPlaneCullBounds.Min.X > rotatedPlaneFlatBounds.Min.X - planePad + 0.001f)
+    throw new InvalidOperationException("Rotated displaced Plane bounds do not pad along the rotated normal");
+Console.WriteLine("PASS rotated displaced Plane viewport bounds");
+
 var stitchGenerator = typeof(EditorObject).GetMethod("BuildTerrainStitchVertices", BindingFlags.Static | BindingFlags.NonPublic)
     ?? throw new InvalidOperationException("Terrain skirt generator not found");
 foreach (int chunks in new[] { 2, 3 })
@@ -228,7 +265,7 @@ var preparedOcclusion = occType.GetMethod("IsOccludedPrepared", BindingFlags.Sta
     ?? throw new InvalidOperationException("Prepared occlusion method not found");
 void CheckOcclusion(string name, AABB bounds, Matrix4x4 box, Vector3 camera, bool expected)
 {
-    bool actual = (bool)(occlusion.Invoke(null, [bounds, box, camera, perspective])
+    bool actual = (bool)(occlusion.Invoke(null, [bounds, box, camera, perspective, 0, 0])
         ?? throw new InvalidOperationException("Occlusion test returned null"));
     if (actual != expected) throw new InvalidOperationException($"{name}: expected {expected}, got {actual}");
     Console.WriteLine($"PASS {name}");
@@ -243,6 +280,33 @@ CheckOcclusion("target crosses near plane", new AABB(new(-0.1f, -0.1f, -1f), new
 CheckOcclusion("small wall cannot cover target", hidden, Matrix4x4.CreateScale(0.1f) * Matrix4x4.CreateTranslation(0f, 0f, -2f), Vector3.Zero, false);
 CheckOcclusion("wall crosses near plane", hidden, Matrix4x4.CreateScale(4f, 4f, 1f) * Matrix4x4.CreateTranslation(0f, 0f, -0.5f), Vector3.Zero, false);
 
+// The whole SILHOUETTE counts, not one face: an occludee anywhere behind the box's
+// projected hull is hidden and must be skipped, exactly like a frustum rejection.
+CheckOcclusion("target behind a rotated box", hidden,
+    Matrix4x4.CreateScale(4f, 4f, 0.5f) * Matrix4x4.CreateRotationY(0.6f) * Matrix4x4.CreateTranslation(0f, 0f, -2f),
+    Vector3.Zero, true);
+
+// SELF-OCCLUSION: an object's own occluder volume (every Box submits one by default)
+// must never cull that object.
+bool CheckOwnerCull(string name, AABB target, Matrix4x4 box, int occluderOwner, int targetOwner, bool expected)
+{
+    bool actual = (bool)(occlusion.Invoke(null, [target, box, Vector3.Zero, perspective, occluderOwner, targetOwner])
+        ?? throw new InvalidOperationException("Owner occlusion test returned null"));
+    if (actual != expected) throw new InvalidOperationException($"{name}: expected {expected}, got {actual}");
+    Console.WriteLine($"PASS {name}");
+    return actual;
+}
+CheckOwnerCull("own occluder never culls its object", hidden, wall, 7, 7, false);
+CheckOwnerCull("another object's occluder still culls", hidden, wall, 7, 8, true);
+CheckOwnerCull("untagged occluder culls any occludee", hidden, wall, 0, 5, true);
+
+// OVERLAP SAFETY: a target that shares space with the occluder volume is touching or
+// inside it — keep it. (Before this guard an object inside a wall/hull disappeared.)
+CheckOcclusion("target inside the box occluder",
+    new AABB(new(-0.2f, -0.2f, -2.1f), new(0.2f, 0.2f, -1.9f)), wall, Vector3.Zero, false);
+CheckOcclusion("target touching the box back face",
+    new AABB(new(-0.3f, -0.3f, -2.3f), new(0.3f, 0.3f, -2.2f)), wall, Vector3.Zero, false);
+
 // Independently trace rays to all target corners when the screen-space test culls.
 // A false positive would hide visible geometry, so it must fail the harness.
 var random = new Random(1234);
@@ -255,9 +319,9 @@ for (int sample = 0; sample < 2000; sample++)
     var target = new AABB(new Vector3(x - 0.3f, y - 0.3f, z - 0.3f), new Vector3(x + 0.3f, y + 0.3f, z + 0.3f));
     float angle = (float)(random.NextDouble() - 0.5);
     var box = Matrix4x4.CreateScale(4f, 4f, 0.5f) * Matrix4x4.CreateRotationY(angle) * Matrix4x4.CreateTranslation(0f, 0f, -2f);
-    bool result = (bool)occlusion.Invoke(null, [target, box, Vector3.Zero, perspective])!;
-    var prepared = prepareOccluder.Invoke(null, [box, Vector3.Zero, perspective])!;
-    bool preparedResult = (bool)preparedOcclusion.Invoke(null, [target, prepared, perspective])!;
+    bool result = (bool)occlusion.Invoke(null, [target, box, Vector3.Zero, perspective, 0, 0])!;
+    var prepared = prepareOccluder.Invoke(null, [box, Vector3.Zero, perspective, 0])!;
+    bool preparedResult = (bool)preparedOcclusion.Invoke(null, [target, prepared, perspective, 0])!;
     if (preparedResult != result)
         throw new InvalidOperationException($"Prepared occlusion disagrees with the reference test at sample {sample}");
     if (!result) continue;
@@ -290,3 +354,63 @@ for (int sample = 0; sample < 2000; sample++)
 }
 if (culledCases == 0) throw new InvalidOperationException("Random test did not exercise occlusion");
 Console.WriteLine($"PASS randomized ray checks ({culledCases} occluded of 2000 cases)");
+
+// ── Per-object occlusion roles (Occluder / Occludee) ──
+var occDefaults = new (EditorPrimitiveType Type, bool Occluder)[]
+{
+    (EditorPrimitiveType.Box, true),
+    (EditorPrimitiveType.Sphere, false),
+    // Terrain as an occluder is not wired up yet.
+    (EditorPrimitiveType.Plane, false),
+    (EditorPrimitiveType.GlbReference, false),
+};
+foreach (var (type, expectedOccluder) in occDefaults)
+{
+    var roleObject = new EditorObject(type);
+    if (roleObject.IsOccluder != expectedOccluder)
+        throw new InvalidOperationException($"{type}: default occluder {roleObject.IsOccluder}, expected {expectedOccluder}");
+    if (!roleObject.IsOccludee)
+        throw new InvalidOperationException($"{type}: must be an occludee by default");
+    roleObject.IsOccluder = true;
+    roleObject.IsOccludee = false;
+    if (!roleObject.IsOccluder || roleObject.IsOccludee)
+        throw new InvalidOperationException($"{type}: occlusion roles did not stick");
+}
+Console.WriteLine("PASS occlusion roles: Box occludes by default, hull types opt-in, all occludees");
+
+var roleData = new EditorObjectData { Occluder = false, Occludee = false };
+var roleRoundTrip = JsonSerializer.Deserialize<EditorObjectData>(JsonSerializer.Serialize(roleData))!;
+var legacyRoles = JsonSerializer.Deserialize<EditorObjectData>("{}")!;
+if (roleRoundTrip.Occluder != false || roleRoundTrip.Occludee != false)
+    throw new InvalidOperationException("Occlusion roles did not round-trip");
+if (legacyRoles.Occluder != null || legacyRoles.Occludee != null)
+    throw new InvalidOperationException("Legacy occlusion role defaults changed");
+Console.WriteLine("PASS occlusion roles JSON round-trip and legacy defaults");
+
+// Hull occluders (terrain chunks / GLB bounds) must follow the OPPOSITE set of rules
+// as the exact box occluder: cover + nearer → delete, anything else → keep.
+var prepareBounds = occType.GetMethod("PrepareBounds", BindingFlags.Static | BindingFlags.NonPublic)
+    ?? throw new InvalidOperationException("PrepareBounds not found");
+void CheckHullOcclusion(string name, AABB target, AABB occluderBounds, Vector3 camera, bool expected)
+{
+    var hull = prepareBounds.Invoke(null, [occluderBounds, camera, perspective, 0])!;
+    bool actual = (bool)preparedOcclusion.Invoke(null, [target, hull, perspective, 0])!;
+    if (actual != expected) throw new InvalidOperationException($"{name}: expected {expected}, got {actual}");
+    Console.WriteLine($"PASS {name}");
+}
+var hullWall = new AABB(new(-2f, -2f, -2.25f), new(2f, 2f, -1.75f));
+CheckHullOcclusion("hull fully occluded", hidden, hullWall, Vector3.Zero, true);
+CheckHullOcclusion("hull partially visible",
+    new AABB(new(4f, -0.5f, -6f), new(6f, 0.5f, -5f)), hullWall, Vector3.Zero, false);
+CheckHullOcclusion("camera inside hull", hidden, new AABB(new(-2f), new(2f)), Vector3.Zero, false);
+CheckHullOcclusion("hull in front of target",
+    new AABB(new(-0.1f, -0.1f, -1.5f), new(0.1f, 0.1f, -1f)), hullWall, Vector3.Zero, false);
+// Terrain/GLB hulls contain geometry by definition: anything inside the hull is kept.
+CheckHullOcclusion("target inside the hull occluder",
+    new AABB(new(-0.5f, -0.5f, -2.2f), new(0.5f, 0.5f, -1.8f)), hullWall, Vector3.Zero, false);
+CheckHullOcclusion("target touching the hull occluder",
+    new AABB(new(-0.3f, -0.3f, -2.3f), new(0.3f, 0.3f, -2.2f)), hullWall, Vector3.Zero, false);
+// ...but a target BEHIND the hull and clear of it is still culled (the safety must not
+// disable occlusion altogether).
+CheckHullOcclusion("target behind the hull but clear of it",
+    new AABB(new(-0.5f, 0.5f, -2.6f), new(0.5f, 1.5f, -2.4f)), hullWall, Vector3.Zero, true);

@@ -562,6 +562,9 @@ public unsafe class EditorObjectManager
                 TerrainStitchEnabled = source.TerrainStitchEnabled,
                 TerrainStitchHeight = source.TerrainStitchHeight,
                 TerrainStitchCull = source.TerrainStitchCull,
+                // Occlusion roles travel with the duplicate.
+                IsOccluder = source.IsOccluder,
+                IsOccludee = source.IsOccludee,
                 // Terrain elevation + splat state travels with the duplicate (the
                 // weight map path is SHARED — the file is scene-persistent; the clone
                 // drops its live GPU buffers and re-decodes/recomputes lazily).
@@ -688,7 +691,7 @@ public unsafe class EditorObjectManager
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
-            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null)
+            bool captureViewportCullSnapshot = true)
         {
             ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
             ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
@@ -710,7 +713,10 @@ public unsafe class EditorObjectManager
 
             var view = camera.GetViewMatrix();
             var proj = camera.GetProjectionMatrix();
-            var cullCamera = viewportCullCamera ?? camera;
+            // Culling uses THE camera this view renders with — one camera, no separate
+            // "cull camera". A preview/game camera used as the cull camera rejected objects
+            // the editor viewport was still drawing (and vice versa).
+            var cullCamera = camera;
             var viewportCullViewProj = cullCamera.GetViewMatrix() * cullCamera.GetProjectionMatrix();
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_projLoc, 1, false, (float*)&proj);
@@ -771,20 +777,14 @@ public unsafe class EditorObjectManager
                 // Build the current-frame occluder set before visiting targets. Otherwise,
                 // a sphere/box earlier in Hierarchy order is tested before a later wall
                 // has been submitted and can never be occluded by it.
-                for (int i = 0; i < _objects.Count && _viewportOccluders.Count < 64; i++)
+                // ONLY objects marked "Occluder" contribute (default ON for a Box, OFF for
+                // the hull types — see EditorObject.IsOccluder). Terrain occluders are not
+                // wired up yet.
+                for (int i = 0; i < _objects.Count && _viewportOccluders.Count < ViewportOccluderLimit; i++)
                 {
                     var candidate = _objects[i];
-                    if (!candidate.IsVisible || candidate.PrimitiveType != EditorPrimitiveType.Box
-                        || candidate.PbrVertexDisplaceEnabled || candidate.HasPbrMaterial
-                        || candidate.Scale.X <= 0f || candidate.Scale.Y <= 0f || candidate.Scale.Z <= 0f)
-                        continue;
-
-                    candidate.EnsureResources();
-                    if (candidate.PrimitiveTriangles <= 0
-                        || !EditorObject.IsAABBInFrustum(primitiveViewProj, candidate.WorldAABB))
-                        continue;
-                    var prepared = ViewportOcclusion.Prepare(candidate.WorldMatrix, cullCamera.Position, primitiveViewProj);
-                    if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                    if (!candidate.IsVisible || !candidate.IsOccluder) continue;
+                    AddViewportOccluders(candidate, cullCamera.Position, primitiveViewProj);
                 }
             }
             ViewportOcclusionActive = useOcclusion;
@@ -793,7 +793,9 @@ public unsafe class EditorObjectManager
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
-                obj.ViewportOccluders = useOcclusion ? _viewportOccluders : null;
+                // "Occludee" OFF = never skipped by the occlusion test (frustum culling
+                // still applies) — the escape hatch for geometry that must not pop.
+                obj.ViewportOccluders = useOcclusion && obj.IsOccludee ? _viewportOccluders : null;
                 obj.ViewportCullDebugCapture = captureCullDebug;
                 obj.ViewportCullViewProjection = viewportCullViewProj;
                 obj.ViewportCullPosition = cullCamera.Position;
@@ -803,7 +805,12 @@ public unsafe class EditorObjectManager
                     && obj.PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.Sphere;
                 // Chunked planes must reach their draw path even when the aggregate
                 // bounds miss the view, so each chunk gets its own cull/debug result.
-                bool wholePlaneCull = terrainPlane && obj.PbrVertexChunk <= 1;
+                // "Chunked" = the mesh that was actually BUILT (`PbrChunkCount`), not the
+                // requested `PbrVertexChunk`: a plain flat plane requests 8 chunks but
+                // builds none, and the old test excluded it from the whole-plane cull
+                // forever (a Plane was never frustum- OR occlusion-culled).
+                if (terrainPlane) obj.EnsureResources();
+                bool wholePlaneCull = terrainPlane && obj.PbrChunkCount <= 1;
                 if (measured || wholePlaneCull)
                 {
                     obj.EnsureResources();
@@ -820,10 +827,10 @@ public unsafe class EditorObjectManager
                         }
                         else { TerrainFrustumPlanes++; TerrainFrustumTriangles += triangles; }
                     }
-                    else if (useOcclusion)
+                    else if (useOcclusion && obj.IsOccludee)
                     {
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj))
+                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj, obj.OcclusionTag))
                             {
                                 state = 2;
                                 if (measured)
@@ -1269,6 +1276,54 @@ public unsafe class EditorObjectManager
             return MathF.Max(coneExtent, markerRadius);
         }
 
+        /// <summary>Hard cap on occluders submitted per frame (test cost is O(targets ×
+        /// occluders) on the CPU).</summary>
+        internal const int ViewportOccluderLimit = 64;
+
+        /// <summary>1/√3 — the inscribed cube of a unit sphere: an occluder built from it
+        /// never hides anything the sphere itself does not cover.</summary>
+        private const float InscribedSphereCubeScale = 0.57735027f;
+
+
+        /// <summary>Append this object's occluder volume(s) when it is marked as an
+        /// occluder. Box = the exact closed box (rotated, scaled); Sphere = its inscribed
+        /// cube; terrain = one padded box per chunk (or the whole padded bounds); GLB =
+        /// the static bind-pose bounds. Displaced primitives are skipped — their vertices
+        /// leave the base box, so the box would no longer be a valid volume.
+        /// Frustum-rejected candidates are skipped: an off-screen box cannot occlude.
+        /// Only OPAQUE draws reach here (the PBR and basic shaders do not discard), so a
+        /// textured wall is as good an occluder as an untextured one.</summary>
+        private void AddViewportOccluders(EditorObject obj, Vector3 cameraPosition, Matrix4x4 viewProj)
+        {
+            if (obj.PbrVertexDisplaceEnabled) return;
+            switch (obj.PrimitiveType)
+            {
+                case EditorPrimitiveType.Box:
+                case EditorPrimitiveType.Sphere:
+                {
+                    if (obj.Scale.X <= 0f || obj.Scale.Y <= 0f || obj.Scale.Z <= 0f) return;
+                    obj.EnsureResources();
+                    if (obj.PrimitiveTriangles <= 0 ||
+                        !EditorObject.IsAABBInFrustum(viewProj, obj.WorldAABB)) return;
+                    var boxWorld = obj.PrimitiveType == EditorPrimitiveType.Box
+                        ? obj.WorldMatrix
+                        : obj.WorldMatrix * Matrix4x4.CreateScale(InscribedSphereCubeScale);
+                    var prepared = ViewportOcclusion.Prepare(boxWorld, cameraPosition, viewProj, obj.OcclusionTag);
+                    if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                    return;
+                }
+                case EditorPrimitiveType.GlbReference:
+                {
+                    if (!obj.TryGetGlbCullData(out var bounds, out _) || bounds is not { } glbBounds)
+                        return;
+                    if (!EditorObject.IsAABBInFrustum(viewProj, glbBounds)) return;
+                    var prepared = ViewportOcclusion.PrepareBounds(glbBounds, cameraPosition, viewProj, obj.OcclusionTag);
+                    if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                    return;
+                }
+            }
+        }
+
         private void DrawGlbReferences(Camera camera, Camera cullCamera, Matrix4x4 cullViewProj,
             Lights light, CSM? csm, bool captureCullDebug)
         {
@@ -1349,9 +1404,9 @@ public unsafe class EditorObjectManager
                 if (bounds is { } aabb)
                 {
                     if (!EditorObject.IsAABBInFrustum(cullViewProj, aabb)) state = 1;
-                    else if (useOcclusion)
+                    else if (useOcclusion && obj.IsOccludee)
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj))
+                            if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj, obj.OcclusionTag))
                             {
                                 state = 2;
                                 break;

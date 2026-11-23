@@ -397,6 +397,21 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             {
                 ImGui.TextDisabled($"Mesh: {obj.PbrPlaneSegmentsBuilt}×{obj.PbrPlaneSegmentsBuilt} grid (1 draw)");
             }
+            // ── OCCLUSION CULLING (per-object roles — same flags as Inspector → Flags) ──
+            ImGui.Spacing();
+            ImGui.TextColored(new Vector4(0.55f, 0.95f, 0.75f, 1f), "Occlusion Culling");
+            bool terrainOccluder = obj.IsOccluder;
+            if (ImGui.Checkbox("Occluder##terrain_occ", ref terrainOccluder)) obj.IsOccluder = terrainOccluder;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Submit this terrain to the viewport occlusion test as an occluder.\nEvery chunk becomes its own padded box, so hills can hide objects behind them.\nOFF by default: a chunk box is a hull, so a peak can hide small things beside it.");
+            bool terrainOccludee = obj.IsOccludee;
+            if (ImGui.Checkbox("Occludee##terrain_occ", ref terrainOccludee)) obj.IsOccludee = terrainOccludee;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Allow terrain chunks to be skipped when a nearer occluder fully covers them.\nFrustum culling still applies; the viewport 'OC: On' button enables the pass.");
+            ImGui.TextDisabled(obj.IsOccluder
+                ? $"Occluder: {Math.Max(1, obj.PbrChunkCount)} chunk box(es) per frame"
+                : "Occluder: off — terrain never hides other objects");
+
             // ── TERRAIN LOD (per chunk, 4 levels) ──
             //   LOD0 near      = the authored grid           · shadows in every cascade (HD)
             //   LOD1 medium    = half the segments/chunk     · shadows in the 2 nearest cascades

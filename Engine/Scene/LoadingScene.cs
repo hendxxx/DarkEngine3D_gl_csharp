@@ -376,6 +376,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                 obj.CastShadow = objData.CastShadow;
                 obj.IsVisible = objData.IsVisible;
+                // Occlusion roles: absent (legacy scene) keeps the per-type default that
+                // AddPrimitive produced (Box occludes, everything can be occluded).
+                obj.IsOccluder = objData.Occluder ?? obj.IsOccluder;
+                obj.IsOccludee = objData.Occludee ?? true;
                 if (primType == EditorPrimitiveType.Plane)
                 {
                     if (objData.PbrVertexSegments is int segments && segments > 0) obj.PbrVertexSegments = segments;

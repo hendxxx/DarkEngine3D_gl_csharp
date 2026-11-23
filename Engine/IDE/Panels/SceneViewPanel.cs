@@ -41,7 +41,7 @@ public class SceneViewPanel
             {
                 var cull = editor.ViewportCullDisplayStatistics;
                 ImGui.Separator();
-                ImGui.TextDisabled(editor.ViewportCullFreezeEnabled ? "Cull debug: FROZEN snapshot" : $"Cull debug: live ({(cull.OcclusionActive ? "OC active" : "OC inactive")}, {cull.OccluderCount} Box occluders)");
+                ImGui.TextDisabled(editor.ViewportCullFreezeEnabled ? "Cull debug: FROZEN snapshot" : $"Cull debug: live ({(cull.OcclusionActive ? "OC active" : "OC inactive")}, {cull.OccluderCount} occluders)");
                 ImGui.Text("Viewport primitives (Box/Sphere, including displaced)");
                 ImGui.Text($"Submitted: {cull.ViewportDrawnObjects:N0} objects, {cull.ViewportDrawnTriangles:N0} triangles");
                 ImGui.Text($"Frustum:   {cull.ViewportFrustumObjects:N0} objects, {cull.ViewportFrustumTriangles:N0} triangles skipped");

@@ -1172,6 +1172,8 @@ public class SceneManagerPanel
                         TerrainStitchEnabled = obj.TerrainStitchEnabled,
                         TerrainStitchHeight = obj.TerrainStitchHeight,
                         TerrainStitchCull = obj.TerrainStitchCull,
+                        Occluder = obj.IsOccluder,
+                        Occludee = obj.IsOccludee,
                         TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                         PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                     });
@@ -1576,6 +1578,10 @@ public class SceneManagerPanel
                         // Restore per-object gizmo pivot override (backward compatible  null if not present)
                         if (objData.PivotOverrideX.HasValue && objData.PivotOverrideY.HasValue && objData.PivotOverrideZ.HasValue)
                             obj.GizmoPivotOverride = new Vector3(objData.PivotOverrideX.Value, objData.PivotOverrideY.Value, objData.PivotOverrideZ.Value);
+
+                        //  Occlusion culling roles  (legacy scenes: per-type default)
+                        obj.IsOccluder = objData.Occluder ?? obj.IsOccluder;
+                        obj.IsOccludee = objData.Occludee ?? true;
 
                         //  PBR material (Box/Sphere/flat plane) 
                         obj.PbrAlbedoPath = PathHelpers.Resolve(objData.PbrAlbedoPath);
@@ -2182,6 +2188,8 @@ public class SceneManagerPanel
                             TerrainStitchEnabled = obj.TerrainStitchEnabled,
                             TerrainStitchHeight = obj.TerrainStitchHeight,
                             TerrainStitchCull = obj.TerrainStitchCull,
+                            Occluder = obj.IsOccluder,
+                            Occludee = obj.IsOccludee,
                             TexSettings = Libs.TextureSettingsData.FromSettings(obj.TexSettings),
                             PbrTexSettings = obj.PbrTexSettings.Select(Libs.TextureSettingsData.FromSettings).ToArray(),
                             // Player2D sizing — twin of the SaveAllEditorScenes block so

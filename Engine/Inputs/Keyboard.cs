@@ -11,7 +11,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetKey;
         private static delegate* unmanaged[Cdecl]<IntPtr, int, void> glfwSetWindowShouldClose;
         static bool isWireframe = false;
-        static bool f1Pressed = false;
 #pragma warning disable CS0414
         static float speedCam = 1.0f;
         static int lineVLoc = 0;
@@ -26,6 +25,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static int GetDebugMode() => debugMode;
         public static bool GetShowBBox() => debugMode >= 1;
         public static bool GetIsWireframe() => isWireframe;
+
+        /// <summary>Set the wireframe flag directly (Inspector checkbox / editor sync) and
+        /// apply it to the current GL state. Keeps ONE source of truth for the F2 shortcut,
+        /// the Inspector checkbox and the in-game render path.</summary>
+        public static unsafe void SetIsWireframe(bool value)
+        {
+            isWireframe = value;
+            GL.PolygonMode(Const.GL_FRONT_AND_BACK, value ? Const.GL_LINE : Const.GL_FILL);
+        }
 
         // P: toggle frozen frustum debug visualization (freeze 8 corners at capture time)
         static bool _showFrustumDebug = false;
@@ -144,7 +152,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             glfwSetWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowShouldClose");
 
             isWireframe = false;
-            f1Pressed = false;
              
             lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
@@ -176,23 +183,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             //    // Beritahu GLFW untuk menutup jendela
             //    glfwSetWindowShouldClose(window, 1);
             //}
-
-            // F1 toggle wireframe (rising edge)
-            int f1State = glfwGetKey(window, Const.GLFW_KEY_F1);
-            if (f1State == Const.GLFW_PRESS)
-            {
-                if (!f1Pressed)
-                {
-                    isWireframe = !isWireframe;
-                    GL.PolygonMode(Const.GL_FRONT_AND_BACK, isWireframe ? Const.GL_LINE : Const.GL_FILL);
-                    f1Pressed = true;
-                    Console.WriteLine(isWireframe ? "Wireframe Mode: ON" : "Wireframe Mode: OFF");
-                }
-            }
-            else
-            {
-                f1Pressed = false;
-            }
 
             // =========================================================================
             // F TOGGLE FOG (RISING EDGE)

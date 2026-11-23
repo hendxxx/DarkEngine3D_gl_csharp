@@ -239,6 +239,46 @@ public class IDESettingsPanel
                 ImGui.SameLine();
                 ImGui.TextDisabled(mouseCam ? "edit: RMB freefly + MMB pan ON" : "edit: mouse camera OFF");
 
+                // Camera move mode + source (per project).
+                // Move Mode: FreeFly (WASD + mouse look) / WasdOnly (WASD only, no mouse look).
+                // Move Camera: Editor (debug editor camera) / Main (viewport main marker) / Preview (viewport preview marker).
+                // Applies in editor mode (no scene) and, when a scene is active, only while the editor camera/marker is the active input owner.
+                var mvSettings = Load();
+                bool moveFreeFly = mvSettings.MoveMode == Config.MoveMode.FreeFly;
+                if (ImGui.Checkbox("FreeFly Move", ref moveFreeFly))
+                {
+                    mvSettings.MoveMode = moveFreeFly ? Config.MoveMode.FreeFly : Config.MoveMode.WasdOnly;
+                    Save(mvSettings);
+                    Console.WriteLine($"[IDESettings] Move mode: {(moveFreeFly ? "FreeFly" : "WASD-only")}");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("WASD movement style for the editor viewport camera.\nFreeFly = WASD + right-drag mouse look.\nWASD-only = WASD moves the camera, mouse look is off.\nPer project, saved in settings.json.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(moveFreeFly ? "FreeFly" : "WASD-only");
+
+                int moveSrcIdx = mvSettings.MoveCameraSource switch
+                {
+                    Config.MoveCameraSource.Main => 1,
+                    Config.MoveCameraSource.Preview => 2,
+                    _ => 0
+                };
+                string[] moveSrcOptions = ["Editor (debug camera)", "Main camera", "Preview camera"];
+                ImGui.PushItemWidth(220);
+                if (ImGui.Combo("Move Camera", ref moveSrcIdx, moveSrcOptions, moveSrcOptions.Length))
+                {
+                    mvSettings.MoveCameraSource = moveSrcIdx switch
+                    {
+                        1 => Config.MoveCameraSource.Main,
+                        2 => Config.MoveCameraSource.Preview,
+                        _ => Config.MoveCameraSource.Editor
+                    };
+                    Save(mvSettings);
+                    Console.WriteLine($"[IDESettings] Move camera: {moveSrcOptions[moveSrcIdx]}");
+                }
+                ImGui.PopItemWidth();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Which camera receives WASD / freefly input in the editor viewport.\nEditor = the IDE debug camera.\nMain = the viewport Main camera marker (position + rotation move with the camera).\nPreview = the viewport Preview camera marker.\nDefault = Editor (debug camera).\nPer project, saved in settings.json.");
+
                 // In-game mouse camera option — the checkbox only matters while PLAYING
                 // (Play In Preview / In-Game mode), so the row is hidden in pure edit
                 // mode to keep the settings panel uncluttered.
@@ -364,7 +404,9 @@ public class IDESettingsPanel
                 s.IDEFontSize = 20f;
                 s.ViewportFontSize = 16f;
                 s.ToolbarFontSize = 14f;
-                                    Save(s);
+                s.MoveMode = Config.MoveMode.FreeFly;
+                s.MoveCameraSource = Config.MoveCameraSource.Editor;
+                Save(s);
                 Console.WriteLine("[IDESettings] Reset to defaults");
             }
             ImGui.SameLine();

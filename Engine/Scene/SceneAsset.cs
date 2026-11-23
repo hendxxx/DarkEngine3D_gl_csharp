@@ -535,6 +535,10 @@ public class EditorObjectData
     /// <summary>LOD switch distances in world units: [0] LOD0 max, [1] LOD1 max,
     /// [2] LOD2 max (beyond = one quad per chunk). Null/absent = the panel defaults.</summary>
     public float[]? TerrainLodDistances { get; set; }
+    /// <summary>Occlusion-culling roles. Null/absent = legacy scene → the per-type
+    /// default (Box occludes, any 3D object can be occluded).</summary>
+    public bool? Occluder { get; set; }
+    public bool? Occludee { get; set; }
     public bool TerrainStitchEnabled { get; set; }
     public float TerrainStitchHeight { get; set; } = 20f;
     public int TerrainStitchCull { get; set; }
