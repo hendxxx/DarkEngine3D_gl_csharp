@@ -62,6 +62,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Camera? _editorCamera;
         private Camera? _markerRenderCamera;
         private Camera? _previewMarkerCamera;
+        /// <summary>Dedicated camera for viewport culling: same marker/transform as the
+        /// Preview Camera but with the VIEWPORT aspect ratio, so the small preview inset
+        /// (280x180) can never narrow or distort the frustum used to skip objects.</summary>
+        private Camera? _cullMarkerCamera;
         private double _cameraMarkerLastX;
         private double _cameraMarkerLastY;
         private string _cameraMarkerInputName = "";
@@ -275,7 +279,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         private Camera? ResolveMarkerCamera(string name, EditorObjectManager? manager, int width, int height,
-            bool preview = false)
+            bool preview = false, bool cull = false)
         {
             if (string.IsNullOrWhiteSpace(name) || manager == null) return null;
             foreach (var marker in manager.Objects)
@@ -283,7 +287,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (marker.PrimitiveType != EditorPrimitiveType.Camera ||
                     !string.Equals(marker.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
 
-                Camera? markerCamera = preview ? _previewMarkerCamera : _markerRenderCamera;
+                //  Three independent instances: render (viewpoint of the viewport), preview
+                //  (the small inset, its own aspect) and cull (viewport aspect, preview
+                //  marker). Sharing one instance made the cull frustum follow whichever
+                //  aspect updated last — the inset's — and objects near the screen edges
+                //  were skipped as if they were outside the view.
+                Camera? markerCamera = cull ? _cullMarkerCamera
+                    : preview ? _previewMarkerCamera
+                    : _markerRenderCamera;
                 markerCamera ??= new Camera(0f, 0f, 0f, 180f, 0f,
                     (float)width / Math.Max(1, height), marker.CameraFov, marker.CameraNear, marker.CameraFar);
                 var forward = marker.Forward;
@@ -292,7 +303,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 markerCamera.SetEditorViewTransform(marker.Position, yaw, pitch,
                     marker.CameraFov, marker.CameraNear, marker.CameraFar);
                 markerCamera.UpdateAspectRatio(width, height);
-                if (preview) _previewMarkerCamera = markerCamera;
+                if (cull) _cullMarkerCamera = markerCamera;
+                else if (preview) _previewMarkerCamera = markerCamera;
                 else _markerRenderCamera = markerCamera;
                 return markerCamera;
             }
@@ -372,6 +384,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _cameraMarkerLastX = mouseX;
             _cameraMarkerLastY = mouseY;
 
+            //  ── Preview look keeps the pointer in the middle ──
+            //  The LIVE preview camera owns the captured cursor, so the look behaves like an
+            //  FPS mouse: after reading this frame's delta the pointer is parked back at the
+            //  window centre. Turning stays unbounded (the next frame's delta is measured
+            //  from the centre) and the ImGui cursor never wanders off-window while live.
+            if (previewControl && _cameraMarkerMousePrimed)
+            {
+                Mouse.CentreCursor();
+                Mouse.GetCursorPosition(out double centredX, out double centredY);
+                _cameraMarkerLastX = centredX;
+                _cameraMarkerLastY = centredY;
+            }
+
             var rotation = marker.RotationEuler;
             rotation.Y -= deltaX * Mouse.Sensitivity;
             rotation.X = Math.Clamp(rotation.X - deltaY * Mouse.Sensitivity, -89f, 89f);
@@ -425,8 +450,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (sky != null && _editorSkybox != null && _editorSkyTextures != null)
                 _editorSkybox.Draw(camera, lights, dt, _editorSkyTextures);
 
+            //  recordViewportPick:false — the inset must not overwrite the per-object pick
+            //  states: it culls with its own 280x180 frustum, which would make objects the
+            //  VIEWPORT still draws unselectable for the rest of the frame.
             manager.Draw(camera, lights, csm, null, null, showSkyGizmo: false,
-                showEditorGizmos: false, captureViewportCullSnapshot: false);
+                showEditorGizmos: false, captureViewportCullSnapshot: false,
+                recordViewportPick: false);
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
@@ -794,13 +823,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera &&
                             string.Equals(obj.Name, bridge.ViewportPreviewCameraName,
                                 StringComparison.OrdinalIgnoreCase)) == true;
-                    //  preview:true keeps the cull camera on its OWN Camera instance — the
-                    //  non-preview one is shared with the render camera, so resolving both
-                    //  names through it would leave the cull camera holding the render
-                    //  camera's transform.
+                    //  cull:true keeps the cull camera on its OWN Camera instance AND gives
+                    //  it the VIEWPORT aspect (window size), not the inset's 280x180: the
+                    //  inset aspect used to leak into the frustum, so geometry near the
+                    //  left/right screen edges was culled even though the viewport shows it.
                     var viewportCullCamera = hasPreviewCamera
                         ? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
-                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight, preview: true)
+                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight, cull: true)
                             ?? viewportCamera
                         : viewportCamera;
                     bridge.Camera = viewportCamera;

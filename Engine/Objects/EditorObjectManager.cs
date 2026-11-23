@@ -710,7 +710,8 @@ public unsafe class EditorObjectManager
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
-            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null)
+            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null,
+            bool recordViewportPick = true)
         {
             ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
             ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
@@ -811,6 +812,14 @@ public unsafe class EditorObjectManager
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
+                //  Picking follows THIS frame's draw decision (see IsViewportPickable): an
+                //  object the cull pass skips must not be clickable, one that is drawn must
+                //  stay clickable. Reset here, then the cull branches below mark it.
+                if (recordViewportPick)
+                {
+                    obj.ViewportCullState = 0;
+                    obj.ViewportCullStateFrame = Glfw.FrameId;
+                }
                 //  "Occludee" OFF = never skipped by the occlusion test (frustum culling
                 //  still applies): the escape hatch for geometry that must not pop.
                 bool occludee = useOcclusion && obj.IsOccludee;
@@ -857,7 +866,11 @@ public unsafe class EditorObjectManager
                             }
                     }
                     if (captureCullDebug) _viewportCullBoxes.Add((bounds, state));
-                    if (state != 0) continue;
+                    if (state != 0)
+                    {
+                        if (recordViewportPick) obj.ViewportCullState = state;
+                        continue;
+                    }
                 }
                 obj.Draw(
                     _modelLoc, _viewLoc, _projLoc,
@@ -891,7 +904,8 @@ public unsafe class EditorObjectManager
             GL.BindVertexArray(0);
 
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
-            DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug);
+            DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug,
+                recordViewportPick);
 
             // ── 2D sprites: Player2D + Sprite2D in ONE layer-sorted pass ──
             // Digabung dari dua pass terpisah (semua player dulu, lalu semua sprite):
@@ -1284,7 +1298,7 @@ public unsafe class EditorObjectManager
         }
 
         private void DrawGlbReferences(Camera camera, Camera cullCamera, Matrix4x4 cullViewProj,
-            Lights light, CSM? csm, bool captureCullDebug)
+            Lights light, CSM? csm, bool captureCullDebug, bool recordViewportPick = true)
         {
             bool any = false;
             for (int i = 0; i < _objects.Count; i++)
@@ -1373,6 +1387,11 @@ public unsafe class EditorObjectManager
                                 break;
                             }
                     if (captureCullDebug) _viewportCullBoxes.Add((aabb, state));
+                }
+                if (recordViewportPick)
+                {
+                    obj.ViewportCullState = state;
+                    obj.ViewportCullStateFrame = Glfw.FrameId;
                 }
                 if (state == 1) { GlbFrustumObjects++; GlbFrustumTriangles += triangles; continue; }
                 if (state == 2) { GlbOccludedObjects++; GlbOccludedTriangles += triangles; continue; }
@@ -1476,6 +1495,14 @@ public unsafe class EditorObjectManager
         /// Raycast against all editor objects to find the closest hit.
         /// Returns the hit object, hit point, and hit distance.
         /// </summary>
+        /// <summary>True when the object was actually DRAWN in the current viewport frame.
+        /// A frame id mismatch (no draw pass yet this frame: hidden tab, scene still loading)
+        /// counts as pickable so selecting never breaks; likewise an object with no recorded
+        /// state. Culled objects (frustum or occlusion) are not pickable — a click through the
+        /// editor camera must never select something the viewport is not showing.</summary>
+        public static bool IsViewportPickable(EditorObject obj) =>
+            obj.ViewportCullState == 0 || obj.ViewportCullStateFrame != Glfw.FrameId;
+
         public EditorObject? Raycast(Vector3 rayOrigin, Vector3 rayDir, out float hitDist, out Vector3 hitPoint)
         {
             hitDist = float.MaxValue;
@@ -1486,6 +1513,7 @@ public unsafe class EditorObjectManager
             {
                 var obj = _objects[i];
                 if (!obj.IsVisible) continue;
+                if (!IsViewportPickable(obj)) continue;
 
                 if (obj.PrimitiveType == EditorPrimitiveType.GlbReference)
                 {

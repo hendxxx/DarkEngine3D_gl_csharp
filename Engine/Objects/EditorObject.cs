@@ -2336,6 +2336,15 @@ public unsafe class EditorObject
     internal Matrix4x4? ViewportCullViewProjection { get; set; }
     internal Vector3 ViewportCullPosition { get; set; }
 
+    /// <summary>Result of the LAST viewport draw pass for this object: 0 = drawn,
+    /// 1 = frustum-culled, 2 = occlusion-culled. Set by EditorObjectManager.Draw.</summary>
+    internal int ViewportCullState { get; set; }
+
+    /// <summary>Glfw.FrameId of the draw pass that produced <see cref="ViewportCullState"/>.
+    /// Picking trusts the state only while it belongs to the current frame, so a frame that
+    /// never ran a draw pass can never make the whole scene unselectable.</summary>
+    internal int ViewportCullStateFrame { get; set; } = -1;
+
     // ── Terrain LOD (per chunk, 4 levels) ──
     // Level 0 is the AUTHORED grid (one chunk = perChunk×perChunk quads). Each further
     // level keeps the same chunk grid but halves the segments per chunk, and the last

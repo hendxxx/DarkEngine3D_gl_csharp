@@ -3165,6 +3165,10 @@ public unsafe class ViewportPanel
         foreach (var obj in mgr.Objects)
         {
             if (obj == null) continue;
+            // Only objects the viewport actually draws are marquee-selectable: the cull
+            // pass may have skipped this one (outside the culling camera / behind an
+            // occluder), and selecting invisible geometry would be a lie.
+            if (!EditorObjectManager.IsViewportPickable(obj)) continue;
             // Project to viewport pixels (Y=0=bottom in GL), then flip to scene Y-down
             Vector2 p = TransformGizmo.ProjectToScreen(cam, obj.GizmoPivotOverride ?? obj.Position, texW, texH);
             float sy = texH - p.Y;
