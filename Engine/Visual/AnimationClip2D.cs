@@ -120,6 +120,19 @@ public class AnimationClip2D
     /// <summary>True when this clip has baked layer clips to composite over it.</summary>
     public bool HasLayerClips => LayerClipNames.Count > 0;
 
+    /// <summary>Phase 3 layered bake: the rig slot group this clip BAKES ("" = the base strip
+    /// made of every ungrouped slot). Poses/timing stay identical to the base clip — only the
+    /// rasterized slot set differs — so the strips line up pixel-for-pixel at runtime.</summary>
+    public string LayerGroup = "";
+
+    /// <summary>Phase 3: id of the BASE clip this strip belongs to ("" = not a layer strip).
+    /// A STABLE link instead of the display name, so renaming either clip, a name collision or an
+    /// interrupted bake can never spawn a second strip for the same group.</summary>
+    public string LayerSourceId = "";
+
+    /// <summary>True when this clip is a slot-group strip (not a base clip).</summary>
+    public bool IsLayerStrip => !string.IsNullOrEmpty(LayerGroup) || !string.IsNullOrEmpty(LayerSourceId);
+
     /// <summary>Re-target the frame-keyed events onto a strip with a different frame count.
     /// A bake can change the sample count (fps / length edit), and an event authored at 60%
     /// of the cycle must stay there instead of drifting or falling off the end. Keys are
@@ -347,7 +360,9 @@ public class AnimationClip2D
         RigId = RigId,
         Tracks = Tracks?.Select(t => t.Clone()).ToList(),
         Bake = Bake?.Clone(),
-        LayerClipNames = LayerClipNames.ToList()
+        LayerClipNames = LayerClipNames.ToList(),
+        LayerGroup = LayerGroup,
+        LayerSourceId = LayerSourceId
     };
 
     public static AnimationClip2D FromData(AnimationClip2DData data) => new()
@@ -375,7 +390,9 @@ public class AnimationClip2D
         RigId = data.RigId ?? "",
         Tracks = data.Tracks?.Select(t => t.Clone()).ToList(),
         Bake = data.Bake?.Clone(),
-        LayerClipNames = data.LayerClipNames?.ToList() ?? new()
+        LayerClipNames = data.LayerClipNames?.ToList() ?? new(),
+        LayerGroup = data.LayerGroup ?? "",
+        LayerSourceId = data.LayerSourceId ?? ""
     };
 }
 
@@ -524,4 +541,8 @@ public class AnimationClip2DData
     public BakeSettings? Bake { get; set; }
     /// <summary>Phase 3: baked clips composited over this one (draw order = list order).</summary>
     public List<string>? LayerClipNames { get; set; }
+    /// <summary>Phase 3: rig slot group this clip bakes ("" = base strip).</summary>
+    public string? LayerGroup { get; set; }
+    /// <summary>Phase 3: id of the base clip this strip was baked for.</summary>
+    public string? LayerSourceId { get; set; }
 }

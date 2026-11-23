@@ -5941,6 +5941,26 @@ ImGui.SameLine();
         }
     }
 
+    /// <summary>Pick the main/preview viewport camera AND persist it. These names used to live
+    /// only in memory, so every project open / restart dropped the selection back to the editor's
+    /// global camera; the project's settings.json owns them now.</summary>
+    private void SetViewportCamera(bool preview, string name)
+    {
+        if (preview) _bridge.ViewportPreviewCameraName = name;
+        else _bridge.ViewportMainCameraName = name;
+        try
+        {
+            var s = DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Load();
+            if (preview) s.ViewportPreviewCameraName = name;
+            else s.ViewportMainCameraName = name;
+            DarkEngine3D_gl_csharp.Engine.Config.SettingsSave.Save(s);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Viewport] Could not save the camera selection: {ex.Message}");
+        }
+    }
+
     private void DrawViewportCameraSelectionMenu(string menuLabel, bool preview)
     {
         var manager = _bridge.EditorObjectManager;
@@ -5949,10 +5969,7 @@ ImGui.SameLine();
         if (!ImGui.BeginMenu($"{menuLabel}: {selectedLabel}")) return;
 
         if (ImGui.MenuItem("Editor Camera", null, string.IsNullOrEmpty(selectedName)))
-        {
-            if (preview) _bridge.ViewportPreviewCameraName = "";
-            else _bridge.ViewportMainCameraName = "";
-        }
+            SetViewportCamera(preview, "");
 
         if (manager != null)
         {
@@ -5962,10 +5979,7 @@ ImGui.SameLine();
                 if (marker.PrimitiveType != EditorPrimitiveType.Camera) continue;
                 string itemId = $"{marker.Name}##camera_{(preview ? "preview" : "main")}_{cameraIndex++}";
                 if (ImGui.MenuItem(itemId, null, string.Equals(selectedName, marker.Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    if (preview) _bridge.ViewportPreviewCameraName = marker.Name;
-                    else _bridge.ViewportMainCameraName = marker.Name;
-                }
+                    SetViewportCamera(preview, marker.Name);
             }
         }
 

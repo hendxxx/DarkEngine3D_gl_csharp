@@ -30,7 +30,7 @@ Rules when updating:
 | **0 — Foundation** | Animation data model, additive clip fields, DTOs, JSON round-trip tests | ✅ Done | 2026-10-25 | build 0/0, `AnimationEditorDataTest` A–I, `SpriteSheetDataJsonTest`, `BinCacheTest` |
 | **1 — Clip workspace** | Animation Editor panel, groups, standard sets, timeline, Library, Preview Loadout, quick actions, open-clip navigation | ✅ Done | 2026-10-26 | build 0/0, `AnimationEditorDataTest` ALL PASS (data side); ⚠️ no in-IDE smoke run yet |
 | **2 — Skeleton authoring + bake** | Rigs (bones/slots/attachments/skins), animate mode, CPU rasterizer, `AnimationBaker`, atlas bake, dirty tracking | ✅ Complete | 2026-11-07 | build 0/0; `AnimationEvalTest` A–I, `SkeletonBakeTest` A–E, data J–K all pass; IDE not visually verified |
-| **3 — Attachments at runtime** (optional) | Layered bake, `LayerClipNames` draw path, runtime skin swap, bone attachment points | 🟡 In progress | 2026-11-07 | build 0/0, `AnimationEditorDataTest` J; runtime draw path not smoke-tested in the IDE |
+| **3 — Attachments at runtime** (optional) | Layered bake (slot groups), `LayerClipNames` draw path, interactive per-group bake + live composite preview, runtime skin swap, bone attachment points | ✅ Bake + interactive UI | 2026-11-23 | build 0/0, `SkeletonBakeTest` F (shared canvas, base/layer pixel split), `AnimationEditorDataTest` J |
 | **4 — Spine-level extras** (optional) | Mesh/FFD/weights/IK, Spine JSON import/export, live skeleton runtime | ⬜ Not started | — | — |
 
 **Current position:** Phase 1 complete. Phase 2 complete (rig setup + animate + atlas bake) and
@@ -290,7 +290,20 @@ yet), which is why this phase stays in progress.
       repeat-strip width, equipment overlays, badges/`RuntimeVisualTopOffset`.
 - [x] Editor UI (Animation Editor → clip properties): layer list with reorder (^/v), remove,
       missing-layer warning, and an "Add layer clip" combo filtered to baked clips; no rebake needed.
-- [ ] Layered BAKE (slot groups) — blocked on Phase 2 (no slot model in the bake path yet).
+- [x] Layered BAKE (slot groups) — `Slot2D.Group` on the rig, `AnimationClip2D.LayerGroup` on the
+      clip, `SkeletonBakeOptions.SlotGroup` / `UngroupedOnly` filters in `AnimationBaker.Bake`, plus
+      `AnimationBaker.SlotGroups()` and `BakeLayers()` (base = ungrouped slots, one strip per group,
+      ALL strips measured from every slot so they share one canvas and never drift).
+- [x] INTERACTIVE workflow (2026-11-23) — the Animation Editor clip panel lists one row per rig
+      group with `Bake layer` / `Rebake layer`: one click creates/refreshes `<clip> [Group]`, rebakes
+      the base in the SAME background pack (so it drops the grouped slots) and links the strip into
+      `LayerClipNames`. The editor preview composites those strips live at the current frame, so
+      scrubbing shows the assembled character instead of a single flattened strip.
+- [x] IDENTITY, not name matching (2026-11-23) — a strip stores `AnimationClip2D.LayerSourceId`
+      (the base clip's `Id`) next to `LayerGroup`, so `EnsureLayerClip` re-bakes the SAME clip when
+      a group is baked again, even after a rename or a `UniqueName` collision. Baking a group twice
+      can no longer spawn `<clip> [Group] 2`. A strip also refuses to bake layers itself
+      (`IsLayerStrip`), so layers can never chain into `[Hair] [Hand]` strips.
 - [ ] Runtime per-slot visibility/colour — needs Phase 2 slots.
 - [ ] Optional bone attachment points (`hand`, `muzzle`) — needs Phase 2 rigs.
 - ⚠️ Item integration is unchanged on purpose: `EquipSheet/EquipClip/EquipLayer` keeps drawing the
@@ -303,6 +316,8 @@ yet), which is why this phase stays in progress.
 |---|---|---|
 | 2026-11-07 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
 | 2026-11-07 | `Tools/AnimationEditorDataTest` (case J: layer list round-trip, order, copy semantics, legacy clip) | ALL PASS |
+| 2026-11-23 | `dotnet build DarkEngine3D_gl_csharp.csproj -c Debug` | 0 warnings, 0 errors |
+| 2026-11-23 | `Tools/SkeletonBakeTest` case F (groups, shared canvas, base/layer pixel split) | ALL PASS |
 | — | In-IDE smoke run (layered clip drawn over a player + sprite) | not run yet |
 
 ### Acceptance

@@ -516,6 +516,10 @@ public static class Program
                     Mode = AnimationClipMode.Skeleton,
                     RigId = "rig-1",
                     Bake = new BakeSettings { Fps = 12f, Skin = "knight", DurationSeconds = 0.75f },
+                    // Phase 3: a layer strip remembers WHICH slot group it bakes, and which
+                    // base clip it belongs to (the stable id that prevents duplicate strips).
+                    LayerGroup = "Hair",
+                    LayerSourceId = "base-clip-1",
                 }.ToData(),
             ],
         };
@@ -525,6 +529,16 @@ public static class Program
         Check("the bake skin survives save/load", back.Bake?.Skin == "knight");
         Check("the cycle length survives save/load", Math.Abs((back.Bake?.DurationSeconds ?? 0f) - 0.75f) < 1e-4f);
         Check("the rig link survives save/load", back.RigId == "rig-1" && back.IsSkeleton);
+        Check("the baked slot group survives save/load", back.LayerGroup == "Hair");
+        Check("ToData keeps the baked slot group", back.ToData().LayerGroup == "Hair");
+        Check("the base clip link survives save/load", back.LayerSourceId == "base-clip-1");
+        Check("ToData keeps the base clip link", back.ToData().LayerSourceId == "base-clip-1");
+        Check("a layer strip knows it is one", back.IsLayerStrip);
+        Check("a plain clip is still a base bake",
+            new AnimationClip2D() is { LayerGroup: "", LayerSourceId: "", IsLayerStrip: false });
+        Check("legacy data without a group loads as the base bake",
+            AnimationClip2D.FromData(new AnimationClip2DData { Name = "legacy" }) is
+                { LayerGroup: "", LayerSourceId: "", IsLayerStrip: false });
     }
 
     private static bool SingleFrameEventTarget()

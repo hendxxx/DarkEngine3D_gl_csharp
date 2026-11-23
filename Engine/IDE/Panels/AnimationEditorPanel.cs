@@ -1480,7 +1480,8 @@ public class AnimationEditorPanel
         {
             var slot = rig.Slots[i];
             string att = string.IsNullOrEmpty(slot.Attachment) ? "(no attachment)" : slot.Attachment;
-            if (ImGui.Selectable($"{i + 1}. {slot.Name}  ·  {att}##rigslot{i}", i == _rigSlotIdx))
+            string groupTag = string.IsNullOrWhiteSpace(slot.Group) ? "" : $"  ·  [{slot.Group}]";
+            if (ImGui.Selectable($"{i + 1}. {slot.Name}  ·  {att}{groupTag}##rigslot{i}", i == _rigSlotIdx))
                 _rigSlotIdx = i;
         }
         if (rig.Slots.Count == 0)
@@ -1506,6 +1507,14 @@ public class AnimationEditorPanel
             ImGui.EndCombo();
         }
         ImGui.TextDisabled($"Bone ({(string.IsNullOrEmpty(sel.Bone) ? "draws at the rig origin" : "follows this bone")})");
+
+        ImGui.SetNextItemWidth(-1);
+        string slotGroup = sel.Group ?? "";
+        if (ImGui.InputTextWithHint("##slotgroup", "layer group (Body, Hair, Weapon\u2026)", ref slotGroup, 64))
+            sel.Group = slotGroup.Trim();
+        ImGui.TextDisabled(string.IsNullOrWhiteSpace(sel.Group)
+            ? "Layer group: none \u2192 baked into the BASE strip"
+            : $"Layer group '{sel.Group}' \u2192 own strip, composited over the base");
 
         ImGui.SetNextItemWidth(-1);
         var slotAttachments = rig.Attachments.Where(a => string.Equals(a.Slot, sel.Name, StringComparison.Ordinal)).ToList();
@@ -2472,6 +2481,11 @@ public class AnimationEditorPanel
         drawList.AddImage((nint)tex, new Vector2(drawX, drawY),
             new Vector2(drawX + dispW, drawY + dispH), new Vector2(u0, vTop), new Vector2(u1, vBot));
 
+        // Phase 3 layered bake: the composited strips draw over the base at the SAME time and
+        // pivot, exactly like the runtime (EditorObject.DrawBakedLayerClips), so scrubbing the
+        // timeline here shows the assembled character without entering play mode.
+        DrawLayerClipsPreview(clip, cursorPos, previewSize, _cursor, pxScale);
+
         foreach (var layer in overlays)
             if (layer.Layer >= 0) DrawLoadoutLayer(layer, cursorPos, previewSize, drawList);
 
@@ -2696,6 +2710,57 @@ public class AnimationEditorPanel
             layer.Tex = tex;
         }
         return result;
+    }
+
+    /// <summary>Draw the baked layer clips of <paramref name="clip"/> over the base image of the
+    /// Animation Editor preview. Frame rule mirrors the runtime: each layer samples its own strip
+    /// at the BASE clip's frame index (clamped), scaled by the BASE px scale so a layer authored on
+    /// the same rig grid lines up pixel-for-pixel.</summary>
+    private void DrawLayerClipsPreview(AnimationClip2D clip, Vector2 cursorPos, float previewSize,
+        int baseLocalFrame, float pxScale)
+    {
+        if (!clip.HasLayerClips || pxScale <= 0f) return;
+        var drawList = ImGui.GetWindowDrawList();
+        foreach (string layerName in clip.LayerClipNames)
+        {
+            if (string.IsNullOrWhiteSpace(layerName)) continue;
+            var layerClip = _spriteEditor.AnimationClips.FirstOrDefault(c =>
+                !ReferenceEquals(c, clip)
+                && string.Equals(c.Name, layerName, StringComparison.OrdinalIgnoreCase)
+                && c.FrameIndices.Count > 0);
+            if (layerClip == null) continue;
+            var lsheet = _spriteEditor.FindBakedAtlasPublic(layerClip.SpriteSheetName);
+            if (lsheet == null) continue;
+            uint ltex = _spriteEditor.EnsureImageTextureForEditor(lsheet.ImagePath);
+            if (ltex == 0) continue;
+
+            int lframe = Math.Clamp(baseLocalFrame, 0, layerClip.FrameIndices.Count - 1);
+            int frameIdx = layerClip.FrameIndices[lframe];
+            SpriteFrame? lframeData = lsheet.CustomFrames != null
+                && frameIdx >= 0 && frameIdx < lsheet.CustomFrames.Count
+                ? lsheet.CustomFrames[frameIdx] : null;
+            float cellW = lframeData?.Width ?? (lsheet.FrameWidth > 0 ? lsheet.FrameWidth : lsheet.ImageWidth);
+            float cellH = lframeData?.Height ?? (lsheet.FrameHeight > 0 ? lsheet.FrameHeight : lsheet.ImageHeight);
+            if (cellW <= 0f) cellW = 64f;
+            if (cellH <= 0f) cellH = 64f;
+
+            float dispW = cellW * pxScale;
+            float dispH = cellH * pxScale;
+            float offX = (layerClip.SpriteOffsetX + (lframeData?.RenderOffsetX ?? 0f)) * pxScale;
+            float offY = -((layerClip.SpriteOffsetY + (lframeData?.RenderOffsetY ?? 0f)) * pxScale);
+            float drawX = cursorPos.X + (previewSize - dispW) * 0.5f + offX;
+            float drawY = cursorPos.Y + (previewSize - dispH) + offY;
+
+            var (uvMin, uvMax) = lsheet.GetFrameUV(frameIdx);
+            float u0 = uvMin.X, u1 = uvMax.X;
+            float vTop = 1f - uvMax.Y;
+            float vBot = 1f - uvMin.Y;
+            if (lsheet.FlipY) (vTop, vBot) = (vBot, vTop);
+            if (lsheet.FlipX) (u0, u1) = (u1, u0);
+
+            drawList.AddImage((nint)ltex, new Vector2(drawX, drawY),
+                new Vector2(drawX + dispW, drawY + dispH), new Vector2(u0, vTop), new Vector2(u1, vBot));
+        }
     }
 
     private void DrawLoadoutLayer(ResolvedLoadoutLayer l, Vector2 cursorPos, float previewSize, ImDrawListPtr drawList)
@@ -4289,6 +4354,8 @@ public class AnimationEditorPanel
         Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
         Bake = clip.Bake?.Clone(),
         LayerClipNames = clip.LayerClipNames.ToList(),
+        LayerGroup = clip.LayerGroup,
+        LayerSourceId = clip.LayerSourceId,
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -4563,6 +4630,156 @@ public class AnimationEditorPanel
         var pose = SkeletonPoseEvaluator.Evaluate(rig, clip.Tracks, 0f, clip.Bake.Skin);
         ImGui.TextDisabled($"At t=0: {pose.Slots.Count} slot(s) draw, {clip.Tracks?.Count ?? 0} track(s), "
             + $"{(clip.Bake.DurationSeconds > 0f ? clip.Bake.DurationSeconds : AnimationBaker.ResolveDuration(clip)):0.##}s cycle.");
+
+        DrawLayerGroupBake(rig, clip);
+    }
+
+    /// <summary>Phase 3, INTERACTIVE: one row per rig slot group. A single click bakes that
+    /// group into its own strip AND links it into this clip's layer list, so the preview below
+    /// immediately shows the assembled character while the timeline keeps its timing. The base
+    /// strip is rebaked in the SAME batch (it must drop the grouped slots), so a group edit is
+    /// one click away from a correct bake instead of a separate "bake layers" chore.</summary>
+    private void DrawLayerGroupBake(AnimationRig rig, AnimationClip2D clip)
+    {
+        ImGui.Separator();
+        ImGui.TextDisabled("LAYER GROUPS \u2014 bake a slot group as its own strip, composited by the layer list below");
+        var groups = AnimationBaker.SlotGroups(rig);
+        if (groups.Count == 0)
+        {
+            ImGui.TextDisabled("  no groups \u2014 set Group on a slot (Rig Setup \u2192 SLOTS) to bake it separately");
+            ImGui.TextDisabled($"  this clip bakes the base strip: {rig.Slots.Count} ungrouped slot(s)");
+            return;
+        }
+
+        if (clip.IsLayerStrip)
+        {
+            ImGui.TextColored(ColAmber, $"This clip IS the layer strip for group '{clip.LayerGroup}' "
+                + "\u2014 open the base clip to bake layers.");
+            return;
+        }
+
+        bool busy = _spriteEditor.IsAtlasRepackRunning;
+        foreach (string group in groups)
+        {
+            ImGui.PushID("layergroup" + group);
+            int slotCount = rig.Slots.Count(s =>
+                string.Equals(s.Group?.Trim() ?? "", group, StringComparison.OrdinalIgnoreCase));
+            var layerClip = _spriteEditor.AnimationClips.FirstOrDefault(c =>
+                string.Equals(c.Name, LayerClipNameFor(clip, group), StringComparison.OrdinalIgnoreCase));
+            bool linked = layerClip != null && clip.LayerClipNames.Any(n =>
+                string.Equals(n, layerClip.Name, StringComparison.OrdinalIgnoreCase));
+
+            ImGui.TextColored(linked ? ColGreen : ColText, $"{group}  \u00b7  {slotCount} slot(s)");
+            ImGui.SameLine();
+            ImGui.BeginDisabled(busy || string.IsNullOrEmpty(clip.RigId));
+            if (ImGui.Button(layerClip == null ? "Bake layer##bakelayer" : "Rebake layer##bakelayer"))
+                BakeSlotGroup(rig, clip, group);
+            ImGui.EndDisabled();
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Bake this slot group into its own strip and link it here.\n"
+                    + "The base strip is rebaked in the same batch so it drops these slots.\n"
+                    + "Baking again REUSES the same strip \u2014 never a duplicate.");
+            ImGui.SameLine();
+            ImGui.TextDisabled(layerClip == null ? "  (not baked yet)"
+                : linked ? $"  {layerClip.Name}  \u2014 in the layer list"
+                : $"  {layerClip.Name}  (add it with \"Add layer clip\" below)");
+            ImGui.PopID();
+        }
+
+        int ungrouped = rig.Slots.Count(s => string.IsNullOrWhiteSpace(s.Group));
+        ImGui.TextDisabled($"Base strip: {ungrouped} ungrouped slot(s)  \u00b7  "
+            + $"{rig.Slots.Count - ungrouped} grouped slot(s)");
+    }
+
+    private static string LayerClipNameFor(AnimationClip2D clip, string group) => $"{clip.Name} [{group}]";
+
+    /// <summary>Create (or refresh) the layer strip of one slot group and bake base + layer in
+    /// one background pack. Durable and additive: it is an ordinary clip, so the existing
+    /// bake/undo/save paths already cover it.</summary>
+    private AnimationClip2D? BakeSlotGroup(AnimationRig rig, AnimationClip2D clip, string group)
+    {
+        var layerClip = EnsureLayerClip(clip, group);
+        if (layerClip == null) return null;
+
+        var prepared = new List<(AnimationClip2D Clip, List<BakedSpriteFrame> Frames)>();
+        if (TryBuildSkeletonFrames(clip, out var baseFrames, out _))
+            prepared.Add((clip, baseFrames));
+        if (!TryBuildSkeletonFrames(layerClip, out var layerFrames, out string error))
+        {
+            Status(error);
+            return null;
+        }
+        prepared.Add((layerClip, layerFrames));
+
+        if (!_spriteEditor.TryStartBakeBatch(prepared, $"layer group '{group}'"))
+        {
+            Status("Could not start the bake \u2014 see Console.");
+            return null;
+        }
+
+        clip.BakeDirty = true;
+        layerClip.BakeDirty = true;
+        clip.Bake!.LastBakeHash = SkeletonBakeHash(rig, clip);
+        layerClip.Bake!.LastBakeHash = SkeletonBakeHash(rig, layerClip);
+        if (!clip.LayerClipNames.Any(n => string.Equals(n, layerClip.Name, StringComparison.OrdinalIgnoreCase)))
+            clip.LayerClipNames.Add(layerClip.Name);
+
+        Status($"Baking '{layerClip.Name}' ({layerFrames.Count} frames) + base \u2014 linked to '{clip.Name}'");
+        return layerClip;
+    }
+
+    /// <summary>The layer strip for one slot group: a copy of the base clip (same rig, tracks,
+    /// timing, skin) with <see cref="AnimationClip2D.LayerGroup"/> set and no baked frames of
+    /// its own yet. An existing strip gets its tracks/settings refreshed so a timeline edit is
+    /// never stale.</summary>
+    private AnimationClip2D? EnsureLayerClip(AnimationClip2D baseClip, string group)
+    {
+        if (string.IsNullOrEmpty(baseClip.RigId)) return null;
+
+        // STABLE identity first (base id + group), display name second. A rename, a name
+        // collision or an interrupted bake can therefore never create a SECOND strip for the
+        // same group — which is exactly the duplicate the name-only lookup produced.
+        var existing = _spriteEditor.AnimationClips.FirstOrDefault(c =>
+                !ReferenceEquals(c, baseClip)
+                && string.Equals(c.LayerSourceId, baseClip.Id, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(c.LayerGroup?.Trim() ?? "", group, StringComparison.OrdinalIgnoreCase))
+            ?? _spriteEditor.AnimationClips.FirstOrDefault(c =>
+                !ReferenceEquals(c, baseClip)
+                && string.Equals(c.Name, LayerClipNameFor(baseClip, group), StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrEmpty(c.LayerGroup)
+                    || string.Equals(c.LayerGroup.Trim(), group, StringComparison.OrdinalIgnoreCase)));
+        if (existing != null)
+        {
+            existing.Mode = AnimationClipMode.Skeleton;
+            existing.RigId = baseClip.RigId;
+            existing.LayerGroup = group;
+            existing.LayerSourceId = baseClip.Id;
+            existing.LayerClipNames = new List<string>();   // a strip is never itself a composite
+            existing.Tracks = baseClip.Tracks?.Select(t => t.Clone()).ToList();
+            existing.Bake ??= baseClip.Bake?.Clone();
+            if (existing.Bake != null && baseClip.Bake != null)
+            {
+                existing.Bake.Skin = baseClip.Bake.Skin;
+                existing.Bake.Fps = baseClip.Bake.Fps;
+                existing.Bake.DurationSeconds = baseClip.Bake.DurationSeconds;
+            }
+            return existing;
+        }
+
+        var copy = CloneClip(baseClip);
+        copy.Id = Guid.NewGuid().ToString("N");
+        copy.Name = UniqueName(_spriteEditor.AnimationClips.Select(c => c.Name), LayerClipNameFor(baseClip, group));
+        copy.Mode = AnimationClipMode.Skeleton;
+        copy.RigId = baseClip.RigId;
+        copy.LayerGroup = group;
+        copy.LayerSourceId = baseClip.Id;
+        copy.LayerClipNames = new List<string>();
+        copy.SourceSheetName = "";
+        copy.SourceFrameIndices = new List<int>();
+        copy.FrameIndices = new List<int>();   // nothing baked for this strip yet
+        copy.BakeDirty = true;
+        _spriteEditor.AddOrReplaceClipForEditor(copy);
+        return copy;
     }
 
     /// <summary>Sample a skeleton clip into atlas-ready frames. Pose evaluation + CPU
@@ -4581,7 +4798,16 @@ public class AnimationEditorPanel
             return false;
         }
 
-        var options = new SkeletonBakeOptions { Skin = clip.Bake?.Skin };
+        // Phase 3: a clip with a LayerGroup rasterizes only that group's slots; the base clip
+        // (no group) carries every slot WITHOUT a group. The canvas is measured from all slots
+        // either way, so base + layers share one grid and never drift.
+        string? group = string.IsNullOrWhiteSpace(clip.LayerGroup) ? null : clip.LayerGroup.Trim();
+        var options = new SkeletonBakeOptions
+        {
+            Skin = clip.Bake?.Skin,
+            SlotGroup = group,
+            UngroupedOnly = group == null,
+        };
         var result = AnimationBaker.Bake(rig, clip, options, name =>
             _spriteEditor.FindSourceSheetPublic(name) ?? _spriteEditor.FindBakedAtlasPublic(name));
         if (!result.Success)
@@ -4639,6 +4865,7 @@ public class AnimationEditorPanel
             clip.Bake?.Fps,
             clip.Bake?.Skin,
             clip.Bake?.DurationSeconds,
+            clip.LayerGroup,
         });
         byte[] hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexString(hash);

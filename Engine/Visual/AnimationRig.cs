@@ -45,6 +45,11 @@ public sealed class Slot2D
     public float A { get; set; } = 1f;
     public bool Visible { get; set; } = true;
 
+    /// <summary>Phase 3 layer group ("Body", "Hair", "Weapon"…). Slots that share a group bake
+    /// into their OWN strip, so that strip can be composited/swapped over the base without
+    /// rebaking anything else. Empty = the base strip (baked with every other ungrouped slot).</summary>
+    public string Group { get; set; } = "";
+
     public Slot2D Clone() => (Slot2D)MemberwiseClone();
 }
 

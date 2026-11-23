@@ -12,6 +12,26 @@ public sealed class SkeletonBakeOptions
     /// <summary>Largest frame the atlas accepts (4096 − 2 × 1px gutter).</summary>
     public int MaxFrameSize { get; set; } = SpriteAtlasBaker.AtlasSize - 2;
 
+    /// <summary>Phase 3 layered bake: rasterize ONLY the slots that carry this
+    /// <see cref="Slot2D.Group"/>. The canvas bounds are still measured from EVERY slot, so all
+    /// strips of one clip share one grid and align pixel-for-pixel. Null/empty = every slot.</summary>
+    public string? SlotGroup { get; set; }
+
+    /// <summary>Rasterize only slots with NO group (the base strip of a layered rig).
+    /// Ignored while <see cref="SlotGroup"/> is set. A rig without groups is unchanged: every
+    /// slot is ungrouped, so this selects all of them.</summary>
+    public bool UngroupedOnly { get; set; }
+
+    /// <summary>True when this bake should rasterize a slot that belongs to
+    /// <paramref name="slotGroup"/> (a <see cref="Slot2D.Group"/> value; null/empty = ungrouped).</summary>
+    public bool Includes(string? slotGroup)
+    {
+        string group = slotGroup?.Trim() ?? "";
+        if (!string.IsNullOrEmpty(SlotGroup))
+            return string.Equals(group, SlotGroup.Trim(), StringComparison.OrdinalIgnoreCase);
+        return !UngroupedOnly || group.Length == 0;
+    }
+
     public SkeletonBakeOptions Clone() => (SkeletonBakeOptions)MemberwiseClone();
 }
 
@@ -121,6 +141,12 @@ public static class AnimationBaker
         result.Fps = fps;
         result.Duration = duration;
 
+        // Slot groups are authored on the RIG; a pose only carries the slot's name, so resolve
+        // name -> group once per bake (cheap, and it keeps the pose model unchanged).
+        var groupBySlot = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rigSlot in rig.Slots) groupBySlot[rigSlot.Name] = rigSlot.Group ?? "";
+        bool Included(PoseSlot poseSlot) => opts.Includes(groupBySlot.GetValueOrDefault(poseSlot.SlotName, ""));
+
         var times = SampleTimes(clip, fps, duration);
         var rasterizer = new SpriteRasterizer(sheetLookup);
         var regions = new Dictionary<Attachment2D, RegionImage?>();
@@ -157,6 +183,17 @@ public static class AnimationBaker
             return result;
         }
 
+        // A filter that selects nothing would silently bake an empty strip; say WHY instead.
+        if (!poses.Any(p => p.Slots.Any(Included)))
+        {
+            result.Warnings.Add(!string.IsNullOrEmpty(opts.SlotGroup)
+                ? $"Layer group '{opts.SlotGroup}' has no slots on rig '{rig.Name}'."
+                : opts.UngroupedOnly
+                    ? $"Rig '{rig.Name}' has no ungrouped slots — the base strip would be empty."
+                    : $"Clip '{clip.Name}' produced no drawable slots.");
+            return result;
+        }
+
         // ── runtime-compatible canvas geometry ──
         // The sprite draw path centres a frame horizontally on the object and puts its
         // BOTTOM on the feet line (it never reads SpriteFrame anchors). So the canvas must be
@@ -190,6 +227,7 @@ public static class AnimationBaker
             var pixels = new byte[width * height * 4];
             foreach (var slot in poses[i].Slots)
             {
+                if (!Included(slot)) continue;
                 var region = GetRegion(rasterizer, regions, slot.Attachment!, missing);
                 if (region == null) continue;
                 rasterizer.DrawSlot(slot, region, pixels, width, height, canvasLeft, canvasTop);
@@ -229,4 +267,22 @@ public static class AnimationBaker
         }
         return region;
     }
+
+    // ── Phase 3: layered bake (slot groups) ──────────────────────────────────────
+
+    /// <summary>Distinct non-empty slot groups of a rig, in slot (draw) order — the order the
+    /// editor lists them and the order their strips get composited. Never mutates the rig.</summary>
+    public static List<string> SlotGroups(AnimationRig? rig)
+    {
+        var groups = new List<string>();
+        if (rig?.Slots == null) return groups;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var slot in rig.Slots)
+        {
+            string group = slot.Group?.Trim() ?? "";
+            if (group.Length > 0 && seen.Add(group)) groups.Add(group);
+        }
+        return groups;
+    }
+
 }

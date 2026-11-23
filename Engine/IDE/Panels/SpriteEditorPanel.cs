@@ -1052,7 +1052,9 @@ public class SpriteEditorPanel
         Id = clip.Id, RigId = clip.RigId,
         Tracks = clip.Tracks?.Select(t => t.Clone()).ToList(),
         Bake = clip.Bake?.Clone(),
-        LayerClipNames = clip.LayerClipNames.ToList()
+        LayerClipNames = clip.LayerClipNames.ToList(),
+        LayerGroup = clip.LayerGroup,
+        LayerSourceId = clip.LayerSourceId
     };
 
     private void ReloadRepackedAtlasTextures(IEnumerable<SpriteSheet> atlases)

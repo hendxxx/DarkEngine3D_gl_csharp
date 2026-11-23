@@ -21,6 +21,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>When true, mouse cursor stays visible during in-game mode.</summary>
         public bool ShowCursorInGame { get; set; } = false;
 
+        // ── Viewport camera selection (per project). Without these the viewport — and the
+        // preview camera used while playing — fell back to the editor's GLOBAL camera on
+        // every project open / restart, no matter what the user picked. ──
+        /// <summary>Camera marker driving the viewport MAIN view ("" = editor camera).</summary>
+        public string ViewportMainCameraName { get; set; } = "";
+        /// <summary>Camera marker driving the viewport PREVIEW inset ("" = editor camera).</summary>
+        public string ViewportPreviewCameraName { get; set; } = "";
+
         // ── IDE Font (editor panels font) ──
         public string IDEFontPath { get; set; } = "";   // empty = default font
         public float IDEFontSize { get; set; } = 20f;

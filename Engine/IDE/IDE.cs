@@ -195,6 +195,10 @@ public class IDE : IDisposable
                     // ── Enable freefly + preview mode for in-game navigation ──
                     // (2D level scenes keep freefly OFF — see SyncLevelCamera.)
                     _viewport.PreviewMode = true;
+                    // In-game IS a freefly session: entering switches mouse-look ON (WASD +
+                    // look, cursor captured) and leaving the session switches it back OFF with
+                    // the cursor visible. The "Show Mouse In-Game" setting does not gate this —
+                    // tying the look to it left the session not-freefly whenever it was ON.
                     if (Bridge.Camera != null && Bridge.ActiveTilemap == null)
                         Bridge.Camera.FlyMouseLook = true;
 
@@ -234,6 +238,17 @@ public class IDE : IDisposable
                     _levelCameraMoved = false;
                     _levelCameraReframePending = false;
                     RestoreEditorCamera();
+                    // Back in the EDITOR: freefly OFF and the cursor visible. This must come
+                    // AFTER the restore — RestoreCameraSnapshot puts FlyMouseLook/IsFlyMode
+                    // back from the entry snapshot, so a freefly editor view would otherwise
+                    // return with the mouse still captured after every F9 round-trip.
+                    if (Bridge.Camera != null)
+                    {
+                        Bridge.Camera.FlyMouseLook = false;
+                        Bridge.Camera.IsFlyMode = false;
+                    }
+                    Mouse.ShowMouse(true);
+                    Mouse.ResetState();
                     // Return focus to the panel the user was working in (e.g. the
                     // Inspector while editing the player). Without this, every panel
                     // becomes "appearing" again after in-game mode and the LAST-Begun
@@ -479,6 +494,18 @@ public class IDE : IDisposable
             Visual.Camera.InGameMouseCameraControl = projSettings.InGameMouseCameraControl;
             Bridge.ShowInGameStats = projSettings.ShowInGameStats;
             Bridge.ShowSelectionBorder = projSettings.ShowSelectionBorder;
+            // These three are read LIVE every frame (in-game cursor, viewport grid/shadows,
+            // viewport camera pick). Program.cs applied the EXE-fallback file before any
+            // project existed, so without this reload the project's saved values were never
+            // applied: "Show Mouse In-Game" stayed false in the running session even though
+            // settings.json said true, and the preview camera snapped back to the global one.
+            Bridge.ShowCursorInGame = projSettings.ShowCursorInGame;
+            Bridge.ShowDebugGrid = projSettings.ShowDebugGrid;
+            Bridge.ShowShadows = projSettings.ShowShadows;
+            Bridge.ViewportMainCameraName = projSettings.ViewportMainCameraName ?? "";
+            Bridge.ViewportPreviewCameraName = projSettings.ViewportPreviewCameraName ?? "";
+            // A project that opens while a play session is running must keep its capture state.
+            if (!(Bridge.InGameActive || Bridge.IsPreviewMode)) Mouse.ShowMouse(true);
             // 2D sprite normal maps are per project too (settings.json follows the project).
             Visual.SpriteLighting2D.NormalMapsEnabled = projSettings.SpriteNormalMaps2D;
             if (Bridge.Camera != null)
@@ -522,6 +549,13 @@ public class IDE : IDisposable
             Visual.Camera.ApplyZoomLimits(fallbackSettings.OrthoZoomMin, fallbackSettings.OrthoZoomMax);
             Visual.SpriteLighting2D.NormalMapsEnabled = fallbackSettings.SpriteNormalMaps2D;
             Bridge.ShowSelectionBorder = fallbackSettings.ShowSelectionBorder;
+            Bridge.ShowCursorInGame = fallbackSettings.ShowCursorInGame;
+            Bridge.ShowDebugGrid = fallbackSettings.ShowDebugGrid;
+            Bridge.ShowShadows = fallbackSettings.ShowShadows;
+            // Camera markers belong to the project that just closed.
+            Bridge.ViewportMainCameraName = "";
+            Bridge.ViewportPreviewCameraName = "";
+            if (!(Bridge.InGameActive || Bridge.IsPreviewMode)) Mouse.ShowMouse(true);
             // Follow the active settings file back to the exe fallback after close.
             Config.PostFxSettings.Apply(fallbackSettings);
             _postFxPanel?.OnProjectChanged();
@@ -2273,22 +2307,21 @@ public class IDE : IDisposable
                 }
                 Mouse.ShowMouse(true);
             }
-            // ShowCursorInGame option overrides: always show cursor in-game mode
-            else if (Bridge.ShowCursorInGame)
+            // A visible authored Container (ESC menu) is modal: it owns the cursor and the
+            // camera must not spin behind it.
+            else if (hasVisibleMenu)
             {
-                if (cam.FlyMouseLook)
+                if (cam.FlyMouseLook || cam.IsFlyMode)
                 {
                     cam.FlyMouseLook = false;
-                    Mouse.ShowMouse(true);
+                    cam.IsFlyMode = false;
                 }
-            }
-            else if (hasVisibleMenu && cam.FlyMouseLook)
-            {
-                cam.FlyMouseLook = false;
                 Mouse.ShowMouse(true);
             }
-            else if (!hasVisibleMenu && !cam.FlyMouseLook)
+            else if (!cam.FlyMouseLook)
             {
+                // In-game IS freefly: with no menu on screen the session owns the mouse.
+                // ("Show Mouse In-Game" no longer overrides this — see IDE.InGameMode.)
                 cam.FlyMouseLook = true;
                 Mouse.ShowMouse(false);
             }

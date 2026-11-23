@@ -166,10 +166,13 @@ public class IDESettingsPanel
                 if (ImGui.Checkbox("Show Cursor In-Game", ref cursor))
                 {
                     _showCursorInGame = cursor;
+                    // The running session reads the BRIDGE flag every frame; saving only the
+                    // file left the cursor hidden until a restart.
+                    _bridge.ShowCursorInGame = cursor;
                     SaveSetting(s => s.ShowCursorInGame = cursor);
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Keep mouse cursor visible during in-game mode (F9).");
+                    ImGui.SetTooltip("Keep the cursor visible for 3D gameplay (HUD clicks, menus) and 2D levels.\nThe IDE in-game session (F9) already captures the mouse for freefly\nwhile no authored menu is open, so the editor preview always turns that on.");
 
                 // FOV
                 var settings = Load();
@@ -339,6 +342,7 @@ public class IDESettingsPanel
                 _vsync = false;
                 _msaaSamples = 1;
                 _showCursorInGame = false;
+                _bridge.ShowCursorInGame = false;
                 _showDebugGrid = false;
                 _showShadows = true;
                 _spriteNormalMaps = true;

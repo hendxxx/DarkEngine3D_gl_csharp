@@ -182,9 +182,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _gizmoMinusWasDown = false;
         //  Gizmo pivot override reset (ESC key)
         private bool _gizmoEscWasDown = false;
-        //  Cursor visibility tracking (avoid redundant GLFW calls)
-        private bool _prevCursorShown = true;
-
         /// <summary>"Show Mouse In-Game" (Inspector → In-Game Settings / IDE Settings): true keeps
         /// the OS cursor VISIBLE during gameplay instead of capturing it (hidden + centred) for
         /// mouse-look. Read fresh every frame so toggling it mid-session applies immediately.</summary>
@@ -662,9 +659,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             ResetCameraToEditor2DView();
             // "Show Mouse In-Game" wins over the default capture on ENTER, so the very first
             // frame already matches the setting instead of flickering the cursor on frame 2.
-            bool showCursorOnEnter = CursorSettingShown;
-            Mouse.ShowMouse(showCursorOnEnter);
-            _prevCursorShown = showCursorOnEnter;
+            Mouse.ShowMouse(CursorSettingShown);
 
             Console.WriteLine("[GameScene] Engine Running...");
         }
@@ -688,11 +683,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // The setting keeps the cursor on screen during gameplay; otherwise it stays captured
             // (hidden + centred) unless the viewport lost focus or the pause layer owns the mouse.
             bool shouldShowCursor = CursorSettingShown || !viewportFocused || _paused;
-            if (shouldShowCursor != _prevCursorShown)
-            {
-                Mouse.ShowMouse(shouldShowCursor);
-                _prevCursorShown = shouldShowCursor;
-            }
+            // Apply it EVERY frame. Mouse.ShowMouse is latched (an unchanged value is a cheap
+            // no-op), but a LOCAL belief about the current state is not: pause/ESC, editor
+            // fly-look and the IDE in-game overlay all change the real cursor state behind
+            // this method's back, so a stale copy skipped the call and the setting looked
+            // ignored (or inverted) until something else forced a change.
+            Mouse.ShowMouse(shouldShowCursor);
 
             // ── Input gate: when InGameActive=false, block ALL keyboard + mouse ──
             // The IDE F9 button is the only way to re-enable ingame input.

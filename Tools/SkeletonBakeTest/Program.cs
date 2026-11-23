@@ -28,6 +28,7 @@ internal static class Program
             FeetContract(dir, sheet);
             Rebake(dir, sheet);
             Limits(dir, sheet);
+            LayeredBake(sheet);
         }
         finally
         {
@@ -243,6 +244,53 @@ internal static class Program
             },
         ],
     };
+
+    // ── F. layered bake (Phase 3 slot groups) ───────────────────────────────────────
+
+    private static void LayeredBake(SpriteSheet sheet)
+    {
+        Console.WriteLine("\n== F. layered bake (slot groups) ==\n");
+
+        var rig = BuildRig(sheet, bodyOffsetX: 0f, bodyOffsetY: 0f, handOffsetY: 10f);
+        rig.Slots[1].Group = "Hand";   // the arm art becomes its own strip
+        var lookup = (Func<string, SpriteSheet?>)(n => Same(n, sheet) ? sheet : null);
+
+        var groups = AnimationBaker.SlotGroups(rig);
+        Check("a rig reports its slot groups in slot order",
+            groups.Count == 1 && groups[0] == "Hand", string.Join(",", groups));
+
+        // The editor bakes the base and one group per click, through these two option sets.
+        var baseStrip = AnimationBaker.Bake(rig, StaticClip(),
+            new SkeletonBakeOptions { UngroupedOnly = true }, lookup);
+        var layerStrip = AnimationBaker.Bake(rig, StaticClip(),
+            new SkeletonBakeOptions { SlotGroup = "Hand" }, lookup);
+        Check("the base strip bakes without the grouped slots", baseStrip.Success, baseStrip.Warnings);
+        Check("the group bakes its own strip", layerStrip.Success, layerStrip.Warnings);
+        Check("base and layer strips share ONE canvas so they line up",
+            layerStrip.Width == baseStrip.Width
+            && layerStrip.Height == baseStrip.Height
+            && MathF.Abs(layerStrip.BelowRootPx - baseStrip.BelowRootPx) < 0.001f,
+            $"{baseStrip.Width}x{baseStrip.Height} vs {layerStrip.Width}x{layerStrip.Height}");
+
+        int all = CountOpaque(AnimationBaker.Bake(rig, StaticClip(), null, lookup).Frames[0]);
+        int basePixels = CountOpaque(baseStrip.Frames[0]);
+        int layerPixels = CountOpaque(layerStrip.Frames[0]);
+        Check("the base strip drops the grouped slot's pixels", basePixels > 0 && basePixels < all,
+            $"{basePixels}/{all}");
+        Check("the layer strip carries only the grouped slot's pixels", layerPixels > 0 && layerPixels < all,
+            $"{layerPixels}/{all}");
+        Check("base + layer pixels add up to the whole character", basePixels + layerPixels == all,
+            $"{basePixels}+{layerPixels}/{all}");
+
+        // A group with no slots must explain itself instead of baking an empty strip (the
+        // single-strip entry point, because BakeLayers always walks the rig's real groups).
+        var empty = AnimationBaker.Bake(rig, StaticClip(),
+            new SkeletonBakeOptions { SlotGroup = "Missing" }, lookup);
+        Check("an unknown group bakes nothing", !empty.Success);
+        Check("an unknown group names itself in the warning",
+            empty.Warnings.Any(w => w.Contains("Missing", StringComparison.OrdinalIgnoreCase)),
+            string.Join(" | ", empty.Warnings));
+    }
 
     private static AnimationRig BuildRig(SpriteSheet sheet, float bodyOffsetX, float bodyOffsetY, float handOffsetY)
         => new()
