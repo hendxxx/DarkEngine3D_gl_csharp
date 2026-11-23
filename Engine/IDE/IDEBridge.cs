@@ -96,6 +96,9 @@ public class IDEBridge
     public bool CameraMarkerControlActive { get; set; }
     public Action<bool>? PreviewModeChanged { get; set; }
     public bool CameraPreviewEnabled { get; set; } = true;
+    /// <summary>Camera Preview inset width in pixels (0 = automatic). Height follows the
+    /// preview texture aspect. Written by the inset's resize grip, saved in IDE settings.</summary>
+    public float CameraPreviewWidth { get; set; }
     public uint CameraPreviewTextureID { get; set; }
     public int CameraPreviewTextureWidth { get; set; }
     public int CameraPreviewTextureHeight { get; set; }
@@ -1271,6 +1274,14 @@ public class IDEBridge
         public bool? CameraOrtho { get; set; }
         /// <summary>Saved ortho half-height (zoom). Null = keep current.</summary>
         public float? CameraOrthoSize { get; set; }
+
+        /// <summary>Viewport Preview Camera chosen for this scene (empty = Editor
+        /// Camera). Saved with the scene and restored when the scene is selected.</summary>
+        public string PreviewCameraName { get; set; } = "";
+
+        /// <summary>Viewport Main Camera chosen for this scene (empty = Editor Camera).
+        /// Saved with the scene and restored when the scene is selected.</summary>
+        public string MainCameraName { get; set; } = "";
     }
 
     /// <summary>All scenes created/managed by the UI Editor. Keyed by scene name.</summary>
@@ -1308,7 +1319,22 @@ public class IDEBridge
                 prev.CameraOrthoSize = Camera.OrthoSize;
             }
 
+            // Stash the viewport cameras too — they are saved per scene.
+            if (_selectedEditorScene != null
+                && EditorScenes.TryGetValue(_selectedEditorScene, out var prevPreview))
+            {
+                prevPreview.PreviewCameraName = ViewportPreviewCameraName;
+                prevPreview.MainCameraName = ViewportMainCameraName;
+            }
+
             _selectedEditorScene = value;
+
+            // Restore the incoming scene's cameras (empty = Editor Camera).
+            if (value != null && EditorScenes.TryGetValue(value, out var nextPreview))
+            {
+                ViewportPreviewCameraName = nextPreview.PreviewCameraName;
+                ViewportMainCameraName = nextPreview.MainCameraName;
+            }
 
             // Restore the incoming scene's saved camera (if any)
             if (value != null
@@ -1325,6 +1351,26 @@ public class IDEBridge
                 Camera.SyncSmoothVectors();
             }
         }
+    }
+
+    /// <summary>Set the viewport Preview Camera and remember it on the selected scene,
+    /// so it is written to the scene file and restored when switching back.</summary>
+    public void SetPreviewCameraName(string cameraName)
+    {
+        ViewportPreviewCameraName = cameraName;
+        if (_selectedEditorScene != null
+            && EditorScenes.TryGetValue(_selectedEditorScene, out var scene))
+            scene.PreviewCameraName = cameraName;
+    }
+
+    /// <summary>Set the viewport Main Camera (the camera the viewport renders from) and
+    /// remember it on the selected scene so it is saved with that scene.</summary>
+    public void SetMainCameraName(string cameraName)
+    {
+        ViewportMainCameraName = cameraName;
+        if (_selectedEditorScene != null
+            && EditorScenes.TryGetValue(_selectedEditorScene, out var scene))
+            scene.MainCameraName = cameraName;
     }
 
     /// <summary>True when the ACTIVE editor scene is a GameScene type. Gates the

@@ -25,6 +25,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public string IDEFontPath { get; set; } = "";   // empty = default font
         public float IDEFontSize { get; set; } = 20f;
         public float ViewportFontSize { get; set; } = 16f;
+        /// <summary>Camera Preview inset width in pixels (0 = automatic size). The height
+        /// follows the preview texture's aspect ratio.</summary>
+        public float CameraPreviewWidth { get; set; }
 
         // ── Viewport editor prefs (persisted so they survive restarts) ──
         /// <summary>Editor debug grid on/off (viewport toolbar "Grid").</summary>

@@ -376,6 +376,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                 obj.CastShadow = objData.CastShadow;
                 obj.IsVisible = objData.IsVisible;
+                obj.IsOccluderOverride = objData.IsOccluder;
+                obj.IsOccludee = objData.IsOccludee;
                 if (primType == EditorPrimitiveType.Plane)
                 {
                     if (objData.PbrVertexSegments is int segments && segments > 0) obj.PbrVertexSegments = segments;

@@ -2807,7 +2807,7 @@ public class InspectorPanel
             ImGui.Spacing();
             if (ImGui.Button("Use as Preview Camera", new Vector2(-1, 28)))
             {
-                _bridge.ViewportPreviewCameraName = editorObj.Name;
+                _bridge.SetPreviewCameraName(editorObj.Name);
                 Console.WriteLine($"[Inspector] Camera preview: '{editorObj.Name}'");
             }
             if (ImGui.IsItemHovered())
@@ -3470,6 +3470,18 @@ public class InspectorPanel
             bool shadow = editorObj.CastShadow;
             if (ImGui.Checkbox("Cast Shadow", ref shadow))
                 editorObj.CastShadow = shadow;
+
+            bool occluder = editorObj.IsOccluder;
+            if (ImGui.Checkbox("Occluder", ref occluder))
+                editorObj.IsOccluder = occluder;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("This object's volume hides objects behind it in the viewport (OC).\nDefault ON for a Box; Sphere/GLB default OFF because their AABB is larger than the mesh.");
+
+            bool occludee = editorObj.IsOccludee;
+            if (ImGui.Checkbox("Occludee", ref occludee))
+                editorObj.IsOccludee = occludee;
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Allow OC to skip this object when something solid is in front of it.\nOFF = always drawn while inside the frustum.");
         }
     }
 

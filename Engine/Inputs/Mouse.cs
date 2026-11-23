@@ -109,6 +109,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         /// the pointer and zero the delta stream, which silently kills mouse-look.</summary>
         private static bool? _cursorShown;
 
+        /// <summary>True when the OS cursor is currently visible (last mode applied was
+        /// GLFW_CURSOR_NORMAL). Read by cursor owners that must restore a state they did
+        /// not set themselves.</summary>
+        public static bool CursorShown => _cursorShown ?? true;
+
         /// <summary>Show/hide the OS cursor. BOTH states park the pointer in the CENTRE of the
         /// window: while hidden that is where GLFW keeps its virtual cursor (so the delta stream
         /// starts at zero), and showing it again makes the cursor appear in the middle of the

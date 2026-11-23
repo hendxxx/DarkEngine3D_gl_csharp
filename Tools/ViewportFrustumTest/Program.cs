@@ -218,6 +218,17 @@ var skirtBottom = Vector3.Transform(new Vector3(0f, -skirtObject.TerrainStitchHe
 if (skirtObject.WorldAABB.Min.Y > skirtBottom.Y) throw new InvalidOperationException("Terrain skirt missing from world bounds");
 Console.WriteLine("PASS terrain skirt geometry, winding, bounds, and JSON defaults/round-trip");
 
+// Per-scene viewport Preview Camera must survive the scene file round-trip, and an
+// older file without the field must fall back to the Editor Camera (empty).
+var previewScene = new SceneAsset { SceneName = "CameraTest", PreviewCameraName = "camera1", MainCameraName = "camera1" };
+var previewRoundTrip = JsonSerializer.Deserialize<SceneAsset>(JsonSerializer.Serialize(previewScene))!;
+if (previewRoundTrip.PreviewCameraName != "camera1" || previewRoundTrip.MainCameraName != "camera1")
+    throw new InvalidOperationException("Preview camera name did not round-trip");
+var legacyPreviewScene = JsonSerializer.Deserialize<SceneAsset>("{}")!;
+if (legacyPreviewScene.PreviewCameraName.Length != 0)
+    throw new InvalidOperationException("Preview camera legacy default changed");
+Console.WriteLine("PASS preview camera name JSON round-trip and legacy default");
+
 var occType = typeof(EditorObject).Assembly.GetType("DarkEngine3D_gl_csharp.Engine.Objects.ViewportOcclusion")
     ?? throw new InvalidOperationException("Occlusion test not found");
 var occlusion = occType.GetMethod("IsOccluded", BindingFlags.Static | BindingFlags.NonPublic)
@@ -228,7 +239,7 @@ var preparedOcclusion = occType.GetMethod("IsOccludedPrepared", BindingFlags.Sta
     ?? throw new InvalidOperationException("Prepared occlusion method not found");
 void CheckOcclusion(string name, AABB bounds, Matrix4x4 box, Vector3 camera, bool expected)
 {
-    bool actual = (bool)(occlusion.Invoke(null, [bounds, box, camera, perspective])
+    bool actual = (bool)(occlusion.Invoke(null, [bounds, box, camera, perspective, 0, 0])
         ?? throw new InvalidOperationException("Occlusion test returned null"));
     if (actual != expected) throw new InvalidOperationException($"{name}: expected {expected}, got {actual}");
     Console.WriteLine($"PASS {name}");
@@ -255,9 +266,9 @@ for (int sample = 0; sample < 2000; sample++)
     var target = new AABB(new Vector3(x - 0.3f, y - 0.3f, z - 0.3f), new Vector3(x + 0.3f, y + 0.3f, z + 0.3f));
     float angle = (float)(random.NextDouble() - 0.5);
     var box = Matrix4x4.CreateScale(4f, 4f, 0.5f) * Matrix4x4.CreateRotationY(angle) * Matrix4x4.CreateTranslation(0f, 0f, -2f);
-    bool result = (bool)occlusion.Invoke(null, [target, box, Vector3.Zero, perspective])!;
-    var prepared = prepareOccluder.Invoke(null, [box, Vector3.Zero, perspective])!;
-    bool preparedResult = (bool)preparedOcclusion.Invoke(null, [target, prepared, perspective])!;
+    bool result = (bool)occlusion.Invoke(null, [target, box, Vector3.Zero, perspective, 0, 0])!;
+    var prepared = prepareOccluder.Invoke(null, [box, Vector3.Zero, perspective, 0])!;
+    bool preparedResult = (bool)preparedOcclusion.Invoke(null, [target, prepared, perspective, 0])!;
     if (preparedResult != result)
         throw new InvalidOperationException($"Prepared occlusion disagrees with the reference test at sample {sample}");
     if (!result) continue;

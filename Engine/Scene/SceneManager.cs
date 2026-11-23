@@ -34,6 +34,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private IScene? _deferredTransitionScene;
         private bool _running;
         private bool _altEnterWasDown = false;
+        /// <summary>True while the OS cursor is parked for the LIVE camera-preview latch
+        /// (see the cursor block in the render phase).</summary>
+        private bool _previewCursorHidden;
+        /// <summary>Cursor visibility captured when the LIVE latch hid it, restored on release
+        /// so a session that owns a hidden cursor (in-game look) is not left with the arrow up.</summary>
+        private bool _previewCursorWasShown = true;
 
         // ── IDE integration ──
         private IDE.IDE? _ide;
@@ -298,9 +304,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.CameraMarkerControlActive = false;
             bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                             Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
-            bool previewControl = bridge.CameraPreviewControlActive && ctrlHeld;
+            //  Preview camera control is CLICK-LATCHED in ViewportPanel: clicking the
+            //  inset takes the camera over until the viewport image is clicked again,
+            //  so it keeps flying while the cursor travels away from the small inset.
+            //  Ctrl is only needed by the unlatched paths (viewport Main Camera).
+            bool previewControl = bridge.CameraPreviewControlActive;
             bool playSession = bridge.InGameActive || bridge.IsPreviewMode;
-            bool inputAllowed = bridge.IsViewportFocused && bridge.IsViewportImageHovered &&
+            bool inputAllowed = bridge.IsViewportFocused &&
+                                (previewControl || bridge.IsViewportImageHovered) &&
                                 !bridge.IsOverlayVisible && !bridge.SuppressViewportInput &&
                                 !bridge.ScrollCapturedByUI && !bridge.MenuOwnsInput;
 
@@ -766,13 +777,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera && obj.IsDefaultCamera)
                         : null;
                     string viewportCameraName = defaultCamera?.Name ?? bridge.ViewportMainCameraName;
+
+                    // ── Rendering and culling have different cameras on purpose ──
+                    // The viewport RENDERS through its own camera (editor camera or Main
+                    // Camera), but its FRUSTUM + OCCLUSION culling always follows the
+                    // selected Preview Camera: geometry the preview cannot see, or that an
+                    // occluder hides there, is skipped in the big view too. Choosing
+                    // Views → Preview Camera → Editor Camera culls with the render camera
+                    // again. This is independent of Cull Viz / Freeze (those only drive the
+                    // debug overlay) and of LIVE (which owns input + hides the cursor).
                     var viewportCamera = ResolveMarkerCamera(viewportCameraName,
                         bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight) ?? _editorCamera;
-                    var viewportCullCamera = ResolveMarkerCamera(viewportCameraName,
-                        bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
-                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? viewportCamera;
+                    bool hasPreviewCamera =
+                        !string.IsNullOrWhiteSpace(bridge.ViewportPreviewCameraName) &&
+                        bridge.EditorObjectManager?.Objects.Any(obj =>
+                            obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera &&
+                            string.Equals(obj.Name, bridge.ViewportPreviewCameraName,
+                                StringComparison.OrdinalIgnoreCase)) == true;
+                    //  preview:true keeps the cull camera on its OWN Camera instance — the
+                    //  non-preview one is shared with the render camera, so resolving both
+                    //  names through it would leave the cull camera holding the render
+                    //  camera's transform.
+                    var viewportCullCamera = hasPreviewCamera
+                        ? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
+                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight, preview: true)
+                            ?? viewportCamera
+                        : viewportCamera;
                     bridge.Camera = viewportCamera;
 
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
@@ -1079,6 +1109,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // ── Render IDE overlay on top of scene ──
                 if (_ide != null && _ide.IsActive)
                     _ide.Render();
+
+                // ── LIVE camera-preview control owns the pointer ──
+                // While the preview inset is latched (gold frame) the mouse-look reads
+                // raw cursor deltas, so the OS cursor is parked/hidden: the arrow stays
+                // out of the shot and the look never stalls at the window edge.
+                // Written AFTER every other cursor owner each frame (IDE.Update and the
+                // scene render run earlier), so ShowMouse's idempotent latch is never
+                // flipped back and forth frame by frame.
+                bool previewCursorHidden = _ide != null && _ide.IsActive &&
+                                           _ide.Bridge?.CameraPreviewControlActive == true;
+                if (previewCursorHidden)
+                {
+                    if (!_previewCursorHidden)
+                    {
+                        _previewCursorWasShown = Mouse.CursorShown;
+                        _previewCursorHidden = true;
+                    }
+                    //  Idempotent inside ShowMouse: no re-centre while already hidden.
+                    if (Mouse.CursorShown) Mouse.ShowMouse(false);
+                }
+                else if (_previewCursorHidden)
+                {
+                    _previewCursorHidden = false;
+                    if (_previewCursorWasShown) Mouse.ShowMouse(true);
+                }
 
                 // Transition overlay is rendered by the IDE while the ImGui frame is active.
                 // Do not draw ImGui overlay here to avoid calling ImGui draw-list APIs

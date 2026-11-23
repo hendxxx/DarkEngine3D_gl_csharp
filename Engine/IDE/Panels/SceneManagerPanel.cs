@@ -901,7 +901,17 @@ public class SceneManagerPanel
                 Elements = [SceneAssetSerializer.ToData(editorScene.Root)],
                 BackgroundObjects = [],
                 EditorObjects = [],
-                SceneType = editorScene.Type.ToString()
+                SceneType = editorScene.Type.ToString(),
+                // The bridge owns the LIVE value for the selected scene; other scenes
+                // keep whatever was last stored on their own record.
+                PreviewCameraName = string.Equals(name, _bridge.SelectedEditorScene,
+                    StringComparison.Ordinal)
+                    ? _bridge.ViewportPreviewCameraName
+                    : editorScene.PreviewCameraName,
+                MainCameraName = string.Equals(name, _bridge.SelectedEditorScene,
+                    StringComparison.Ordinal)
+                    ? _bridge.ViewportMainCameraName
+                    : editorScene.MainCameraName
             };
             SceneAssetSerializer.ApplyTransitionSettings(asset);
 
@@ -987,6 +997,8 @@ public class SceneManagerPanel
                         ColorB = obj.Color.Z,
                         CastShadow = obj.CastShadow,
                         IsVisible = obj.IsVisible,
+                        IsOccluder = obj.IsOccluderOverride,
+                        IsOccludee = obj.IsOccludee,
                         GlbFilePath = PathHelpers.MakeRelative(obj.GlbFilePath ?? ""),
                         CameraFov = obj.CameraFov,
                         CameraNear = obj.CameraNear,
@@ -1548,6 +1560,8 @@ public class SceneManagerPanel
                         obj.Color = new Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
                         obj.CastShadow = objData.CastShadow;
                         obj.IsVisible = objData.IsVisible;
+                        obj.IsOccluderOverride = objData.IsOccluder;
+                        obj.IsOccludee = objData.IsOccludee;
                         // Restore GLB model path (resolved against the exe folder).
                         if (!string.IsNullOrEmpty(objData.GlbFilePath))
                             obj.GlbFilePath = PathHelpers.Resolve(objData.GlbFilePath);
@@ -1876,7 +1890,9 @@ public class SceneManagerPanel
                 var loadedScene = new IDEBridge.EditorScene(
                     sceneName, sceneType, sceneRoot)
                 {
-                    ObjectManager = editorMgr
+                    ObjectManager = editorMgr,
+                    PreviewCameraName = asset.PreviewCameraName ?? "",
+                    MainCameraName = asset.MainCameraName ?? ""
                 };
 
                 //  Restore per-scene freefly camera (each scene keeps its own view) 
@@ -2003,7 +2019,15 @@ public class SceneManagerPanel
                     Elements = [SceneAssetSerializer.ToSceneData(editorScene.Root)],
                     BackgroundObjects = [],
                     EditorObjects = [],
-                    SceneType = editorScene.Type.ToString()
+                    SceneType = editorScene.Type.ToString(),
+                    PreviewCameraName = string.Equals(name, _bridge.SelectedEditorScene,
+                        StringComparison.Ordinal)
+                        ? _bridge.ViewportPreviewCameraName
+                        : editorScene.PreviewCameraName,
+                    MainCameraName = string.Equals(name, _bridge.SelectedEditorScene,
+                        StringComparison.Ordinal)
+                        ? _bridge.ViewportMainCameraName
+                        : editorScene.MainCameraName
                 };
                 SceneAssetSerializer.ApplyTransitionSettings(asset);
 
@@ -2086,6 +2110,8 @@ public class SceneManagerPanel
                             ColorB = obj.Color.Z,
                             CastShadow = obj.CastShadow,
                             IsVisible = obj.IsVisible,
+                            IsOccluder = obj.IsOccluderOverride,
+                            IsOccludee = obj.IsOccludee,
                             GlbFilePath = PathHelpers.MakeRelative(obj.GlbFilePath ?? ""),
                             CameraFov = obj.CameraFov,
                             CameraNear = obj.CameraNear,
