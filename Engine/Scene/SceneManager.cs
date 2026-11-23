@@ -33,7 +33,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         /// frame the transition completes — loads run AFTER the overlay, not during it.</summary>
         private IScene? _deferredTransitionScene;
         private bool _running;
-        private bool _altEnterWasDown = false;
+                private bool _altEnterWasDown = false;
+
+        // ── (move probe removed) ──
 
         // ── IDE integration ──
         private IDE.IDE? _ide;
@@ -293,14 +295,27 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             return null;
         }
 
-        private bool UpdateCameraMarkerInput(nint window, float dt, IDEBridge bridge)
+                /// <summary>Finds a visible Camera editor object by name (null when missing).</summary>
+        private static EditorObject? FindCameraMarker(IDEBridge bridge, string name)
+        {
+            if (bridge.EditorObjectManager == null || string.IsNullOrWhiteSpace(name)) return null;
+            return bridge.EditorObjectManager.Objects.FirstOrDefault(obj =>
+                obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera &&
+                string.Equals(obj.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool UpdateCameraMarkerInput(nint window, float dt, IDEBridge bridge,
+            bool requireViewportFocus = true)
         {
             bridge.CameraMarkerControlActive = false;
-            bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
-                            Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
-            bool previewControl = bridge.CameraPreviewControlActive && ctrlHeld;
+            // Marker camera input runs when the viewport is usable: no modal overlay,
+            // no popup/post-popup suppress, no UI-scroll capture, no menu input capture.
+            // `requireViewportFocus` is true for in-scene camera control (needs the
+            // viewport ImGui window focused) and false for the no-scene editor freefly
+            // path so WASD works even when another IDE panel has ImGui focus.
+            bool previewControl = bridge.CameraPreviewControlActive;
             bool playSession = bridge.InGameActive || bridge.IsPreviewMode;
-            bool inputAllowed = bridge.IsViewportFocused && bridge.IsViewportImageHovered &&
+            bool inputAllowed = (!requireViewportFocus || bridge.IsViewportFocused) &&
                                 !bridge.IsOverlayVisible && !bridge.SuppressViewportInput &&
                                 !bridge.ScrollCapturedByUI && !bridge.MenuOwnsInput;
 
@@ -327,9 +342,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     cameraName = bridge.SelectedEditorObject.Name;
             }
 
-            bool controlRequested = inputAllowed && (previewControl || (playSession
-                ? !ctrlHeld && !bridge.CameraPreviewControlActive
-                : ctrlHeld && !bridge.CameraPreviewControlActive));
+                        // With Ctrl removed, the only remaining reason to refuse marker control is that
+            // the preview inset explicitly claims input (hover + preview-active) *and* the
+            // chosen source is not that preview, or that input is otherwise not allowed.
+            bool controlRequested = inputAllowed;
             var manager = bridge.EditorObjectManager;
             var marker = controlRequested && !string.IsNullOrWhiteSpace(cameraName) && manager != null
                 ? manager.Objects.FirstOrDefault(obj => obj.IsVisible &&
@@ -344,22 +360,30 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 return false;
             }
 
-            Mouse.GetCursorPosition(out double mouseX, out double mouseY);
+                        Mouse.GetCursorPosition(out double mouseX, out double mouseY);
             float deltaX = 0f;
             float deltaY = 0f;
-            if (!_cameraMarkerMousePrimed || !string.Equals(_cameraMarkerInputName, marker.Name,
-                    StringComparison.OrdinalIgnoreCase))
+            // Mouse-look only when the cursor is actually over the viewport image.
+            // This keeps freefly look from hijacking the camera while the mouse is over
+            // another IDE panel (e.g. Settings), while WASD still works without mouse-over.
+            // Preview focus keeps mouse-look alive wherever the cursor is; the main camera path
+            // still only looks while the cursor is over the viewport image.
+            if (previewControl || bridge.IsViewportImageHovered)
             {
-                _cameraMarkerMousePrimed = true;
-                _cameraMarkerInputName = marker.Name;
+                if (!_cameraMarkerMousePrimed || !string.Equals(_cameraMarkerInputName, marker.Name,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    _cameraMarkerMousePrimed = true;
+                    _cameraMarkerInputName = marker.Name;
+                }
+                else
+                {
+                    deltaX = (float)(mouseX - _cameraMarkerLastX);
+                    deltaY = (float)(mouseY - _cameraMarkerLastY);
+                }
+                _cameraMarkerLastX = mouseX;
+                _cameraMarkerLastY = mouseY;
             }
-            else
-            {
-                deltaX = (float)(mouseX - _cameraMarkerLastX);
-                deltaY = (float)(mouseY - _cameraMarkerLastY);
-            }
-            _cameraMarkerLastX = mouseX;
-            _cameraMarkerLastY = mouseY;
 
             var rotation = marker.RotationEuler;
             rotation.Y -= deltaX * Mouse.Sensitivity;
@@ -491,6 +515,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // Glfw.ShowFPS/UpdateFPS, so FPS froze at 0 everywhere else.
                 Glfw.UpdateFPS(dt);
 
+                // ── F2: wireframe toggle (rising edge), handled in the CENTRAL loop ──
+                // One flag for every view: the in-game pass reads it, and
+                // `ApplyEditorRenderProperties` re-applies it to the editor viewport and the
+                // camera preview. F1 keeps the in-game stats overlay. Handled here (not in
+                // GameScene's input block) so it also works while editing in the IDE.
+                if (Keyboard.IsKeyPressed(window, Const.GLFW_KEY_F2))
+                {
+                    Keyboard.SetIsWireframe(!Keyboard.GetIsWireframe());
+                    Console.WriteLine(Keyboard.GetIsWireframe()
+                        ? "Wireframe Mode: ON (F2)" : "Wireframe Mode: OFF (F2)");
+                }
+
                 // ═══════════════════════════════════════════════════════
                 // FRAME-START VALIDATION: detect OpenGL state corruption
                 // ═══════════════════════════════════════════════════════
@@ -504,9 +540,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // that could be accessed by Render() below.
                 // The deferred scene switch (_nextScene) is applied AFTER render.
                 var inputBridge = _ide is { IsActive: true } ? _ide.Bridge : null;
-                if (inputBridge != null)
+                // In-scene only: the no-scene editor block below owns its own camera routing
+                // (editor / main / preview), so calling this twice would move a marker too.
+                if (inputBridge != null && _currentScene != null)
                     UpdateCameraMarkerInput(window, dt, inputBridge);
-                else if (_ide != null)
+                else if (_ide != null && _currentScene != null)
                     _ide.Bridge.CameraMarkerControlActive = false;
 
                 _currentScene?.Update(dt);
@@ -518,7 +556,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 {
                     var bridge = _ide.Bridge;
                     // Modal overlay visible → camera input frozen (background stays inert).
-                    if (bridge != null && bridge.IsViewportFocused && !bridge.IsOverlayVisible)
+                    // No-scene editor move (WASD-only and freefly) now works whenever the IDE
+                    // is active and the viewport is usable — no need for the Viewport panel to be
+                    // the focused ImGui window and no need for the mouse to be over the image.
+                    // Modal overlays / popups / UI-scroll / menu-capture still block input.
+                    if (bridge != null && !bridge.IsOverlayVisible && !bridge.SuppressViewportInput)
                     {
                         // Ensure editor camera exists
                         if (_editorCamera == null)
@@ -557,32 +599,120 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // camera: re-baseline the mouse and feed processInput=false.
                         bool playSession = bridge is { InGameActive: true }
                                            || bridge is { IsPreviewMode: true };
+                        // ── Which camera owns WASD / freefly this frame ──
+                        // Preview focus (latched by a left-click on the inset) wins; otherwise the
+                        // camera chosen in IDE Settings → Camera → Move Camera drives movement.
+                        // ── Preview inset owns WASD / mouse? ──
+                        // The latch lives in the bridge and is written by ViewportPanel during the ImGui
+                        // pass (end of frame), so Update consumes the value latched on the previous
+                        // frame — deterministic, and it persists while the user keeps the preview focused.
+                        if (playSession)
+                            bridge.CameraPreviewControlActive = false;
 
-                        if (bridge.CameraMarkerControlActive)
+                        bool previewFocus = bridge.CameraPreviewControlActive;
+                        EditorObject? targetMarker = null;
+                        // An empty preview-camera name means the inset shows the EDITOR camera —
+                        // the same fallback the preview label uses — so focus drives that camera.
+                        bool previewDrivesEditor = false;
+                        if (previewFocus)
                         {
-                            Mouse.ResetState();
+                            targetMarker = FindCameraMarker(bridge, bridge.ViewportPreviewCameraName);
+                            if (targetMarker == null)
+                            {
+                                if (string.IsNullOrWhiteSpace(bridge.ViewportPreviewCameraName))
+                                {
+                                    previewDrivesEditor = true;
+                                }
+                                else
+                                {
+                                    // The named camera no longer exists → release the latch instead of
+                                    // swallowing WASD silently.
+                                    bridge.CameraPreviewControlActive = false;
+                                    previewFocus = false;
+                                }
+                            }
                         }
-                        else if (playSession)
+
+                        // MoveCameraSource.Preview only owns input while the inset is focused; with
+                        // the latch released, input falls back to the viewport (main) camera.
+                        if (!previewFocus &&
+                            (bridge.MoveCameraSource == Config.MoveCameraSource.Main ||
+                             bridge.MoveCameraSource == Config.MoveCameraSource.Preview))
+                            targetMarker = FindCameraMarker(bridge, bridge.ViewportMainCameraName);
+
+                        bool targetIsPreview = previewFocus && targetMarker != null;
+                        bool editorIsTarget = previewDrivesEditor ||
+                            (!previewFocus && bridge.MoveCameraSource == Config.MoveCameraSource.Editor);
+                        // The editor camera's own fly input (mouse-look + WASD) may only run when it
+                        // IS the target — otherwise a marker would move twice (here and below).
+                        bool editorFlyInput = editorIsTarget && bridge.MoveMode == Config.MoveMode.FreeFly;
+
+                        // The wheel belongs to the camera ONLY while the pointer is over the viewport
+                        // image (the preview inset sits inside that rect, so hovering it zooms too).
+                        // Everywhere else the wheel stays available to ImGui so IDE panels scroll.
+                        bool scrollToViewport = bridge.IsViewportImageHovered;
+
+                        if (playSession)
                         {
                             Mouse.Update(window, _editorCamera);
-                            _editorCamera.SetCameraFlyMode(window, dt, true);
+                            _editorCamera.SetCameraFlyMode(window, dt, true, scrollToViewport);
                         }
                         else if (suppressAll)
-                        { 
+                        {
                             Mouse.ResetScroll();
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, false); // false = skip input
                         }
                         else if (bridge.ScrollCapturedByUI)
                         {
-                            // Scroll captured by Placeholder UI — suppress camera zoom only
+                            // Scroll captured by Placeholder UI — suppress camera zoom only.
                             Mouse.Update(window, _editorCamera);
                             _editorCamera.SetCameraFlyMode(window, dt, false);
                         }
                         else
                         {
                             Mouse.Update(window, _editorCamera);
-                            _editorCamera.SetCameraFlyMode(window, dt, true);
+                            _editorCamera.SetCameraFlyMode(window, dt, editorFlyInput, scrollToViewport);
+                        }
+
+                                                if (bridge.MoveMode == Config.MoveMode.WasdOnly)
+                        {
+                            if (targetMarker != null)
+                            {
+                                // WASD-only on a marker: position only, rotation untouched.
+                                var orientation = Matrix4x4.CreateFromYawPitchRoll(
+                                    targetMarker.RotationEuler.Y * MathF.PI / 180f,
+                                    targetMarker.RotationEuler.X * MathF.PI / 180f,
+                                    targetMarker.RotationEuler.Z * MathF.PI / 180f);
+                                Vector3 forward = Vector3.Transform(-Vector3.UnitZ, orientation);
+                                Vector3 right = Vector3.Transform(Vector3.UnitX, orientation);
+                                Vector3 move = Vector3.Zero;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W)) move += forward;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S)) move -= forward;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) move -= right;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) move += right;
+                                if (move.LengthSquared() > 0f)
+                                    targetMarker.Position += Vector3.Normalize(move) *
+                                        Config.CameraConfig.CameraFlySpeed * dt;
+                                if (!targetIsPreview)
+                                    bridge.Camera?.SetEditorViewTransform(targetMarker.Position,
+                                        targetMarker.RotationEuler.Y, targetMarker.RotationEuler.X,
+                                        targetMarker.CameraFov, targetMarker.CameraNear, targetMarker.CameraFar);
+                            }
+                            else if (editorIsTarget)
+                            {
+                                // WASD-only on the editor (debug) camera.
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_W)) _editorCamera.Position += _editorCamera.Front;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_S)) _editorCamera.Position -= _editorCamera.Front;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_A)) _editorCamera.Position -= _editorCamera.Right;
+                                if (Keyboard.IsKeyDown(window, Const.GLFW_KEY_D)) _editorCamera.Position += _editorCamera.Right;
+                            }
+                        }
+                        else if (bridge.MoveMode == Config.MoveMode.FreeFly && targetMarker != null)
+                        {
+                            // FreeFly = WASD + mouse-look on the target marker. The preview target
+                            // aims the preview camera; the main target drags the viewport view along.
+                            UpdateCameraMarkerInput(window, dt, bridge, requireViewportFocus: false);
                         }
                     }
                 }
@@ -768,11 +898,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     string viewportCameraName = defaultCamera?.Name ?? bridge.ViewportMainCameraName;
                     var viewportCamera = ResolveMarkerCamera(viewportCameraName,
                         bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight) ?? _editorCamera;
-                    var viewportCullCamera = ResolveMarkerCamera(viewportCameraName,
-                        bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
-                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? viewportCamera;
                     bridge.Camera = viewportCamera;
 
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
@@ -783,11 +908,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     // winding order (CCW/CW), wireframe mode, depth test and blending, so the
                     // Inspector's render-property changes take effect in real-time.
                     var editorProps = GetEditorSceneRenderProperties();
-                    if (editorProps != null)
-                    {
-                        editorProps.Apply();
-                    }
-                    else
+                    ApplyEditorRenderProperties(editorProps);
+                    if (editorProps == null)
                     {
                         // Fallback: ensure a sane default if no editor scene is configured.
                         GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
@@ -886,8 +1008,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // Restore the shared FBO + scene render state after the depth-only shadow pass
                         GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
                         GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
-                        if (editorProps != null)
-                            editorProps.Apply();
+                        ApplyEditorRenderProperties(editorProps);
                         GL.Enable(Const.GL_DEPTH_TEST);
 
                         // Bind the cascade shadow maps (units 6..8 — matches the main shader)
@@ -908,8 +1029,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             ? bridge.SelectionHighlights.EditorObject : null;
                         bool showGizmos = !(bridge?.IsPreviewMode ?? false);
                         editorObjMgr.Draw(viewportCamera, _editorLights, _editorCsm, wireCol,
-                            bridge.SelectedEditorObjects, showEditorGizmos: showGizmos,
-                            viewportCullCamera: viewportCullCamera);
+                            bridge.SelectedEditorObjects, showEditorGizmos: showGizmos);
 
                         // ── Z-order: the 2D map grid overlays disable depth test while they
                         // draw, so they would paint OVER a gizmo drawn earlier. Clear the
@@ -1608,6 +1728,26 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             }
 
             return Vector3.Zero;
+        }
+
+        /// <summary>Wireframe value the editor viewport last adopted from the F2 shortcut.
+        /// Lets the shortcut drive the viewport while the Inspector checkbox stays
+        /// authoritative between presses (it is only written when the key flag CHANGES).</summary>
+        private bool _appliedKeyboardWireframe;
+
+        /// <summary>Apply the editor scene's render properties after adopting the F2
+        /// wireframe toggle, so the shortcut works in the viewport and in the camera preview
+        /// exactly like it does in game.</summary>
+        private void ApplyEditorRenderProperties(SceneRenderProperties? properties)
+        {
+            if (properties == null) return;
+            bool keyboardWireframe = Keyboard.GetIsWireframe();
+            if (_appliedKeyboardWireframe != keyboardWireframe)
+            {
+                _appliedKeyboardWireframe = keyboardWireframe;
+                properties.WireframeMode = keyboardWireframe;
+            }
+            properties.Apply();
         }
 
         /// <summary>Get the active editor scene's render properties, or null if none is available.</summary>

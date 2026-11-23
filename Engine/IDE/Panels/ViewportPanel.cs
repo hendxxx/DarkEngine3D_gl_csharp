@@ -3179,7 +3179,9 @@ public unsafe class ViewportPanel
 
     private void RenderViewportPanel()
     {
-        _bridge.CameraPreviewControlActive = false;
+        // Preview input ownership is NOT reset here: a per-frame reset destroyed the click
+        // latch (it only survived the frame the click happened in). It is cleared only when
+        // the inset cannot be shown, or by an explicit click in DrawViewportCameraPreview.
         _bridge.IsViewportImageHovered = false;
 
         //  Initial sync: ensure IsPreviewMode matches _previewMode on first frame 
@@ -3239,6 +3241,13 @@ public unsafe class ViewportPanel
 
         // Track whether the viewport is focused
         _bridge.IsViewportFocused = ImGui.IsWindowFocused();
+
+        // ── Preview inset ownership of WASD / mouse ──
+        // Cleared only here (when the inset cannot be shown) and by an explicit click in
+        // DrawViewportCameraPreview; it is never reset unconditionally, so the click latch
+        // survives until the user clicks the viewport again.
+        if (!_showCameraPreview || _previewMode)
+            _bridge.CameraPreviewControlActive = false;
 
         //  Camera view preset shortcuts (17 on the main row / numpad) 
         // Only active while the viewport window has focus and we're NOT in preview
@@ -5491,15 +5500,19 @@ ImGui.SameLine();
         //  Picture-in-picture camera view, matching the editor/game preview layout.
         DrawViewportCameraPreview(hasSceneTexture);
 
+
         ImGui.End();
     }
 
     private void DrawViewportCameraPreview(bool hasSceneTexture)
     {
-        _bridge.CameraPreviewControlActive = false;
         if (!_showCameraPreview || !hasSceneTexture || _bridge.SceneTextureID == 0
             || _imageSize.X < 180f || _imageSize.Y < 120f)
+        {
+            // No preview drawn → it cannot own camera input.
+            _bridge.CameraPreviewControlActive = false;
             return;
+        }
 
         uint previewTexture = _bridge.CameraPreviewTextureID != 0
             ? _bridge.CameraPreviewTextureID : _bridge.SceneTextureID;
@@ -5513,7 +5526,11 @@ ImGui.SameLine();
         const float framePad = 5f;
         float maxW = MathF.Min(280f, _imageSize.X * 0.30f) - framePad * 2f;
         float maxH = MathF.Min(180f, _imageSize.Y * 0.30f) - headerH - framePad * 2f;
-        if (maxW <= 0f || maxH <= 0f) return;
+        if (maxW <= 0f || maxH <= 0f)
+        {
+            _bridge.CameraPreviewControlActive = false;
+            return;
+        }
 
         float previewW = MathF.Min(maxW, maxH * aspect);
         float previewH = previewW / aspect;
@@ -5543,9 +5560,27 @@ ImGui.SameLine();
         var mouse = ImGui.GetMousePos();
         bool previewHovered = mouse.X >= imageMin.X && mouse.X <= imageMax.X
             && mouse.Y >= imageMin.Y && mouse.Y <= imageMax.Y;
-        _bridge.CameraPreviewControlActive = previewHovered;
+
+        // Left-click the inset latches WASD + mouse-look onto the selected preview camera.
+        // Left-click anywhere else in the viewport image hands control back to the main camera.
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            bool overMainImage = mouse.X >= _imageMin.X && mouse.X <= _imageMax.X &&
+                                 mouse.Y >= _imageMin.Y && mouse.Y <= _imageMax.Y;
+            if (previewHovered) _bridge.CameraPreviewControlActive = true;
+            else if (overMainImage) _bridge.CameraPreviewControlActive = false;
+        }
+
+        // Golden frame while the preview owns keyboard/mouse camera input.
+        if (_bridge.CameraPreviewControlActive)
+            drawList.AddRect(imageMin - new Vector2(2f), imageMax + new Vector2(2f),
+                ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.78f, 0.25f, 1f)),
+                0f, ImDrawFlags.None, 2f);
+
         if (previewHovered)
-            ImGui.SetTooltip("Hold Ctrl + WASD and move the mouse to move/aim this camera. Choose Main and Preview Cameras separately in Views.");
+            ImGui.SetTooltip(_bridge.CameraPreviewControlActive
+                ? "Preview camera: WASD + mouse. Click the viewport to return to the main camera."
+                : "Click to move/aim this camera with WASD + mouse.");
     }
 
     /// <summary>Draw a small type tag ("Camera" / "Light" / "Sky") above every placed
@@ -5863,7 +5898,7 @@ ImGui.SameLine();
         ImGui.SetNextWindowPos(new Vector2(btnMin.X, btnMax.Y + 2f), ImGuiCond.Appearing);
         if (ImGui.BeginPopup("viewport_camera_views"))
         {
-            ImGui.TextDisabled("Viewport: Ctrl+WASD + mouse | Preview/In-Game: WASD + mouse");
+            ImGui.TextDisabled("Viewport: WASD + mouse | Preview/In-Game: WASD + mouse");
             ImGui.Separator();
             DrawViewportCameraSelectionMenu("Main Camera", preview: false);
             DrawViewportCameraSelectionMenu("Preview Camera", preview: true);
@@ -6183,7 +6218,7 @@ ImGui.SameLine();
         int occluders = _bridge.EditorObjectManager?.ViewportOccluderCount ?? 0;
         bool occlusionActive = _bridge.EditorObjectManager?.ViewportOcclusionActive ?? false;
         if (ToolButton(occlusion ? $"OC: On ({occluders})" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
-            $"Conservative occlusion for Box/Sphere (including displaced targets), terrain chunks and static GLB references. Occluders are solid, non-displaced untextured Boxes.\n{(occlusionActive ? "Active this frame" : occlusion ? "Enabled but unavailable this frame" : "Disabled")}; {occluders} visible untextured Box occluders (maximum 64).\nDisabled for wireframe or incompatible depth/cull state.", out y))
+            $"Simple occlusion: an object marked Occludee whose screen bounds sit fully behind an occluder silhouette is not submitted at all — the same rule as frustum culling, with no overlap safety net. Only objects marked Occluder submit a volume — Box by default, Sphere/GLB opt-in (bounding hull). Terrain occluders are not wired up yet.\n{(occlusionActive ? "Active this frame" : occlusion ? "Enabled but unavailable this frame" : "Disabled")}; {occluders} visible occluders (maximum 64).\nDisabled for wireframe or incompatible depth/cull state.", out y))
             EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
 
         bool cull3D = EditorObjectManager.ViewportCullDebug;

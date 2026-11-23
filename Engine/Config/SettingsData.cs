@@ -29,6 +29,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Camera marker driving the viewport PREVIEW inset ("" = editor camera).</summary>
         public string ViewportPreviewCameraName { get; set; } = "";
 
+        // ── Camera movement mode + source for WASD/freefly navigation (per project). ──
+        public MoveMode MoveMode { get; set; } = MoveMode.FreeFly;
+        public MoveCameraSource MoveCameraSource { get; set; } = MoveCameraSource.Editor;
+
         // ── IDE Font (editor panels font) ──
         public string IDEFontPath { get; set; } = "";   // empty = default font
         public float IDEFontSize { get; set; } = 20f;
