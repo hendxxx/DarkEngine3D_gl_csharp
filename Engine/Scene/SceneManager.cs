@@ -112,13 +112,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // Follow the unified quality preset: when the requested MSAA sample count
             // changes (quality preset switched), destroy the FBO so it is rebuilt with
             // the new sample count on the next EnsureSharedFBO call.
-            if (_sharedFBOCreated && _sharedMsaaSamples != Math.Max(1, Config.QualitySettings.MsaaSamples))
+            // OC: HZB samples the viewport depth with glBlitFramebuffer, and a DEPTH blit is
+            // INVALID_OPERATION between different sample counts — so the viewport renders
+            // single-sample while OC: HZB is on. The FBO is rebuilt when the mode flips ON/OFF.
+            int requestedSamples = Math.Max(1, Config.QualitySettings.MsaaSamples);
+            if (EditorObjectManager.ViewportOcclusionHzb) requestedSamples = 1;
+            if (_sharedFBOCreated && _sharedMsaaSamples != requestedSamples)
                 DestroySharedFBO();
 
             if (_sharedFBOCreated) return;
 
-            // Requested MSAA from the quality preset, clamped to the driver's max.
-            _sharedMsaaSamples = Math.Max(1, Config.QualitySettings.MsaaSamples);
+            // Requested MSAA (quality preset, or 1 while OC: HZB needs the raw depth),
+            // clamped to the driver's max.
+            _sharedMsaaSamples = requestedSamples;
             int maxSamples = 0;
             GL.GetIntegerv(Const.GL_MAX_SAMPLES, &maxSamples);
             if (maxSamples > 0) _sharedMsaaSamples = Math.Min(_sharedMsaaSamples, maxSamples);
@@ -455,7 +461,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             //  VIEWPORT still draws unselectable for the rest of the frame.
             manager.Draw(camera, lights, csm, null, null, showSkyGizmo: false,
                 showEditorGizmos: false, captureViewportCullSnapshot: false,
-                recordViewportPick: false);
+                recordViewportPick: false, depthOcclusionAllowed: false);
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
@@ -968,7 +974,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         bool showGizmos = !(bridge?.IsPreviewMode ?? false);
                         editorObjMgr.Draw(viewportCamera, _editorLights, _editorCsm, wireCol,
                             bridge.SelectedEditorObjects, showEditorGizmos: showGizmos,
-                            viewportCullCamera: viewportCullCamera);
+                            viewportCullCamera: viewportCullCamera,
+                            depthOcclusionAllowed: true);
+
+                        // ── OC: HZB — copy THIS frame's viewport depth for the NEXT frame ──
+                        // Same idea as the sample's "Last Frame" mode: the cull loop never
+                        // waits on a readback, and the depth is exactly what the viewport
+                        // rendered with viewportCamera. Capture must happen BEFORE the depth
+                        // clear below, which exists only for the gizmo.
+                        if (EditorObjectManager.ViewportOcclusionHzb)
+                        {
+                            ViewportHZB.Capture(_sharedFBO, Glfw.WindowWidth, Glfw.WindowHeight);
+                            GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
+                            GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
+                        }
 
                         // ── Z-order: the 2D map grid overlays disable depth test while they
                         // draw, so they would paint OVER a gizmo drawn earlier. Clear the

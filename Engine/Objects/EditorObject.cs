@@ -293,6 +293,29 @@ public class MapParallaxRenderLayer
     };
 }
 
+public enum SphereType
+{
+    /// <summary>
+    /// Lat/long UV sphere: a stack of rings whose vertices are evenly spaced in
+    /// longitude and latitude. Simple and what the old editor already produced via
+    /// <c>CreateSphereVertices(slices, stacks)</c>. Poles are a single vertex, so
+    /// very low values look faceted/pinched near the poles; raising tessellation
+    /// smooths them.</summary>
+    Uv = 0,
+    /// <summary>
+    /// Cube sphere: a cube whose 6 faces are each subdivided into a tess×tess grid
+    /// and then normalized onto the unit sphere. Coarser subdivision keeps rounder
+    /// faces than a UV sphere of the same vertex count; poles are 4 distinct
+    /// vertices, so there is no single-vertex pole pinching.</summary>
+    Cube = 1,
+    /// <summary>
+    /// Icosphere: starts from a regular icosahedron and subdivides every triangle by
+    /// splitting edges, normalizing the new vertices back to the sphere. Distributes
+    /// vertices evenly, so it stays rounder than a UV sphere of the same detail and
+    /// has no poles. Subdivision depth = <c>tess</c> here (1 = base icosahedron).</summary>
+    Ico = 2,
+}
+
 public unsafe class EditorObject
 {
     // ── Identity ──
@@ -306,6 +329,12 @@ public unsafe class EditorObject
 
     // ── Visual ──
     public Vector3 Color { get; set; } = new(0.8f, 0.8f, 0.9f);
+
+    /// <summary>
+    /// Which sphere topology the editor uses for the Sphere primitive (Sphere
+    /// Generator-style: UV, cube, or icosphere). Kept separate from <see cref="PbrPrimTessellation"/>
+    /// so the two concerns — topology family and subdivision amount — are orthogonal.</summary>
+    public SphereType SphereType { get; set; } = SphereType.Uv;
     public string? TexturePath { get; set; } = null;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
@@ -2312,7 +2341,12 @@ public unsafe class EditorObject
     /// <summary>Tessellation segments for Box/Sphere when vertex displacement is ON
     /// (slices/stacks per sphere face, segments per box edge — low values displace
     /// nothing). 1 = the legacy low-poly mesh. Rebuilds the mesh on change.</summary>
-    private int _pbrPrimTessellation = 1;
+    private int _pbrPrimTessellation = 2;
+    /// <summary>Level-of-detail subdivisions for Box/Sphere used as static geometric detail.
+    /// Higher values make a Sphere rounder / smoother: the Sphere builds <c>tess*12</c>
+    /// slices × <c>tess*8</c> stacks, and a Box builds 6 faces × <c>tess</c>×<c>tess</c>
+    /// quads. 1 is the legacy low-poly mesh; raising it adds more triangles. Rebuilds
+    /// the mesh on change. Range 1..64.</summary>
     public int PbrPrimTessellation
     {
         get => _pbrPrimTessellation;
@@ -3044,11 +3078,12 @@ public unsafe class EditorObject
             }
             case EditorPrimitiveType.Box:
             {
-                // Vertex displacement ON → subdivide each face into a dense grid so
-                // the PBR height map can move real vertices (a 2-triangle face has
-                // nothing to displace). UVs stay 0..1 per face; the displace vertex
-                // stage reads the height through the POM slot's tiling.
-                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : 1;
+                // Static detail: PbrPrimTessellation subdivides each face into a grid;
+                // vertex displacement ON additionally raises t so the height map has
+                // interior vertices to move (a 2-triangle face has nothing to displace).
+                // UVs stay 0..1 per face; the displace vertex stage reads the height
+                // through the POM slot's tiling.
+                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : PbrPrimTessellation;
                 var verts = Object3D.CreateBoxVertices(1f, 1f, 1f, Color, t);
                 _object3D = new Object3D(0, 0, 0);
                 _object3D.Generate(shader, verts);
@@ -3057,12 +3092,32 @@ public unsafe class EditorObject
             }
             case EditorPrimitiveType.Sphere:
             {
-                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : 0;
-                var verts = Object3D.CreateSphereVertices(0.5f, Color,
-                    t > 0 ? t * 12 : 12, t > 0 ? t * 8 : 8);
+                // Static detail: PbrPrimTessellation sets the per-face repetition that
+                // controls sphere roundness (slices/stacks). Vertex displacement, when ON,
+                // overrides t so the height map has interior vertices to move.
+                int t = PbrVertexDisplaceEnabled ? Math.Clamp(PbrPrimTessellation, 1, 64) : PbrPrimTessellation;
+
+                // Sphere topology selector (Sphere Generator-style): UV sphere is the
+                // legacy default and drives the tess*12/8 slice/stack layout. Icosphere
+                // and cube sphere use a different subdivision origin and ignore the 12/8
+                // multiplier here; they are rebuilt with their own subdiv count below.
+                Vertex[] sphereVerts;
+                if (SphereType == SphereType.Ico)
+                {
+                    sphereVerts = Object3D.CreateIcoSphereVertices(0.5f, Color, t);
+                }
+                else if (SphereType == SphereType.Cube)
+                {
+                    sphereVerts = Object3D.CreateCubeSphereVertices(0.5f, Color, t);
+                }
+                else
+                {
+                    sphereVerts = Object3D.CreateSphereVertices(0.5f, Color, t * 12, t * 8);
+                }
+
                 _object3D = new Object3D(0, 0, 0);
-                _object3D.Generate(shader, verts);
-                _vertexCache = verts;
+                _object3D.Generate(shader, sphereVerts);
+                _vertexCache = sphereVerts;
                 break;
             }
             case EditorPrimitiveType.Camera:

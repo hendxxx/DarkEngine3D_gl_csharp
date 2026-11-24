@@ -233,6 +233,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return triangles.ToArray();
         }
 
+        private static Vertex MakeV(Vector3 pos, Vector3 color) =>
+            new Vertex(pos.X, pos.Y, pos.Z, pos.X, pos.Y, pos.Z, color.X, color.Y, color.Z, 0f, 0f);
+
         public static Object3D CreateSphereObject(float radius, float px, float py, float pz, Vector3 color)
         {
             var obj = new Object3D(0, 0, 0);
@@ -240,6 +243,126 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             obj.Generate(obj.ShaderProgram, sphereVerts);
             obj.SetPosition(px, py, pz);
             return obj;
+        }
+
+        /// <summary>
+        /// Icosphere: start from a regular icosahedron (20 triangles) and subdivide each
+        /// triangle by splitting every edge, producing 4 new triangles per original face.
+        /// New vertex positions are normalized back to the sphere surface so the shape stays
+        /// round. Subdivision depth = <paramref name="depth"/>: 1 = base icosahedron, 2 =
+        /// 80 triangles, 3 = 320, and so on (4x growth per depth). Icospheres have no poles
+        /// and distribute vertices evenly, so they stay rounder than a UV sphere at the same
+        /// vertex count. Depth 0..6 is reasonable; higher values grow fast.</summary>
+        public static Vertex[] CreateIcoSphereVertices(float radius, Vector3 color, int depth)
+        {
+            depth = Math.Clamp(depth, 0, 6);
+            // Base icosahedron vertices (unit sphere). 12 vertices, 20 faces.
+            const float tau = 1.6180339887498948482f;
+            var verts = new Vertex[12];
+            verts[0] = MakeV(new Vector3(-1f, tau, 0f), color);
+            verts[1] = MakeV(new Vector3(1f, tau, 0f), color);
+            verts[2] = MakeV(new Vector3(-1f, -tau, 0f), color);
+            verts[3] = MakeV(new Vector3(1f, -tau, 0f), color);
+            verts[4] = MakeV(new Vector3(0f, -1f, tau), color);
+            verts[5] = MakeV(new Vector3(0f, 1f, tau), color);
+            verts[6] = MakeV(new Vector3(0f, -1f, -tau), color);
+            verts[7] = MakeV(new Vector3(0f, 1f, -tau), color);
+            verts[8] = MakeV(new Vector3(tau, 0f, -1f), color);
+            verts[9] = MakeV(new Vector3(tau, 0f, 1f), color);
+            verts[10] = MakeV(new Vector3(-tau, 0f, -1f), color);
+            verts[11] = MakeV(new Vector3(-tau, 0f, 1f), color);
+            for (int i = 0; i < verts.Length; i++) verts[i].Position = Vector3.Normalize(verts[i].Position);
+            // 20 faces of the icosahedron (vertex triplets).
+            var faces = new (int a, int b, int c)[]
+            {
+                (0, 4, 1), (0, 9, 4), (9, 5, 4), (4, 5, 11), (5, 10, 11), (3, 10, 5),
+                (2, 3, 10), (2, 8, 3), (2, 7, 8), (7, 11, 8), (7, 6, 11), (6, 0, 11),
+                (6, 10, 7), (6, 1, 0), (1, 6, 10), (1, 10, 11), (1, 11, 4), (2, 7, 6),
+                (0, 8, 9), (8, 2, 9)
+            };
+            for (int d = 0; d < depth; d++)
+            {
+                var nextFaces = new List<(int a, int b, int c)>(faces.Length * 4);
+                var edgeMid = new Dictionary<(int a, int b), int>(faces.Length * 3);
+                int vertCount = verts.Length;
+                foreach (var f in faces)
+                {
+                    int ab = GetOrAddMid(edgeMid, verts, ref vertCount, f.a, f.b, color);
+                    int bc = GetOrAddMid(edgeMid, verts, ref vertCount, f.b, f.c, color);
+                    int ca = GetOrAddMid(edgeMid, verts, ref vertCount, f.c, f.a, color);
+                    nextFaces.Add((f.a, ab, ca));
+                    nextFaces.Add((f.b, bc, ab));
+                    nextFaces.Add((f.c, ca, bc));
+                    nextFaces.Add((ab, bc, ca));
+                }
+                faces = [.. nextFaces];
+            }
+            var tris = new List<Vertex>(faces.Length * 3);
+            foreach (var f in faces)
+            {
+                tris.Add(verts[f.a]);
+                tris.Add(verts[f.b]);
+                tris.Add(verts[f.c]);
+            }
+            return tris.ToArray();
+
+            static int GetOrAddMid(Dictionary<(int a, int b), int> m, Vertex[] v, ref int count, int a, int b, Vector3 color)
+            {
+                if (a > b) (a, b) = (b, a);
+                if (m.TryGetValue((a, b), out var mid)) return mid;
+                mid = count++;
+                var pos = Vector3.Normalize((v[a].Position + v[b].Position) * 0.5f);
+                Array.Resize(ref v, v.Length + 1);
+                v[v.Length - 1] = MakeV(pos, color);
+                m[(a, b)] = mid;
+                return mid;
+            }
+        }
+
+        /// <summary>
+        /// Cube sphere: a unit cube (6 faces) whose vertices are normalized onto the
+        /// sphere surface. Each face is a tess x tess grid of quads (2 tris each), so the
+        /// total triangle count is 6 * tess * tess * 2. Lower tess values keep visibly
+        /// faceted but rounder faces than a UV sphere of similar vertex count; poles are a
+        /// 4-vertex seam rather than a single-vertex pinching.</summary>
+        public static Vertex[] CreateCubeSphereVertices(float radius, Vector3 color, int tess)
+        {
+            if (tess < 1) tess = 1;
+            Vector3 posOnCube(int ix, int iz, bool px, bool py, bool pz)
+            {
+                float u = ix / (float)tess - 0.5f;
+                float v = iz / (float)tess - 0.5f;
+                if (px) return new Vector3(0.5f, u, v);
+                if (py) return new Vector3(u, 0.5f, v);
+                return new Vector3(u, v, 0.5f);
+            }
+            Vertex V(Vector3 p, float u, float v)
+            {
+                var n = Vector3.Normalize(p);
+                p = n * radius;
+                return new Vertex(p.X, p.Y, p.Z, n.X, n.Y, n.Z, color.X, color.Y, color.Z, u, v);
+            }
+            var outv = new List<Vertex>(6 * tess * tess * 6);
+            foreach (var (px, py, pz) in new[]
+                {
+                    (true, false, false), (false, true, false), (false, false, true),
+                    (true, true, false), (true, false, true), (false, true, true)
+                })
+            {
+                for (int iz = 0; iz < tess; iz++)
+                    for (int ix = 0; ix < tess; ix++)
+                    {
+                        float u0 = (float)ix / tess, u1 = (float)(ix + 1) / tess;
+                        float v0 = (float)iz / tess, v1 = (float)(iz + 1) / tess;
+                        var p00 = V(posOnCube(ix, iz, px, py, pz), u0, v0);
+                        var p10 = V(posOnCube(ix + 1, iz, px, py, pz), u1, v0);
+                        var p01 = V(posOnCube(ix, iz + 1, px, py, pz), u0, v1);
+                        var p11 = V(posOnCube(ix + 1, iz + 1, px, py, pz), u1, v1);
+                        outv.Add(p00); outv.Add(p10); outv.Add(p01);
+                        outv.Add(p10); outv.Add(p11); outv.Add(p01);
+                    }
+            }
+            return outv.ToArray();
         }
 
         /// <summary>

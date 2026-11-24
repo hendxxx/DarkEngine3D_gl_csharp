@@ -288,7 +288,9 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip("Subdivisions per face — the mesh needs interior vertices\nto displace (1 = legacy low-poly, nothing moves).\nMore = finer detail, heavier mesh.");
                     if (obj.PrimitiveType == EditorPrimitiveType.Sphere && tess > 0)
-                        ImGui.TextDisabled($"Mesh: {tess * 12}×{tess * 8} grid");
+                    {
+                        ImGui.TextDisabled("Sphere type: " + obj.SphereType + "  |  " + (obj.SphereType == SphereType.Uv ? (tess * 12 + " slices × " + tess * 8 + " stacks") : "subdivision depth " + tess));
+                    }
                     else if (tess > 1)
                         ImGui.TextDisabled($"Mesh: 6 faces × {tess}×{tess} quads");
                 }

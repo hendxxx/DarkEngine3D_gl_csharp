@@ -37,6 +37,12 @@ public unsafe class EditorObjectManager
 
     public static bool ViewportOcclusionEnabled { get; set; }
     public static bool ViewportCullDebug { get; set; }
+
+    /// <summary>Occlusion source (OC button in the viewport toolbar): false = analytic
+    /// convex-hull test against objects flagged Occluder (default); true = "OC: HZB", the
+    /// max-depth pyramid of the previous viewport frame (any drawn geometry occludes, no
+    /// per-object Occluder flag needed). Hull stays the default.</summary>
+    public static bool ViewportOcclusionHzb { get; set; }
     public bool ViewportOcclusionActive { get; private set; }
     public int ViewportOccluderCount { get; private set; }
     public bool ViewportCullFreezeEnabled { get; set; }
@@ -575,6 +581,7 @@ public unsafe class EditorObjectManager
                 TerrainHeightOffset = source.TerrainHeightOffset,
                 TerrainHeightStrength = source.TerrainHeightStrength,
                 PbrPrimTessellation = source.PbrPrimTessellation,
+                SphereType = source.SphereType,
                 // Terrain LOD travels with the duplicate too (the mesh rebuilds from the
                 // same segments/chunks, so the levels come out identical).
                 TerrainLodEnabled = source.TerrainLodEnabled,
@@ -711,7 +718,7 @@ public unsafe class EditorObjectManager
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
             bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null,
-            bool recordViewportPick = true)
+            bool recordViewportPick = true, bool depthOcclusionAllowed = true)
         {
             ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
             ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
@@ -735,6 +742,14 @@ public unsafe class EditorObjectManager
             var proj = camera.GetProjectionMatrix();
             var cullCamera = viewportCullCamera ?? camera;
             var viewportCullViewProj = cullCamera.GetViewMatrix() * cullCamera.GetProjectionMatrix();
+
+            // OC: HZB — usable only when the captured depth belongs to THIS pass's camera
+            // (the pyramid is copied from the viewport render) and never in the camera
+            // preview inset, whose depth buffer is the viewport's rather than its own.
+            bool hzbUsable = ViewportOcclusionHzb && depthOcclusionAllowed
+                && ReferenceEquals(cullCamera, camera) && ViewportHZB.Valid;
+            var hzbViewProj = view * proj;
+            EditorObject.UseViewportHZB = hzbUsable;
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(_projLoc, 1, false, (float*)&proj);
 
@@ -789,7 +804,8 @@ public unsafe class EditorObjectManager
 
             var primitiveViewProj = viewportCullViewProj;
             bool useOcclusion = ViewportOcclusionEnabled && _shaderProgram != 0;
-            if (useOcclusion)
+            // OC: HZB needs no occluder gather — the depth pyramid is the occluder.
+            if (useOcclusion && !hzbUsable)
             {
                 // Build the current-frame occluder set BEFORE visiting targets, otherwise
                 // a wall later in Hierarchy order could never hide an earlier object.
@@ -850,6 +866,20 @@ public unsafe class EditorObjectManager
                         }
                         else { TerrainFrustumPlanes++; TerrainFrustumTriangles += triangles; }
                     }
+                    else if (hzbUsable)
+                    {
+                        // OC: HZB — the previous frame's max-depth pyramid is the occluder.
+                        if (ViewportHZB.IsOccluded(bounds, hzbViewProj))
+                        {
+                            state = 2;
+                            if (measured)
+                            {
+                                ViewportOccludedObjects++;
+                                ViewportOccludedTriangles += triangles;
+                            }
+                            else { TerrainOccludedPlanes++; TerrainOccludedTriangles += triangles; }
+                        }
+                    }
                     else if (occludee)
                     {
                         foreach (var occluder in _viewportOccluders)
@@ -905,7 +935,7 @@ public unsafe class EditorObjectManager
 
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
             DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug,
-                recordViewportPick);
+                recordViewportPick, hzbUsable, hzbViewProj);
 
             // ── 2D sprites: Player2D + Sprite2D in ONE layer-sorted pass ──
             // Digabung dari dua pass terpisah (semua player dulu, lalu semua sprite):
@@ -1298,7 +1328,8 @@ public unsafe class EditorObjectManager
         }
 
         private void DrawGlbReferences(Camera camera, Camera cullCamera, Matrix4x4 cullViewProj,
-            Lights light, CSM? csm, bool captureCullDebug, bool recordViewportPick = true)
+            Lights light, CSM? csm, bool captureCullDebug, bool recordViewportPick = true,
+            bool hzbUsable = false, Matrix4x4 hzbViewProj = default)
         {
             bool any = false;
             for (int i = 0; i < _objects.Count; i++)
@@ -1367,7 +1398,7 @@ public unsafe class EditorObjectManager
 
             //  GLB references are skipped by the occluders gathered in the primitive pass
             //  above; the analytic test needs no GL state.
-            bool useOcclusion = ViewportOcclusionEnabled && _viewportOccluders.Count > 0;
+            bool useOcclusion = ViewportOcclusionEnabled && (_viewportOccluders.Count > 0 || hzbUsable);
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
@@ -1379,6 +1410,7 @@ public unsafe class EditorObjectManager
                 if (bounds is { } aabb)
                 {
                     if (!EditorObject.IsAABBInFrustum(cullViewProj, aabb)) state = 1;
+                    else if (hzbUsable && ViewportHZB.IsOccluded(aabb, hzbViewProj)) state = 2;
                     else if (useOcclusion && obj.IsOccludee)
                         foreach (var occluder in _viewportOccluders)
                             if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj, obj.OcclusionTag))

@@ -448,6 +448,10 @@ public class EditorObjectData
     public bool PbrVertexDisplaceEnabled { get; set; } = false;
     /// <summary>Tessellation subdivisions per face for Box/Sphere when displacement is ON.</summary>
     public int PbrPrimTessellation { get; set; } = 1;
+    /// <summary>Which sphere topology (UV / cube / icosphere) a Sphere primitive uses.
+    /// Only meaningful when PrimitiveType == Sphere; serialized as the enum name, so
+    /// older scenes without it fall back to the default (UV).</summary>
+    public SphereType? SphereType { get; set; }
     /// <summary>Legacy PBR vertex displacement offset. Planes driven by a terrain
     /// elevation map use <see cref="TerrainHeightOffset"/> instead.</summary>
     public float PbrVertexOffset { get; set; } = 0f;
