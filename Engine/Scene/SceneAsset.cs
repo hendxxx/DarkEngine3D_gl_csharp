@@ -251,6 +251,12 @@ public class EditorObjectData
     public float ColorB { get; set; } = 0.9f;
     public bool CastShadow { get; set; } = true;
     public bool IsVisible { get; set; } = true;
+    /// <summary>Occlusion role override. null (absent in older scenes) = per-type
+    /// default: Box occludes, Sphere/GLB do not.</summary>
+    public bool? IsOccluder { get; set; }
+    /// <summary>False = never skipped by the occlusion pass (frustum culling still
+    /// applies). Default true; absent in older scenes means true.</summary>
+    public bool IsOccludee { get; set; } = true;
 
     // ── NPC dialogue binding (Dialogue System) ──
     /// <summary>Dialogue asset id (Dialogue Editor) started when the player presses
@@ -599,6 +605,16 @@ public class SceneAsset
     public float? EditorCameraYaw { get; set; }
     /// <summary>Editor camera pitch (degrees).</summary>
     public float? EditorCameraPitch { get; set; }
+
+    // ── Viewport Preview Camera (per scene) ──
+    /// <summary>Name of the EditorObjects camera marker used by the viewport Camera
+    /// Preview inset (empty = Editor Camera). Persisted so "Use as Preview Camera"
+    /// survives save/load and every scene keeps its own choice.</summary>
+    public string PreviewCameraName { get; set; } = "";
+    /// <summary>Name of the camera marker the viewport RENDERS from (empty = Editor
+    /// Camera). Persisted per scene so "Use Preview Camera as Main" survives a reload;
+    /// frustum/occlusion culling of the viewport follows this camera.</summary>
+    public string MainCameraName { get; set; } = "";
     /// <summary>Editor camera projection (true = orthographic). Null = keep current.
     /// 2D level scenes are viewed ortho — the restore must re-apply that as well.</summary>
     public bool? EditorCameraOrtho { get; set; }

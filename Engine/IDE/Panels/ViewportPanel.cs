@@ -102,6 +102,14 @@ public unsafe class ViewportPanel
     // Show/hide the floating "▲ Views" menu + corner axis indicator.
     private bool _showViewsOverlay = true;
     private bool _showCameraPreview = true;
+    //  Click-to-control latch for the camera-preview inset. Hover-only control is
+    //  unusable for flying: the first mouse-look frame moves the cursor off the small
+    //  inset, so the preview camera froze mid-move. Click the inset to take control,
+    //  click the main viewport image to give it back.
+    private bool _previewCameraControlLatched;
+    private bool _previewResizeActive;
+    private Vector2 _cameraPreviewPanelMin;
+    private Vector2 _cameraPreviewPanelMax;
     // Collapse the whole left tool toolbar strip to a single expand chip (edit mode).
     private bool _leftToolbarCollapsed = false;
     // Post-popup suppress: after any popup/menu closes, suppress scene interactions
@@ -3157,6 +3165,10 @@ public unsafe class ViewportPanel
         foreach (var obj in mgr.Objects)
         {
             if (obj == null) continue;
+            // Only objects the viewport actually draws are marquee-selectable: the cull
+            // pass may have skipped this one (outside the culling camera / behind an
+            // occluder), and selecting invisible geometry would be a lie.
+            if (!EditorObjectManager.IsViewportPickable(obj)) continue;
             // Project to viewport pixels (Y=0=bottom in GL), then flip to scene Y-down
             Vector2 p = TransformGizmo.ProjectToScreen(cam, obj.GizmoPivotOverride ?? obj.Position, texW, texH);
             float sy = texH - p.Y;
@@ -3192,7 +3204,11 @@ public unsafe class ViewportPanel
         // In fullscreen mode (In-Game Mode F8), always render regardless of _visible
         if (!_fullscreenMode)
         {
-            if (!_visible) return;
+            if (!_visible)
+            {
+                _previewCameraControlLatched = false;
+                return;
+            }
         }
 
         ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(0, 0));
@@ -3229,6 +3245,7 @@ public unsafe class ViewportPanel
         {
             _bridge.IsViewportFocused = false;
             _bridge.IsViewportImageHovered = false;
+            _previewCameraControlLatched = false;   // hidden tab keeps no camera lock
             _bridge.SuppressViewportInput = true;   // camera + scene input stay frozen
             _bridge.ScrollCapturedByUI = true;      // wheel belongs to the panel in front
             ImGui.End();
@@ -4370,6 +4387,15 @@ ImGui.SameLine();
             //  Viewport click/hover detection 
             bool mouseOverImage = viewportMouseScreen.X >= _imageMin.X && viewportMouseScreen.X <= _imageMax.X &&
                                   viewportMouseScreen.Y >= _imageMin.Y && viewportMouseScreen.Y <= _imageMax.Y;
+            //  The camera-preview inset is a UI overlay on top of the image: hover and
+            //  clicks inside it belong to the inset (it doubles as the camera-control
+            //  handle), not to picking / gizmo dragging on the objects behind it.
+            if (_showCameraPreview && mouseOverImage &&
+                viewportMouseScreen.X >= _cameraPreviewPanelMin.X &&
+                viewportMouseScreen.X <= _cameraPreviewPanelMax.X &&
+                viewportMouseScreen.Y >= _cameraPreviewPanelMin.Y &&
+                viewportMouseScreen.Y <= _cameraPreviewPanelMax.Y)
+                mouseOverImage = false;
             _bridge.IsViewportImageHovered = mouseOverImage;
 
             // WORLD INPUT is blocked only by MODAL UI — a visible Container marked
@@ -5499,7 +5525,10 @@ ImGui.SameLine();
         _bridge.CameraPreviewControlActive = false;
         if (!_showCameraPreview || !hasSceneTexture || _bridge.SceneTextureID == 0
             || _imageSize.X < 180f || _imageSize.Y < 120f)
+        {
+            _previewCameraControlLatched = false;
             return;
+        }
 
         uint previewTexture = _bridge.CameraPreviewTextureID != 0
             ? _bridge.CameraPreviewTextureID : _bridge.SceneTextureID;
@@ -5511,41 +5540,186 @@ ImGui.SameLine();
         const float margin = 10f;
         const float headerH = 22f;
         const float framePad = 5f;
-        float maxW = MathF.Min(280f, _imageSize.X * 0.30f) - framePad * 2f;
-        float maxH = MathF.Min(180f, _imageSize.Y * 0.30f) - headerH - framePad * 2f;
-        if (maxW <= 0f || maxH <= 0f) return;
+        float autoMaxW = MathF.Min(280f, _imageSize.X * 0.30f) - framePad * 2f;
+        float autoMaxH = MathF.Min(180f, _imageSize.Y * 0.30f) - headerH - framePad * 2f;
+        //  Hand-resized insets may grow far past the automatic size, but never over the
+        //  whole viewport image (the point of the inset is to keep the scene visible).
+        float hardMaxW = MathF.Max(120f, _imageSize.X * 0.85f) - framePad * 2f;
+        float hardMaxH = MathF.Max(80f, _imageSize.Y * 0.85f) - headerH - framePad * 2f;
+        if (autoMaxW <= 0f || autoMaxH <= 0f)
+        {
+            _previewCameraControlLatched = false;
+            return;
+        }
 
-        float previewW = MathF.Min(maxW, maxH * aspect);
+        float previewW = MathF.Min(autoMaxW, autoMaxH * aspect);
         float previewH = previewW / aspect;
+        //  User width (0 = automatic). The aspect stays locked to the preview texture so
+        //  the picture never distorts; the height is derived and then capped.
+        if (_bridge.CameraPreviewWidth > 0f)
+        {
+            previewW = Math.Clamp(_bridge.CameraPreviewWidth, 120f, MathF.Max(120f, hardMaxW));
+            previewH = previewW / aspect;
+            if (previewH > hardMaxH)
+            {
+                previewH = hardMaxH;
+                previewW = previewH * aspect;
+            }
+        }
         var imageMin = new Vector2(_imageMax.X - margin - previewW - framePad,
             _imageMax.Y - margin - previewH - headerH - framePad);
         var imageMax = imageMin + new Vector2(previewW, previewH);
         var panelMin = imageMin - new Vector2(framePad, headerH);
         var panelMax = imageMax + new Vector2(framePad);
+        // Published so the viewport hit-tests can keep picking out of the overlay.
+        _cameraPreviewPanelMin = panelMin;
+        _cameraPreviewPanelMax = panelMax;
+
+        //  ── Resize grip (bottom-right corner) ──
+        //  Drag grows/shrinks the inset (aspect locked to the preview texture) and the
+        //  width is saved in IDE settings; double-click returns to the automatic size.
+        //  Disabled while the camera is LIVE (the look owns the captured cursor).
+        var mouse = ImGui.GetMousePos();
+        var gripMin = new Vector2(panelMax.X - 16f, panelMax.Y - 16f);
+        bool overGrip = !_previewCameraControlLatched &&
+            mouse.X >= gripMin.X && mouse.X <= panelMax.X &&
+            mouse.Y >= gripMin.Y && mouse.Y <= panelMax.Y;
+        if (overGrip && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        {
+            _bridge.CameraPreviewWidth = 0f;
+            _previewResizeActive = false;
+            PersistCameraPreviewWidth();
+            Console.WriteLine("[Viewport] Camera preview size reset to automatic");
+        }
+        else if (overGrip && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            _previewResizeActive = true;
+        }
+        if (_previewResizeActive)
+        {
+            if (ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                var dragDelta = ImGui.GetIO().MouseDelta;
+                // Both axes move the corner: X widens, Y contributes the equivalent width
+                // so a vertical drag also resizes (the aspect is locked anyway).
+                float grow = dragDelta.X + dragDelta.Y * aspect;
+                _bridge.CameraPreviewWidth = Math.Clamp(previewW + grow, 120f,
+                    MathF.Max(120f, hardMaxW));
+                ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
+            }
+            else
+            {
+                _previewResizeActive = false;
+                PersistCameraPreviewWidth();
+            }
+        }
+
+        //  ── Control latch ──
+        //  Click the inset to take the preview camera over, click the viewport image
+        //  to release it. A latch (instead of hover) is what makes flying possible:
+        //  mouse-look moves the cursor off the small inset on the very first frame.
+        bool previewHovered = mouse.X >= panelMin.X && mouse.X <= panelMax.X
+            && mouse.Y >= panelMin.Y && mouse.Y <= panelMax.Y;
+        bool inViewportImage = mouse.X >= _imageMin.X && mouse.X <= _imageMax.X
+            && mouse.Y >= _imageMin.Y && mouse.Y <= _imageMax.Y;
+        if (!_bridge.SuppressViewportInput && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            if (previewHovered && !_previewCameraControlLatched && !overGrip)
+            {
+                _previewCameraControlLatched = true;
+                Console.WriteLine($"[Viewport] Preview camera control ON ({(_bridge.ViewportPreviewCameraName.Length == 0 ? "Editor Camera" : _bridge.ViewportPreviewCameraName)})");
+            }
+            else if (_previewCameraControlLatched && !previewHovered &&
+                     (inViewportImage || !_bridge.IsViewportFocused))
+            {
+                _previewCameraControlLatched = false;
+                Console.WriteLine("[Viewport] Preview camera control OFF");
+            }
+        }
+        //  The OS cursor is parked (hidden) while the inset is LIVE, so the pointer can
+        //  no longer be aimed at the viewport. Right-click or ESC leave the LIVE camera
+        //  and hand the viewport back to its normal state (cursor shown again, editor
+        //  camera control restored) without touching any panel or selection.
+        if (_previewCameraControlLatched && ImGui.IsMouseClicked(ImGuiMouseButton.Right))
+        {
+            _previewCameraControlLatched = false;
+            Console.WriteLine("[Viewport] Preview camera control OFF (right-click)");
+        }
+        else if (_previewCameraControlLatched && ImGui.IsKeyPressed(ImGuiKey.Escape, false))
+        {
+            _previewCameraControlLatched = false;
+            Console.WriteLine("[Viewport] Preview camera control OFF (Esc)");
+        }
+        //  A deleted / renamed preview camera must not keep the latch alive.
+        if (_previewCameraControlLatched && _bridge.ViewportPreviewCameraName.Length > 0
+            && _bridge.EditorObjectManager?.Objects.FirstOrDefault(obj =>
+                obj.PrimitiveType == EditorPrimitiveType.Camera &&
+                string.Equals(obj.Name, _bridge.ViewportPreviewCameraName,
+                    StringComparison.OrdinalIgnoreCase)) == null)
+            _previewCameraControlLatched = false;
+        _bridge.CameraPreviewControlActive = _previewCameraControlLatched;
 
         var drawList = ImGui.GetWindowDrawList();
         uint panel = ImGui.ColorConvertFloat4ToU32(new Vector4(0.035f, 0.045f, 0.055f, 0.94f));
         uint header = ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.10f, 0.13f, 0.97f));
         uint border = ImGui.ColorConvertFloat4ToU32(new Vector4(0.42f, 0.48f, 0.56f, 0.95f));
         uint text = ImGui.ColorConvertFloat4ToU32(new Vector4(0.92f, 0.94f, 0.97f, 1f));
+        uint live = ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.78f, 0.22f, 1f));
 
         drawList.AddRectFilled(panelMin, panelMax, panel, 4f);
         drawList.AddRectFilled(panelMin, new Vector2(panelMax.X, panelMin.Y + headerH), header, 4f);
         drawList.AddImage((nint)previewTexture, imageMin, imageMax,
             new Vector2(0f, 1f), new Vector2(1f, 0f));
-        drawList.AddRect(imageMin, imageMax, border, 0f, ImDrawFlags.None, 1f);
-        drawList.AddRect(panelMin, panelMax, border, 4f, ImDrawFlags.None, 1f);
+        drawList.AddRect(imageMin, imageMax, _previewCameraControlLatched ? live : border,
+            0f, ImDrawFlags.None, _previewCameraControlLatched ? 2f : 1f);
+        drawList.AddRect(panelMin, panelMax, _previewCameraControlLatched ? live : border,
+            4f, ImDrawFlags.None, _previewCameraControlLatched ? 2f : 1f);
+        //  Resize grip: three diagonal ticks in the bottom-right corner.
+        uint gripColor = _previewCameraControlLatched ? border : live;
+        for (int gi = 0; gi < 3; gi++)
+        {
+            float o = 5f + gi * 4f;
+            drawList.AddLine(new Vector2(panelMax.X - o, panelMax.Y - 3f),
+                new Vector2(panelMax.X - 3f, panelMax.Y - o), gripColor, 1.5f);
+        }
         string cameraLabel = string.IsNullOrEmpty(_bridge.ViewportPreviewCameraName)
             ? "Editor Camera" : _bridge.ViewportPreviewCameraName;
         if (cameraLabel.Length > 20) cameraLabel = cameraLabel[..17] + "...";
         drawList.AddText(panelMin + new Vector2(7f, 4f), text, $"Camera Preview: {cameraLabel}");
+        if (_previewCameraControlLatched)
+        {
+            var liveSize = ImGui.CalcTextSize("LIVE");
+            drawList.AddText(new Vector2(panelMax.X - liveSize.X - 7f, panelMin.Y + 4f), live, "LIVE");
+        }
 
-        var mouse = ImGui.GetMousePos();
-        bool previewHovered = mouse.X >= imageMin.X && mouse.X <= imageMax.X
-            && mouse.Y >= imageMin.Y && mouse.Y <= imageMax.Y;
-        _bridge.CameraPreviewControlActive = previewHovered;
-        if (previewHovered)
-            ImGui.SetTooltip("Hold Ctrl + WASD and move the mouse to move/aim this camera. Choose Main and Preview Cameras separately in Views.");
+        if (overGrip)
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeNWSE);
+            ImGui.SetTooltip("Drag to resize the Camera Preview (aspect locked).\nDouble-click to reset to the automatic size.");
+        }
+        else if (previewHovered)
+        {
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            //ImGui.SetTooltip(_previewCameraControlLatched
+            //    ? "LIVE — cursor hidden: WASD to move, Q/E down/up, mouse to aim.\nEsc or right-click returns to the normal view."
+            //    : "Click to take control of this camera (WASD + mouse, Q/E down/up).\nThe cursor hides while it is live; Esc or right-click returns to the normal view.");
+        }
+    }
+
+    /// <summary>Persist the hand-resized Camera Preview width (0 = automatic) in the IDE
+    /// settings. Load-then-save keeps every other setting untouched.</summary>
+    private void PersistCameraPreviewWidth()
+    {
+        try
+        {
+            var settings = Config.SettingsSave.Load();
+            settings.CameraPreviewWidth = _bridge.CameraPreviewWidth;
+            Config.SettingsSave.Save(settings);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Viewport] Could not save camera preview size: {ex.Message}");
+        }
     }
 
     /// <summary>Draw a small type tag ("Camera" / "Light" / "Sky") above every placed
@@ -5864,6 +6038,7 @@ ImGui.SameLine();
         if (ImGui.BeginPopup("viewport_camera_views"))
         {
             ImGui.TextDisabled("Viewport: Ctrl+WASD + mouse | Preview/In-Game: WASD + mouse");
+            ImGui.TextDisabled("Preview inset: click it to take over the camera, click the viewport to release");
             ImGui.Separator();
             DrawViewportCameraSelectionMenu("Main Camera", preview: false);
             DrawViewportCameraSelectionMenu("Preview Camera", preview: true);
@@ -5871,7 +6046,7 @@ ImGui.SameLine();
             {
                 if (!string.IsNullOrWhiteSpace(_bridge.ViewportPreviewCameraName))
                 {
-                    _bridge.ViewportMainCameraName = _bridge.ViewportPreviewCameraName;
+                    _bridge.SetMainCameraName(_bridge.ViewportPreviewCameraName);
                     Console.WriteLine($"[Viewport] Main camera → preview camera '{_bridge.ViewportMainCameraName}'");
                 }
                 else
@@ -5950,8 +6125,8 @@ ImGui.SameLine();
 
         if (ImGui.MenuItem("Editor Camera", null, string.IsNullOrEmpty(selectedName)))
         {
-            if (preview) _bridge.ViewportPreviewCameraName = "";
-            else _bridge.ViewportMainCameraName = "";
+            if (preview) _bridge.SetPreviewCameraName("");
+            else _bridge.SetMainCameraName("");
         }
 
         if (manager != null)
@@ -5963,8 +6138,8 @@ ImGui.SameLine();
                 string itemId = $"{marker.Name}##camera_{(preview ? "preview" : "main")}_{cameraIndex++}";
                 if (ImGui.MenuItem(itemId, null, string.Equals(selectedName, marker.Name, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (preview) _bridge.ViewportPreviewCameraName = marker.Name;
-                    else _bridge.ViewportMainCameraName = marker.Name;
+                    if (preview) _bridge.SetPreviewCameraName(marker.Name);
+                    else _bridge.SetMainCameraName(marker.Name);
                 }
             }
         }
@@ -6169,7 +6344,9 @@ ImGui.SameLine();
         int occluders = _bridge.EditorObjectManager?.ViewportOccluderCount ?? 0;
         bool occlusionActive = _bridge.EditorObjectManager?.ViewportOcclusionActive ?? false;
         if (ToolButton(occlusion ? $"OC: On ({occluders})" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
-            $"Conservative occlusion for Box/Sphere (including displaced targets), terrain chunks and static GLB references. Occluders are solid, non-displaced untextured Boxes.\n{(occlusionActive ? "Active this frame" : occlusion ? "Enabled but unavailable this frame" : "Disabled")}; {occluders} visible untextured Box occluders (maximum 64).\nDisabled for wireframe or incompatible depth/cull state.", out y))
+            $"Analytic occlusion for Box/Sphere, terrain chunks (octree) and static GLB references.\n" +
+            $"{(occlusionActive ? "Active this frame" : occlusion ? "Enabled, but no occluder is visible in the frustum" : "Disabled")}; {occluders} occluder(s) submitted (maximum {EditorObjectManager.ViewportOccluderLimit}).\n" +
+            "Every Box occludes by default; tick Occluder in Inspector → Flags for Sphere/GLB. Occluded targets are skipped completely (no draw call).", out y))
             EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
 
         bool cull3D = EditorObjectManager.ViewportCullDebug;

@@ -34,6 +34,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private IScene? _deferredTransitionScene;
         private bool _running;
         private bool _altEnterWasDown = false;
+        /// <summary>True while the OS cursor is parked for the LIVE camera-preview latch
+        /// (see the cursor block in the render phase).</summary>
+        private bool _previewCursorHidden;
+        /// <summary>Cursor visibility captured when the LIVE latch hid it, restored on release
+        /// so a session that owns a hidden cursor (in-game look) is not left with the arrow up.</summary>
+        private bool _previewCursorWasShown = true;
 
         // ── IDE integration ──
         private IDE.IDE? _ide;
@@ -56,6 +62,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private Camera? _editorCamera;
         private Camera? _markerRenderCamera;
         private Camera? _previewMarkerCamera;
+        /// <summary>Dedicated camera for viewport culling: same marker/transform as the
+        /// Preview Camera but with the VIEWPORT aspect ratio, so the small preview inset
+        /// (280x180) can never narrow or distort the frustum used to skip objects.</summary>
+        private Camera? _cullMarkerCamera;
         private double _cameraMarkerLastX;
         private double _cameraMarkerLastY;
         private string _cameraMarkerInputName = "";
@@ -269,7 +279,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         }
 
         private Camera? ResolveMarkerCamera(string name, EditorObjectManager? manager, int width, int height,
-            bool preview = false)
+            bool preview = false, bool cull = false)
         {
             if (string.IsNullOrWhiteSpace(name) || manager == null) return null;
             foreach (var marker in manager.Objects)
@@ -277,7 +287,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 if (marker.PrimitiveType != EditorPrimitiveType.Camera ||
                     !string.Equals(marker.Name, name, StringComparison.OrdinalIgnoreCase)) continue;
 
-                Camera? markerCamera = preview ? _previewMarkerCamera : _markerRenderCamera;
+                //  Three independent instances: render (viewpoint of the viewport), preview
+                //  (the small inset, its own aspect) and cull (viewport aspect, preview
+                //  marker). Sharing one instance made the cull frustum follow whichever
+                //  aspect updated last — the inset's — and objects near the screen edges
+                //  were skipped as if they were outside the view.
+                Camera? markerCamera = cull ? _cullMarkerCamera
+                    : preview ? _previewMarkerCamera
+                    : _markerRenderCamera;
                 markerCamera ??= new Camera(0f, 0f, 0f, 180f, 0f,
                     (float)width / Math.Max(1, height), marker.CameraFov, marker.CameraNear, marker.CameraFar);
                 var forward = marker.Forward;
@@ -286,7 +303,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 markerCamera.SetEditorViewTransform(marker.Position, yaw, pitch,
                     marker.CameraFov, marker.CameraNear, marker.CameraFar);
                 markerCamera.UpdateAspectRatio(width, height);
-                if (preview) _previewMarkerCamera = markerCamera;
+                if (cull) _cullMarkerCamera = markerCamera;
+                else if (preview) _previewMarkerCamera = markerCamera;
                 else _markerRenderCamera = markerCamera;
                 return markerCamera;
             }
@@ -298,9 +316,14 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             bridge.CameraMarkerControlActive = false;
             bool ctrlHeld = Keyboard.IsKeyDown(window, Const.GLFW_KEY_LEFT_CONTROL) ||
                             Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_CONTROL);
-            bool previewControl = bridge.CameraPreviewControlActive && ctrlHeld;
+            //  Preview camera control is CLICK-LATCHED in ViewportPanel: clicking the
+            //  inset takes the camera over until the viewport image is clicked again,
+            //  so it keeps flying while the cursor travels away from the small inset.
+            //  Ctrl is only needed by the unlatched paths (viewport Main Camera).
+            bool previewControl = bridge.CameraPreviewControlActive;
             bool playSession = bridge.InGameActive || bridge.IsPreviewMode;
-            bool inputAllowed = bridge.IsViewportFocused && bridge.IsViewportImageHovered &&
+            bool inputAllowed = bridge.IsViewportFocused &&
+                                (previewControl || bridge.IsViewportImageHovered) &&
                                 !bridge.IsOverlayVisible && !bridge.SuppressViewportInput &&
                                 !bridge.ScrollCapturedByUI && !bridge.MenuOwnsInput;
 
@@ -361,6 +384,19 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _cameraMarkerLastX = mouseX;
             _cameraMarkerLastY = mouseY;
 
+            //  ── Preview look keeps the pointer in the middle ──
+            //  The LIVE preview camera owns the captured cursor, so the look behaves like an
+            //  FPS mouse: after reading this frame's delta the pointer is parked back at the
+            //  window centre. Turning stays unbounded (the next frame's delta is measured
+            //  from the centre) and the ImGui cursor never wanders off-window while live.
+            if (previewControl && _cameraMarkerMousePrimed)
+            {
+                Mouse.CentreCursor();
+                Mouse.GetCursorPosition(out double centredX, out double centredY);
+                _cameraMarkerLastX = centredX;
+                _cameraMarkerLastY = centredY;
+            }
+
             var rotation = marker.RotationEuler;
             rotation.Y -= deltaX * Mouse.Sensitivity;
             rotation.X = Math.Clamp(rotation.X - deltaY * Mouse.Sensitivity, -89f, 89f);
@@ -414,8 +450,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             if (sky != null && _editorSkybox != null && _editorSkyTextures != null)
                 _editorSkybox.Draw(camera, lights, dt, _editorSkyTextures);
 
+            //  recordViewportPick:false — the inset must not overwrite the per-object pick
+            //  states: it culls with its own 280x180 frustum, which would make objects the
+            //  VIEWPORT still draws unselectable for the rest of the frame.
             manager.Draw(camera, lights, csm, null, null, showSkyGizmo: false,
-                showEditorGizmos: false, captureViewportCullSnapshot: false);
+                showEditorGizmos: false, captureViewportCullSnapshot: false,
+                recordViewportPick: false);
 
             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
             GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
@@ -766,13 +806,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                             obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera && obj.IsDefaultCamera)
                         : null;
                     string viewportCameraName = defaultCamera?.Name ?? bridge.ViewportMainCameraName;
+
+                    // ── Rendering and culling have different cameras on purpose ──
+                    // The viewport RENDERS through its own camera (editor camera or Main
+                    // Camera), but its FRUSTUM + OCCLUSION culling always follows the
+                    // selected Preview Camera: geometry the preview cannot see, or that an
+                    // occluder hides there, is skipped in the big view too. Choosing
+                    // Views → Preview Camera → Editor Camera culls with the render camera
+                    // again. This is independent of Cull Viz / Freeze (those only drive the
+                    // debug overlay) and of LIVE (which owns input + hides the cursor).
                     var viewportCamera = ResolveMarkerCamera(viewportCameraName,
                         bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight) ?? _editorCamera;
-                    var viewportCullCamera = ResolveMarkerCamera(viewportCameraName,
-                        bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
-                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight)
-                        ?? viewportCamera;
+                    bool hasPreviewCamera =
+                        !string.IsNullOrWhiteSpace(bridge.ViewportPreviewCameraName) &&
+                        bridge.EditorObjectManager?.Objects.Any(obj =>
+                            obj.IsVisible && obj.PrimitiveType == EditorPrimitiveType.Camera &&
+                            string.Equals(obj.Name, bridge.ViewportPreviewCameraName,
+                                StringComparison.OrdinalIgnoreCase)) == true;
+                    //  cull:true keeps the cull camera on its OWN Camera instance AND gives
+                    //  it the VIEWPORT aspect (window size), not the inset's 280x180: the
+                    //  inset aspect used to leak into the frustum, so geometry near the
+                    //  left/right screen edges was culled even though the viewport shows it.
+                    var viewportCullCamera = hasPreviewCamera
+                        ? ResolveMarkerCamera(bridge.ViewportPreviewCameraName,
+                            bridge.EditorObjectManager, Glfw.WindowWidth, Glfw.WindowHeight, cull: true)
+                            ?? viewportCamera
+                        : viewportCamera;
                     bridge.Camera = viewportCamera;
 
                     GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
@@ -1079,6 +1138,31 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 // ── Render IDE overlay on top of scene ──
                 if (_ide != null && _ide.IsActive)
                     _ide.Render();
+
+                // ── LIVE camera-preview control owns the pointer ──
+                // While the preview inset is latched (gold frame) the mouse-look reads
+                // raw cursor deltas, so the OS cursor is parked/hidden: the arrow stays
+                // out of the shot and the look never stalls at the window edge.
+                // Written AFTER every other cursor owner each frame (IDE.Update and the
+                // scene render run earlier), so ShowMouse's idempotent latch is never
+                // flipped back and forth frame by frame.
+                bool previewCursorHidden = _ide != null && _ide.IsActive &&
+                                           _ide.Bridge?.CameraPreviewControlActive == true;
+                if (previewCursorHidden)
+                {
+                    if (!_previewCursorHidden)
+                    {
+                        _previewCursorWasShown = Mouse.CursorShown;
+                        _previewCursorHidden = true;
+                    }
+                    //  Idempotent inside ShowMouse: no re-centre while already hidden.
+                    if (Mouse.CursorShown) Mouse.ShowMouse(false);
+                }
+                else if (_previewCursorHidden)
+                {
+                    _previewCursorHidden = false;
+                    if (_previewCursorWasShown) Mouse.ShowMouse(true);
+                }
 
                 // Transition overlay is rendered by the IDE while the ImGui frame is active.
                 // Do not draw ImGui overlay here to avoid calling ImGui draw-list APIs
@@ -1548,7 +1632,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private void UpdateInGameCursor()
         {
             string? sceneName = _currentScene?.Name;
-            bool showMouse = sceneName == "MainMenuScene" || sceneName == null;
+            bool showMouse = sceneName == "MainMenuScene" || sceneName == null
+                || (Bridge?.ShowCursorInGame ?? false);
             Mouse.ShowMouse(showMouse);
             if (showMouse)
                 Mouse.ResetState();

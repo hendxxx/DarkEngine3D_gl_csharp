@@ -359,6 +359,8 @@ public class IDESettingsPanel
                 s.SpriteNormalMaps2D = true;
                 s.IDEFontSize = 20f;
                 s.ViewportFontSize = 16f;
+                s.CameraPreviewWidth = 0f;
+                _bridge.CameraPreviewWidth = 0f;
                 s.ToolbarFontSize = 14f;
                                     Save(s);
                 Console.WriteLine("[IDESettings] Reset to defaults");
