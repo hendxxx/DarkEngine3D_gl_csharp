@@ -184,6 +184,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
         private bool _gizmoEscWasDown = false;
         //  Cursor visibility tracking (avoid redundant GLFW calls)
         private bool _prevCursorShown = true;
+
+        /// <summary>"Show Mouse In-Game" (Inspector → In-Game Settings / IDE Settings): true keeps
+        /// the OS cursor VISIBLE during gameplay instead of capturing it (hidden + centred) for
+        /// mouse-look. Read fresh every frame so toggling it mid-session applies immediately.</summary>
+        private bool CursorSettingShown => _sceneManager.Bridge?.ShowCursorInGame == true;
         //  Per-frame render timing (ms) 
         private System.Diagnostics.Stopwatch _renderTimer = new();
         private System.Diagnostics.Stopwatch _frameTotalTimer = new();
@@ -655,8 +660,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // ── Register scene root for IDE Save All ──
             SceneAssetSerializer.RegisterSceneRoot("GameScene", _sceneRoot);
             ResetCameraToEditor2DView();
-            Mouse.ShowMouse(false);
-            _prevCursorShown = false;
+            // "Show Mouse In-Game" wins over the default capture on ENTER, so the very first
+            // frame already matches the setting instead of flickering the cursor on frame 2.
+            bool showCursorOnEnter = CursorSettingShown;
+            Mouse.ShowMouse(showCursorOnEnter);
+            _prevCursorShown = showCursorOnEnter;
 
             Console.WriteLine("[GameScene] Engine Running...");
         }
@@ -677,7 +685,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
-            bool shouldShowCursor =  !viewportFocused || _paused;
+            // The setting keeps the cursor on screen during gameplay; otherwise it stays captured
+            // (hidden + centred) unless the viewport lost focus or the pause layer owns the mouse.
+            bool shouldShowCursor = CursorSettingShown || !viewportFocused || _paused;
             if (shouldShowCursor != _prevCursorShown)
             {
                 Mouse.ShowMouse(shouldShowCursor);
@@ -711,7 +721,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     }
                     else
                     {
-                        Mouse.ShowMouse(false);
+                        Mouse.ShowMouse(CursorSettingShown);
                         Mouse.ResetState();
                     }
                 }
@@ -791,8 +801,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                          Keyboard.IsKeyDown(window, Const.GLFW_KEY_RIGHT_ALT));
                 }
 
-                    // 1. Mouse → yaw/pitch → vectors
-                    Mouse.Update(window, _camera);
+                    // 1. Mouse → yaw/pitch → vectors. A VISIBLE cursor (Show Mouse In-Game) means
+                    // the mouse belongs to the player, so it must not spin the camera.
+                    if (!CursorSettingShown) Mouse.Update(window, _camera);
                     _camera.UpdateVectors();
 
                     CameraConfig.TargetShoulderOffset = _lastTargetShoulderOffset;
@@ -1668,7 +1679,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 _paused = false;
                 _inputCooldown = 0.15f;
-                Mouse.ShowMouse(false);
+                Mouse.ShowMouse(CursorSettingShown);
                 Mouse.ResetState();
             }
             // Otherwise, return to the pause menu naturally (keep _paused = true)
@@ -1734,7 +1745,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 _paused = false;
                 _inputCooldown = 0.15f;
-                Mouse.ShowMouse(false);
+                Mouse.ShowMouse(CursorSettingShown);
                 Mouse.ResetState();
             }
 
@@ -1799,7 +1810,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _saveLoadActive = false;
             _paused = false;
             _inputCooldown = 0.15f;
-            Mouse.ShowMouse(false);
+            Mouse.ShowMouse(CursorSettingShown);
             Mouse.ResetState();
 
             Console.WriteLine($"[GameScene] Game loaded from slot {slotIndex}: {data.SaveTime}");
@@ -2042,7 +2053,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 _paused = false;
                 _inputCooldown = 0.15f;
-                Mouse.ShowMouse(false);
+                Mouse.ShowMouse(CursorSettingShown);
                 Mouse.ResetState();
             }
             else if (index == 1 || index == 2)

@@ -33,6 +33,7 @@ public unsafe class EditorObjectManager
     private readonly List<(AABB Bounds, int State)> _frozenViewportCullBoxes = new();
     private ViewportCullStatistics _frozenViewportCullStatistics;
     private bool _captureCullSnapshot;
+    private bool _loggedNoOccluders;
 
     public static bool ViewportOcclusionEnabled { get; set; }
     public static bool ViewportCullDebug { get; set; }
@@ -75,33 +76,52 @@ public unsafe class EditorObjectManager
     public int TerrainOctreeNodesPruned { get; private set; }
     public int EditorMarkerFrustumObjects { get; private set; }
 
-    [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glGetIntegerv")]
-    private static extern void GetGlInteger(uint name, int* value);
-    [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glGetDoublev")]
-    private static extern void GetGlDouble(uint name, double* value);
+    /// <summary>Maximum occluders submitted to the viewport occlusion pass.</summary>
+    internal const int ViewportOccluderLimit = 64;
+    /// <summary>Side of the cube inscribed in a unit-diameter sphere (1/√3): an exact,
+    /// conservative occluder substitute for a Sphere — a cube inside it can never hide
+    /// anything the sphere itself would not hide.</summary>
+    private const float InscribedSphereCubeScale = 0.57735026f;
 
-    private static bool CanUseViewportOcclusion()
+    //  The occlusion test is purely ANALYTIC: it projects the occluder and compares 2D
+    //  silhouettes plus depths, so it never reads GL state. The old glGet* gate
+    //  (polygon mode, depth mask/func, cull face, stencil, clip planes…) silently
+    //  disabled OC for perfectly renderable scenes — e.g. wireframe view, or a scene
+    //  that leaves polygon offset / stencil enabled — which looked like "OC does
+    //  nothing at all".
+
+    /// <summary>Submit an object's volume as a viewport occluder. Box uses its world
+    /// matrix (exact); Sphere uses the cube inscribed in it (conservative); GLB uses its
+    /// world AABB (opt-in: the AABB is larger than the mesh). Displaced geometry is
+    /// skipped — its vertices no longer match the shape.</summary>
+    private void AddViewportOccluders(EditorObject obj, Vector3 cameraPosition, Matrix4x4 viewProj)
     {
-        int* polygon = stackalloc int[2];
-        double* depthRange = stackalloc double[2];
-        int depthWrite = 0, depthFunc = 0, face = 0, winding = 0, depthBits = 0;
-        GetGlInteger(0x0B40, polygon); // GL_POLYGON_MODE
-        GetGlInteger(0x0B72, &depthWrite); // GL_DEPTH_WRITEMASK
-        GetGlInteger(0x0B74, &depthFunc); // GL_DEPTH_FUNC
-        GetGlInteger(0x0B45, &face); // GL_CULL_FACE_MODE
-        GetGlInteger(0x0B46, &winding); // GL_FRONT_FACE
-        GetGlInteger(0x0D56, &depthBits); // GL_DEPTH_BITS
-        GetGlDouble(0x0B70, depthRange); // GL_DEPTH_RANGE
-        for (uint i = 0; i < 8; i++)
-            if (GL.IsEnabled(0x3000 + i)) return false; // GL_CLIP_DISTANCE0..7
-        return polygon[0] == 0x1B02 && polygon[1] == 0x1B02 && depthWrite != 0 && depthBits >= 16
-            && depthRange[0] == 0.0 && depthRange[1] == 1.0
-            && GL.IsEnabled(Const.GL_DEPTH_TEST) && !GL.IsEnabled(Const.GL_STENCIL_TEST)
-            && !GL.IsEnabled(Const.GL_SCISSOR_TEST) && !GL.IsEnabled(0x8037) // polygon offset fill
-            && !GL.IsEnabled(0x809E) && !GL.IsEnabled(0x80A0) && !GL.IsEnabled(0x8E51) // sample coverage/mask
-            && !GL.IsEnabled(0x8C89) // GL_RASTERIZER_DISCARD
-            && (depthFunc == 0x0201 || depthFunc == 0x0203)
-            && (!GL.IsEnabled(Const.GL_CULL_FACE) || (face == 0x0405 && winding == 0x0901));
+        if (obj.PbrVertexDisplaceEnabled) return;
+        switch (obj.PrimitiveType)
+        {
+            case EditorPrimitiveType.Box:
+            case EditorPrimitiveType.Sphere:
+            {
+                if (obj.Scale.X <= 0f || obj.Scale.Y <= 0f || obj.Scale.Z <= 0f) return;
+                obj.EnsureResources();
+                if (obj.PrimitiveTriangles <= 0 ||
+                    !EditorObject.IsAABBInFrustum(viewProj, obj.WorldAABB)) return;
+                var boxWorld = obj.PrimitiveType == EditorPrimitiveType.Box
+                    ? obj.WorldMatrix
+                    : obj.WorldMatrix * Matrix4x4.CreateScale(InscribedSphereCubeScale);
+                var prepared = ViewportOcclusion.Prepare(boxWorld, cameraPosition, viewProj, obj.OcclusionTag);
+                if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                return;
+            }
+            case EditorPrimitiveType.GlbReference:
+            {
+                if (!obj.TryGetGlbCullData(out var bounds, out _) || bounds is not { } glbBounds) return;
+                if (!EditorObject.IsAABBInFrustum(viewProj, glbBounds)) return;
+                var prepared = ViewportOcclusion.PrepareBounds(glbBounds, cameraPosition, viewProj, obj.OcclusionTag);
+                if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                return;
+            }
+        }
     }
 
     /// <summary>In-place insertion sort of the 2D sprite pass list: layer ascending,
@@ -520,6 +540,8 @@ public unsafe class EditorObjectManager
                 TexturePath = source.TexturePath,
                 CastShadow = source.CastShadow,
                 IsVisible = source.IsVisible,
+                IsOccluderOverride = source.IsOccluderOverride,
+                IsOccludee = source.IsOccludee,
                 GlbFilePath = source.GlbFilePath,
                 CameraFov = source.CameraFov,
                 CameraNear = source.CameraNear,
@@ -688,7 +710,8 @@ public unsafe class EditorObjectManager
         /// </summary>
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
-            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null)
+            bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null,
+            bool recordViewportPick = true)
         {
             ViewportDrawnObjects = ViewportFrustumObjects = ViewportOccludedObjects = 0;
             ViewportDrawnTriangles = ViewportFrustumTriangles = ViewportOccludedTriangles = 0;
@@ -765,35 +788,42 @@ public unsafe class EditorObjectManager
             // (see OpenGL.ApplySceneProperties) — do NOT force-enable culling here.
 
             var primitiveViewProj = viewportCullViewProj;
-            bool useOcclusion = ViewportOcclusionEnabled && _shaderProgram != 0 && CanUseViewportOcclusion();
+            bool useOcclusion = ViewportOcclusionEnabled && _shaderProgram != 0;
             if (useOcclusion)
             {
-                // Build the current-frame occluder set before visiting targets. Otherwise,
-                // a sphere/box earlier in Hierarchy order is tested before a later wall
-                // has been submitted and can never be occluded by it.
-                for (int i = 0; i < _objects.Count && _viewportOccluders.Count < 64; i++)
+                // Build the current-frame occluder set BEFORE visiting targets, otherwise
+                // a wall later in Hierarchy order could never hide an earlier object.
+                // Only objects marked "Occluder" contribute (EditorObject.IsOccluder).
+                for (int i = 0; i < _objects.Count && _viewportOccluders.Count < ViewportOccluderLimit; i++)
                 {
                     var candidate = _objects[i];
-                    if (!candidate.IsVisible || candidate.PrimitiveType != EditorPrimitiveType.Box
-                        || candidate.PbrVertexDisplaceEnabled || candidate.HasPbrMaterial
-                        || candidate.Scale.X <= 0f || candidate.Scale.Y <= 0f || candidate.Scale.Z <= 0f)
-                        continue;
-
-                    candidate.EnsureResources();
-                    if (candidate.PrimitiveTriangles <= 0
-                        || !EditorObject.IsAABBInFrustum(primitiveViewProj, candidate.WorldAABB))
-                        continue;
-                    var prepared = ViewportOcclusion.Prepare(candidate.WorldMatrix, cullCamera.Position, primitiveViewProj);
-                    if (prepared.IsValid) _viewportOccluders.Add(prepared);
+                    if (!candidate.IsVisible || !candidate.IsOccluder) continue;
+                    AddViewportOccluders(candidate, cullCamera.Position, primitiveViewProj);
                 }
             }
             ViewportOcclusionActive = useOcclusion;
             ViewportOccluderCount = _viewportOccluders.Count;
+            if (useOcclusion && ViewportOccluderCount == 0 && !_loggedNoOccluders)
+            {
+                _loggedNoOccluders = true;
+                Console.WriteLine("[OC] Enabled, but no visible Box/Sphere/GLB is marked as an occluder — nothing can be hidden yet. Tick 'Occluder' in Inspector → Flags.");
+            }
             bool captureCullDebug = ViewportCullDebug && (!ViewportCullFreezeEnabled || _captureCullSnapshot);
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
-                obj.ViewportOccluders = useOcclusion ? _viewportOccluders : null;
+                //  Picking follows THIS frame's draw decision (see IsViewportPickable): an
+                //  object the cull pass skips must not be clickable, one that is drawn must
+                //  stay clickable. Reset here, then the cull branches below mark it.
+                if (recordViewportPick)
+                {
+                    obj.ViewportCullState = 0;
+                    obj.ViewportCullStateFrame = Glfw.FrameId;
+                }
+                //  "Occludee" OFF = never skipped by the occlusion test (frustum culling
+                //  still applies): the escape hatch for geometry that must not pop.
+                bool occludee = useOcclusion && obj.IsOccludee;
+                obj.ViewportOccluders = occludee ? _viewportOccluders : null;
                 obj.ViewportCullDebugCapture = captureCullDebug;
                 obj.ViewportCullViewProjection = viewportCullViewProj;
                 obj.ViewportCullPosition = cullCamera.Position;
@@ -820,10 +850,10 @@ public unsafe class EditorObjectManager
                         }
                         else { TerrainFrustumPlanes++; TerrainFrustumTriangles += triangles; }
                     }
-                    else if (useOcclusion)
+                    else if (occludee)
                     {
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj))
+                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj, obj.OcclusionTag))
                             {
                                 state = 2;
                                 if (measured)
@@ -836,7 +866,11 @@ public unsafe class EditorObjectManager
                             }
                     }
                     if (captureCullDebug) _viewportCullBoxes.Add((bounds, state));
-                    if (state != 0) continue;
+                    if (state != 0)
+                    {
+                        if (recordViewportPick) obj.ViewportCullState = state;
+                        continue;
+                    }
                 }
                 obj.Draw(
                     _modelLoc, _viewLoc, _projLoc,
@@ -865,19 +899,13 @@ public unsafe class EditorObjectManager
                     TerrainOccludedChunks += obj.PbrChunksOccluded;
                     if (captureCullDebug) _viewportCullBoxes.AddRange(obj.ViewportTerrainCullBoxes);
                 }
-                if (useOcclusion && !CanUseViewportOcclusion())
-                {
-                    useOcclusion = false;
-                    ViewportOcclusionActive = false;
-                    _viewportOccluders.Clear();
-                    ViewportOccluderCount = 0;
-                }
             }
 
             GL.BindVertexArray(0);
 
             // ── GLB reference models (gltf shader — PBR + CSM shadow reception) ──
-            DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug);
+            DrawGlbReferences(camera, cullCamera, viewportCullViewProj, light, csm, captureCullDebug,
+                recordViewportPick);
 
             // ── 2D sprites: Player2D + Sprite2D in ONE layer-sorted pass ──
             // Digabung dari dua pass terpisah (semua player dulu, lalu semua sprite):
@@ -1270,7 +1298,7 @@ public unsafe class EditorObjectManager
         }
 
         private void DrawGlbReferences(Camera camera, Camera cullCamera, Matrix4x4 cullViewProj,
-            Lights light, CSM? csm, bool captureCullDebug)
+            Lights light, CSM? csm, bool captureCullDebug, bool recordViewportPick = true)
         {
             bool any = false;
             for (int i = 0; i < _objects.Count; i++)
@@ -1337,7 +1365,9 @@ public unsafe class EditorObjectManager
             GL.Uniform1i(GlbUniforms.HasOcclusionTexture, 0);
             GL.Uniform1i(GlbUniforms.HasEmissiveTexture, 0);
 
-            bool useOcclusion = ViewportOcclusionEnabled && CanUseViewportOcclusion();
+            //  GLB references are skipped by the occluders gathered in the primitive pass
+            //  above; the analytic test needs no GL state.
+            bool useOcclusion = ViewportOcclusionEnabled && _viewportOccluders.Count > 0;
             for (int i = 0; i < _objects.Count; i++)
             {
                 var obj = _objects[i];
@@ -1349,14 +1379,19 @@ public unsafe class EditorObjectManager
                 if (bounds is { } aabb)
                 {
                     if (!EditorObject.IsAABBInFrustum(cullViewProj, aabb)) state = 1;
-                    else if (useOcclusion)
+                    else if (useOcclusion && obj.IsOccludee)
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj))
+                            if (ViewportOcclusion.IsOccludedPrepared(aabb, occluder, cullViewProj, obj.OcclusionTag))
                             {
                                 state = 2;
                                 break;
                             }
                     if (captureCullDebug) _viewportCullBoxes.Add((aabb, state));
+                }
+                if (recordViewportPick)
+                {
+                    obj.ViewportCullState = state;
+                    obj.ViewportCullStateFrame = Glfw.FrameId;
                 }
                 if (state == 1) { GlbFrustumObjects++; GlbFrustumTriangles += triangles; continue; }
                 if (state == 2) { GlbOccludedObjects++; GlbOccludedTriangles += triangles; continue; }
@@ -1460,6 +1495,14 @@ public unsafe class EditorObjectManager
         /// Raycast against all editor objects to find the closest hit.
         /// Returns the hit object, hit point, and hit distance.
         /// </summary>
+        /// <summary>True when the object was actually DRAWN in the current viewport frame.
+        /// A frame id mismatch (no draw pass yet this frame: hidden tab, scene still loading)
+        /// counts as pickable so selecting never breaks; likewise an object with no recorded
+        /// state. Culled objects (frustum or occlusion) are not pickable — a click through the
+        /// editor camera must never select something the viewport is not showing.</summary>
+        public static bool IsViewportPickable(EditorObject obj) =>
+            obj.ViewportCullState == 0 || obj.ViewportCullStateFrame != Glfw.FrameId;
+
         public EditorObject? Raycast(Vector3 rayOrigin, Vector3 rayDir, out float hitDist, out Vector3 hitPoint)
         {
             hitDist = float.MaxValue;
@@ -1470,6 +1513,7 @@ public unsafe class EditorObjectManager
             {
                 var obj = _objects[i];
                 if (!obj.IsVisible) continue;
+                if (!IsViewportPickable(obj)) continue;
 
                 if (obj.PrimitiveType == EditorPrimitiveType.GlbReference)
                 {
