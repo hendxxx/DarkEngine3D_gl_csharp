@@ -5700,9 +5700,9 @@ ImGui.SameLine();
         else if (previewHovered)
         {
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip(_previewCameraControlLatched
-                ? "LIVE — cursor hidden: WASD to move, Q/E down/up, mouse to aim.\nEsc or right-click returns to the normal view."
-                : "Click to take control of this camera (WASD + mouse, Q/E down/up).\nThe cursor hides while it is live; Esc or right-click returns to the normal view.");
+            //ImGui.SetTooltip(_previewCameraControlLatched
+            //    ? "LIVE — cursor hidden: WASD to move, Q/E down/up, mouse to aim.\nEsc or right-click returns to the normal view."
+            //    : "Click to take control of this camera (WASD + mouse, Q/E down/up).\nThe cursor hides while it is live; Esc or right-click returns to the normal view.");
         }
     }
 
