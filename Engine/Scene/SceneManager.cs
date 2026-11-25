@@ -4,6 +4,7 @@ using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Objects;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using DarkEngine3D_gl_csharp.Engine.Visual.PostProcessing;
+using ImGuiNET;
 using System.Numerics;
 
 namespace DarkEngine3D_gl_csharp.Engine.Scene
@@ -698,6 +699,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                 }
                 _altEnterWasDown = altEnterNow;
 
+                // ── F2: toggle wireframe (editor viewport AND in-game) ──
+                // Polled from GLFW in this loop because it runs every frame in both
+                // modes; the IDE's ImGui shortcut never fired reliably in edit mode and
+                // Keyboard.Update is skipped while gameplay input is gated off.
+                // Rising edge is latched inside IsKeyPressed, so holding F2 flips once.
+                // A text field that owns the keyboard (typing an object name, a path, ...)
+                // must not toggle the viewport under the user's fingers.
+                bool typingInUi = _ide != null && ImGui.GetIO().WantTextInput;
+                if (!typingInUi && Keyboard.IsKeyPressed(window, Const.GLFW_KEY_F2))
+                    Keyboard.ToggleWireframe();
+
                 // ═══════════════════════════════════════════════════════
                 // PHASE 2: RENDER
                 // ═══════════════════════════════════════════════════════
@@ -731,9 +743,20 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                     OpenGL.ApplySceneProperties(_currentScene.RenderProperties, ref _currentVSync);
                 }
 
+                // F2 wireframe overrides every rendered scene's polygon mode (editor and
+                // in-game). The per-scene WireframeMode flag belongs to the Inspector; the
+                // keyboard toggle must not require editing it.
+                if (Keyboard.GetIsWireframe())
+                    GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_LINE);
+
                 // Process sprite atlas work on the render thread before rendering the current scene
                                 ProcessSpriteAtlasOnRenderThread();
                                 _currentScene?.Render();
+
+                // Wireframe (F2) must stop at the 3D scene pass: the gizmo, camera
+                // insets and the ImGui UI are drawn with the default fill mode.
+                if (Keyboard.GetIsWireframe())
+                    GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
 
                 // ── Render gizmo when a scene is active and an editor object is selected ──
                 if (_currentScene != null && _ide != null && _ide.IsActive)
@@ -861,6 +884,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         GL.FrontFace(Const.GL_CCW);
                     }
 
+                    // F2 wireframe: the editor scene's own WireframeMode flag is applied
+                    // above, so the keyboard toggle has to override it for the viewport.
+                    if (Keyboard.GetIsWireframe())
+                        GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_LINE);
+
                     // ── Render editor grid (ground plane + axis helpers) ──
                     GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
 
@@ -968,6 +996,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                              !string.IsNullOrWhiteSpace(bridge.ViewportMainCameraName)))
                             RenderCameraPreview(window, bridge, editorObjMgr, editorProps, _editorLights, _editorCsm, dt);
 
+                        // ── Re-apply F2 wireframe for the object pass ──
+                        // The shadow pass above restores the editor render properties
+                        // (editorProps.Apply() and RenderCameraPreview both set PolygonMode
+                        // back to the per-scene value, i.e. FILL), which silently cancelled
+                        // the wireframe override applied before the grid/sky. The toggle must
+                        // be applied LAST, immediately before the objects are drawn.
+                        if (Keyboard.GetIsWireframe())
+                            GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_LINE);
+
                         // Pass selection highlight color so selected objects get a mesh wireframe outline
                         Vector3? wireCol = bridge is { SelectedEditorObjects.Count: > 0 }
                             ? bridge.SelectionHighlights.EditorObject : null;
@@ -982,7 +1019,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // waits on a readback, and the depth is exactly what the viewport
                         // rendered with viewportCamera. Capture must happen BEFORE the depth
                         // clear below, which exists only for the gizmo.
-                        if (EditorObjectManager.ViewportOcclusionHzb)
+                        // Not while wireframe (F2) is on: GL_LINE only writes depth along the
+                        // triangle edges, so the captured pyramid would claim "nothing blocks"
+                        // and distant chunks would never cull (exactly the reported symptom).
+                        if (EditorObjectManager.ViewportOcclusionHzb && !Keyboard.GetIsWireframe())
                         {
                             ViewportHZB.Capture(_sharedFBO, Glfw.WindowWidth, Glfw.WindowHeight);
                             GL.BindFramebuffer(Const.GL_FRAMEBUFFER, _sharedFBO);
@@ -995,6 +1035,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
                         // always renders in FRONT of the 2D grid / tile tiles. ──
                         GL.Clear(Const.GL_DEPTH_BUFFER_BIT);
                     }
+
+                    // Wireframe stops here: the transform gizmo, camera inset and the
+                    // ImGui UI are drawn filled.
+                    if (Keyboard.GetIsWireframe())
+                        GL.PolygonMode(Const.GL_FRONT_AND_BACK, Const.GL_FILL);
 
                     // ── Render ONE gizmo at the selection center (group average for
                     // multi-select) — a single gizmo drives the whole selection.

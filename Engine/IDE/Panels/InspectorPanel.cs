@@ -2750,6 +2750,62 @@ public class InspectorPanel
         }
 
 
+        //  Sphere Settings ( Sphere Generator-style topology: UV / cube / icosphere )
+        if (editorObj.PrimitiveType == EditorPrimitiveType.Sphere &&
+            ImGui.CollapsingHeader("Sphere Settings", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            //  Sphere type selector (Sphere Generator-style: UV / cube / icosphere).
+            //  This is a topology choice independent of subdivision amount below.
+            int st = (int)editorObj.SphereType;
+            if (ImGui.Combo("Sphere Type", ref st, "UV Sphere\0Cube Sphere\0Icosphere\0"))
+            {
+                editorObj.SphereType = (SphereType)st;
+                editorObj.MarkDirty();
+                Console.WriteLine($"[Inspector] '{editorObj.Name}' sphere type → {editorObj.SphereType}");
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Which sphere mesh to build:\n" +
+                    "Uv = lat/long rings (legacy),\n" +
+                    "Cube = subdivided cube faces, no single-pole pinch,\n" +
+                    "Ico = subdivided icosahedron, evenly distributed vertices.");
+
+            ImGui.Spacing();
+
+            //  Detail (subdivision level) — drives the mesh density of the chosen
+            //  topology. 1 = the chunkiest version of each type (a cube for Cube, a plain
+            //  icosahedron for Ico, a coarse lat/long cage for Uv); 6+ = smooth.
+            int detail = editorObj.PbrPrimTessellation;
+            if (ImGui.SliderInt("Detail", ref detail, 1, 8))
+            {
+                editorObj.PbrPrimTessellation = detail;
+                editorObj.MarkDirty();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Subdivision level of the selected sphere type.\n" +
+                    "1 = chunkiest (cube / base icosahedron / coarse UV cage), higher = rounder.\n" +
+                    "Rebuilds the mesh immediately.");
+
+            //  Triangle budget preview so the cost of a detail level is visible up front.
+            int d = Math.Clamp(editorObj.PbrPrimTessellation, 1, 64);
+            int icoDepth = Math.Min(d - 1, 6);
+            int tris = editorObj.SphereType switch
+            {
+                SphereType.Cube => 12 * d * d,
+                SphereType.Ico => 20 * (1 << (2 * icoDepth)),
+                _ => 24 * d * d,
+            };
+            string shape = editorObj.SphereType switch
+            {
+                SphereType.Cube => $"cube {d}×{d} per face",
+                SphereType.Ico => $"subdivision depth {icoDepth}",
+                _ => $"{d * 4} slices × {d * 3} stacks",
+            };
+            ImGui.TextDisabled($"Mesh: {shape} — {tris:N0} triangles");
+
+            ImGui.Spacing();
+            ImGui.Separator();
+        }
+
         //  Type-specific properties (Camera / Light / Sky) 
         if (editorObj.PrimitiveType == EditorPrimitiveType.Camera &&
             ImGui.CollapsingHeader("Camera Settings", ImGuiTreeNodeFlags.DefaultOpen))
@@ -3475,13 +3531,13 @@ public class InspectorPanel
             if (ImGui.Checkbox("Occluder", ref occluder))
                 editorObj.IsOccluder = occluder;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("This object's volume hides objects behind it in the viewport (OC).\nDefault ON for a Box; Sphere/GLB default OFF because their AABB is larger than the mesh.");
+                ImGui.SetTooltip("This object's volume hides objects behind it in the viewport (OC).\nDefault ON for a Box and for a GLB model — a GLB submits its bind-pose mesh AABB, so a rigged model hides things too (the box is slightly larger than the mesh: untick it for hollow/open models or a pose that leaves the box); Sphere default OFF.");
 
             bool occludee = editorObj.IsOccludee;
             if (ImGui.Checkbox("Occludee", ref occludee))
                 editorObj.IsOccludee = occludee;
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Allow OC to skip this object when something solid is in front of it.\nOFF = always drawn while inside the frustum.");
+                ImGui.SetTooltip("Allow OC to skip this object when something solid is in front of it.\nOFF = always drawn while inside the frustum. A rigged (skinned) GLB is never culled, so this only affects static GLBs, Box/Sphere and terrain.");
         }
     }
 

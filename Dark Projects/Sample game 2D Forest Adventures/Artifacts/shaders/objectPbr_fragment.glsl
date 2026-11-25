@@ -475,8 +475,8 @@ float hardShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias)
 float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radiusScale)
 {
     if (shadowFilterMode == 1) return hardShadow(fragPosLightSpace, shadowMap, bias);
-    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
-    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale); // mode 0/2 default PCF16
+    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
+    return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale); // mode 0 default PCF16
 }
 
 // ======================================================

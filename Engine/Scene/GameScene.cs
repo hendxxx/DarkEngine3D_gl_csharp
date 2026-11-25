@@ -406,10 +406,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             {
                 bridge.AnimatedObjectCount = _objectManager.GetObjects().Count;
                 bridge.StaticObjectCount = _objectManager.staticObjectManagers?.Sum(m => m?.GetTotalObject ?? 0) ?? 0;
-                bridge.TotalObjects = _objectManager.TotalObjects;
-                bridge.DrawnObjects = _objectManager.DrawnObjects;
-                bridge.TotalTriangles = _objectManager.TotalObjectTriangles;
-                bridge.RenderedTriangles = _objectManager.RenderedTriangles;
+                // Unified counts (GLTF agents + editor objects) so the in-game stats
+                // overlay matches what is actually on screen, including the per-pass
+                // culling breakdown (frustum vs occlusion).
+                ComputeSceneStats(out int stDrawnObjs, out int stTotalObjs,
+                    out long stDrawnTris, out long stTotalTris,
+                    out int stFrustumObjs, out int stOcObjs,
+                    out long stFrustumTris, out long stOcTris);
+                bridge.TotalObjects = stTotalObjs;
+                bridge.DrawnObjects = stDrawnObjs;
+                bridge.TotalTriangles = (int)Math.Min(int.MaxValue, stTotalTris);
+                bridge.RenderedTriangles = (int)Math.Min(int.MaxValue, stDrawnTris);
+                bridge.CulledObjectsFrustum = stFrustumObjs;
+                bridge.CulledObjectsOcclusion = stOcObjs;
+                bridge.CulledTrianglesFrustum = stFrustumTris;
+                bridge.CulledTrianglesOcclusion = stOcTris;
                 bridge.AllAgents = _objectManager.Agents;
                 bridge.AllObjects = _objectManager.GetObjects();
 
@@ -685,9 +696,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── Cursor visibility: show when locked, viewport not focused, or paused ──
             bool viewportFocused = _sceneManager.Bridge?.IsViewportFocused ?? true;
+            // In EDIT mode (InGameActive=false, e.g. after F8 back from in-game) the IDE
+            // owns the cursor: this scene must not keep it captured, otherwise it stays
+            // invisible after leaving the game.
+            bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
             // The setting keeps the cursor on screen during gameplay; otherwise it stays captured
             // (hidden + centred) unless the viewport lost focus or the pause layer owns the mouse.
-            bool shouldShowCursor = CursorSettingShown || !viewportFocused || _paused;
+            bool shouldShowCursor = !ingameActive || CursorSettingShown || !viewportFocused || _paused;
             if (shouldShowCursor != _prevCursorShown)
             {
                 Mouse.ShowMouse(shouldShowCursor);
@@ -696,7 +711,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
             // ── Input gate: when InGameActive=false, block ALL keyboard + mouse ──
             // The IDE F9 button is the only way to re-enable ingame input.
-            bool ingameActive = _sceneManager.Bridge?.InGameActive ?? true;
             if (!ingameActive)
             {
                 // Skip ALL keyboard/mouse input processing, but still run game logic below
@@ -1038,9 +1052,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _frameTotalTimer.Restart();
 
             //  MAIN RENDER PASS — always use FBO so Viewport has a texture when IDE is active
-            if (wireframeMode)
+            //  Wireframe renders straight to the default framebuffer only in fullscreen
+            //  (non-IDE) mode; with the IDE open the viewport samples the scene FBO, so
+            //  bypassing it would freeze the viewport texture. Toggled with F2.
+            if (wireframeMode && !ideActive)
             {
-                // Wireframe: render directly to screen, skip postprocess (F1 conflicts with PP)
+                // Wireframe: render directly to screen, skip postprocess (line polygons
+                // break the post-process stack).
                 GL.BindFramebuffer(Const.GL_FRAMEBUFFER, 0);
                 GL.Viewport(0, 0, Glfw.WindowWidth, Glfw.WindowHeight);
                 GL.Clear(Const.GL_COLOR_BUFFER_BIT | Const.GL_DEPTH_BUFFER_BIT);
@@ -1160,7 +1178,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             _renderTimer.Restart();
 
             //  Post Process (render SceneFBO to screen) — run always; IDE scene stays in FBO for Viewport panel
-            if (!wireframeMode)
+            //  In IDE wireframe mode the pass still has to run: it resolves the MSAA scene
+            //  FBO that the Viewport panel samples.
+            if (!wireframeMode || ideActive)
             {
                 _ppStack.RunStack(Glfw.WindowWidth, Glfw.WindowHeight, _time);
             }
@@ -1355,11 +1375,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             //  Record total render time (from the dedicated total timer, not the section timer)
             _totalRenderTimeMs = _frameTotalTimer.Elapsed.TotalMilliseconds;
 
-            // HUD 
-            int totalObjTris = _objectManager?.TotalObjectTriangles ?? 0;
-            int renderedObjTris = _objectManager?.RenderedTriangles ?? 0;
-            int totalAllTris = totalObjTris;
-            int renderedAllTris = renderedObjTris;
+            // HUD — statistics come from ComputeSceneStats (GLTF agents PLUS every
+            // editor-object pass: primitives, GLB references, terrain chunks). Reading the
+            // GLTF ObjectManager alone reported 0 triangles and 0/0 objects in 2D scenes,
+            // and the per-pass frustum/occlusion split was computed but never shown.
+            ComputeSceneStats(out int hudDrawnObjs, out int hudTotalObjs,
+                out long hudDrawnTris, out long hudTotalTris,
+                out int hudFrustumObjs, out int hudOcObjs,
+                out long hudFrustumTris, out long hudOcTris);
+
             string gTime = _light.GetFormattedTime();
 
             string title1 = $" [ {gTime} ]";
@@ -1367,20 +1391,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             string title2 = $" FPS: {Glfw.GetLastFPS()}  ({frameMs:F1}ms)  | o={_objectsTimeMs:N1}ms  fx={_postProcessTimeMs:N1}ms  tot={_totalRenderTimeMs:N1}ms";
             string freeze = Keyboard.GetCullFreezeMode() ? " [CULL FREEZE]" : "";
             string title3 = $" MODE: {_camera.CurrentMode}{freeze}";
-            string title4 = $"█ TRIS: {renderedAllTris:N0} / {totalAllTris:N0}";
+            // Rendered / total triangles, then how many triangles the cull passes removed.
+            string title4 = $"█ TRIS: {hudDrawnTris:N0} / {hudTotalTris:N0}   culled {(hudFrustumTris + hudOcTris):N0} (F {hudFrustumTris:N0} | OC {hudOcTris:N0})";
             string title5 = $" POS: X ={_camera.Position.X:N2} Y={_camera.Position.Y:N2} Z={_camera.Position.Z:N2}";
-            string title6 = "";
-            if (_objectManager != null)
-            {
-                int culledTotal = _objectManager.TotalObjects - _objectManager.DrawnObjects;
-                int animFrustum = _objectManager.CulledByFrustum;
-                int animOcc = _objectManager.CulledByOcclusion;
-                int animCount = _objectManager.GetObjects().Count;
-                int staticCount = _objectManager.staticObjectManagers.Sum(m => m?.GetTotalObject ?? 0);
-                // Debug: log actual values once
-                //Console.WriteLine($"[HUD Debug] staticObjectManagers.Count={_objectManager.staticObjectManagers.Count} staticCount={staticCount} TotalObjects={_objectManager.TotalObjects} DrawnObjects={_objectManager.DrawnObjects} animCount={animCount}");
-                title6 = $" Objects: {_objectManager.DrawnObjects:N0} drawn / {culledTotal:N0} culled / {_objectManager.TotalObjects:N0} total  ({animCount} chars + {staticCount:N0} static)";
-            }
+            // Objects: drawn / culled (split by the pass that removed them) / total.
+            string title6 = $" Objects: {hudDrawnObjs:N0} drawn / {(hudFrustumObjs + hudOcObjs):N0} culled (F {hudFrustumObjs:N0} | OC {hudOcObjs:N0}) / {hudTotalObjs:N0} total";
             //Save notification
             if (_saveNotificationTimer > 0f)
             {
@@ -1456,7 +1471,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             // DrawImage), flush the HUD on top of it, then point the Viewport panel at
             // SharedColorTex (SceneManager resolves the MSAA shared FBO every frame).
             // Fullscreen (non-IDE) shows the screen directly — flush there as before.
-            bool hudToSharedFbo = ideActive && !wireframeMode && _ppStack != null;
+            bool hudToSharedFbo = ideActive && _ppStack != null;
             if (hudToSharedFbo)
             {
                 _sceneManager.EnsureSharedFBOExists();
@@ -1506,6 +1521,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
             UpdateBridgeData(_deltaTime);
 
 
+        }
+
+        /// <summary>
+        /// Unified render/culling counters for the debug HUD and the IDEBridge: GLTF agents
+        /// from <see cref="_objectManager"/> PLUS every editor-object pass that actually draws
+        /// the level (primitives with displacement, GLB references, terrain chunks).
+        ///
+        /// Why this exists: the HUD used to read the GLTF ObjectManager only, so a scene built
+        /// from editor objects (2D levels, tilemaps, primitives) reported 0 triangles and 0/0
+        /// objects while hundreds of thousands of triangles were on screen. The per-pass
+        /// throttling split (frustum vs occlusion) was also computed but never displayed, so
+        /// "culled" could not be attributed to a pass.
+        ///
+        /// Totals are drawn + all skipped, so they are stable frame-to-frame instead of
+        /// collapsing to "what survived culling".
+        /// </summary>
+        private void ComputeSceneStats(
+            out int drawnObjects, out int totalObjects,
+            out long drawnTriangles, out long totalTriangles,
+            out int frustumObjects, out int occlusionObjects,
+            out long frustumTriangles, out long occlusionTriangles)
+        {
+            var bridge = _sceneManager.Bridge;
+            var cull = bridge?.EditorObjectManager?.ViewportCullDisplayStatistics ?? default;
+
+            int gltfTotalObjs = _objectManager?.TotalObjects ?? 0;
+            int gltfDrawnObjs = _objectManager?.DrawnObjects ?? 0;
+            long gltfTotalTris = _objectManager?.TotalObjectTriangles ?? 0;
+            long gltfDrawnTris = _objectManager?.RenderedTriangles ?? 0;
+
+            // Editor passes (triangles are reported per pass by the manager).
+            long editorDrawnTris = cull.ViewportDrawnTriangles + cull.GlbDrawnTriangles + cull.TerrainDrawnTriangles;
+            long editorFrustumTris = cull.ViewportFrustumTriangles + cull.GlbFrustumTriangles + cull.TerrainFrustumTriangles;
+            long editorOccludedTris = cull.ViewportOccludedTriangles + cull.GlbOccludedTriangles + cull.TerrainOccludedTriangles;
+
+            int editorDrawnObjs = cull.ViewportDrawnObjects + cull.GlbDrawnObjects + cull.TerrainDrawnChunks;
+            int editorFrustumObjs = cull.ViewportFrustumObjects + cull.GlbFrustumObjects
+                + cull.TerrainFrustumPlanes + cull.TerrainFrustumChunks + cull.EditorMarkerFrustumObjects;
+            int editorOccludedObjs = cull.ViewportOccludedObjects + cull.GlbOccludedObjects
+                + cull.TerrainOccludedPlanes + cull.TerrainOccludedChunks;
+
+            frustumObjects = (_objectManager?.CulledByFrustum ?? 0) + editorFrustumObjs;
+            occlusionObjects = (_objectManager?.CulledByOcclusion ?? 0) + editorOccludedObjs;
+            frustumTriangles = editorFrustumTris;
+            occlusionTriangles = editorOccludedTris;
+
+            drawnObjects = gltfDrawnObjs + editorDrawnObjs;
+            totalObjects = gltfTotalObjs + editorDrawnObjs + editorFrustumObjs + editorOccludedObjs;
+            drawnTriangles = gltfDrawnTris + editorDrawnTris;
+            totalTriangles = gltfTotalTris + editorDrawnTris + editorFrustumTris + editorOccludedTris;
         }
 
         /// <summary>Handle pause menu input (keyboard + mouse).</summary>

@@ -233,9 +233,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             return triangles.ToArray();
         }
 
-        private static Vertex MakeV(Vector3 pos, Vector3 color) =>
-            new Vertex(pos.X, pos.Y, pos.Z, pos.X, pos.Y, pos.Z, color.X, color.Y, color.Z, 0f, 0f);
-
         public static Object3D CreateSphereObject(float radius, float px, float py, float pz, Vector3 color)
         {
             var obj = new Object3D(0, 0, 0);
@@ -256,40 +253,56 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         public static Vertex[] CreateIcoSphereVertices(float radius, Vector3 color, int depth)
         {
             depth = Math.Clamp(depth, 0, 6);
+
+            // Project a raw icosahedron position onto the sphere of the requested radius
+            // and give it a unit (radial) normal plus an equirectangular UV, so a textured
+            // icosphere samples the albedo sensibly instead of a single texel. Scale-safe:
+            // the base 12 vertices are not unit length, the subdivided midpoints are.
+            Vertex MakeV(Vector3 pos, Vector3 col)
+            {
+                var d = Vector3.Normalize(pos);
+                var sp = d * radius;
+                float u = 0.5f + MathF.Atan2(d.Z, d.X) / (2f * MathF.PI);
+                float v = 0.5f - MathF.Asin(Math.Clamp(d.Y, -1f, 1f)) / MathF.PI;
+                return new Vertex(sp.X, sp.Y, sp.Z, d.X, d.Y, d.Z,
+                    col.X, col.Y, col.Z, u, v);
+            }
+
             // Base icosahedron vertices (unit sphere). 12 vertices, 20 faces.
             const float tau = 1.6180339887498948482f;
-            var verts = new Vertex[12];
-            verts[0] = MakeV(new Vector3(-1f, tau, 0f), color);
-            verts[1] = MakeV(new Vector3(1f, tau, 0f), color);
-            verts[2] = MakeV(new Vector3(-1f, -tau, 0f), color);
-            verts[3] = MakeV(new Vector3(1f, -tau, 0f), color);
-            verts[4] = MakeV(new Vector3(0f, -1f, tau), color);
-            verts[5] = MakeV(new Vector3(0f, 1f, tau), color);
-            verts[6] = MakeV(new Vector3(0f, -1f, -tau), color);
-            verts[7] = MakeV(new Vector3(0f, 1f, -tau), color);
-            verts[8] = MakeV(new Vector3(tau, 0f, -1f), color);
-            verts[9] = MakeV(new Vector3(tau, 0f, 1f), color);
-            verts[10] = MakeV(new Vector3(-tau, 0f, -1f), color);
-            verts[11] = MakeV(new Vector3(-tau, 0f, 1f), color);
-            for (int i = 0; i < verts.Length; i++) verts[i].Position = Vector3.Normalize(verts[i].Position);
-            // 20 faces of the icosahedron (vertex triplets).
+            var verts = new List<Vertex>(12);
+            verts.Add(MakeV(new Vector3(-1f, tau, 0f), color));
+            verts.Add(MakeV(new Vector3(1f, tau, 0f), color));
+            verts.Add(MakeV(new Vector3(-1f, -tau, 0f), color));
+            verts.Add(MakeV(new Vector3(1f, -tau, 0f), color));
+            verts.Add(MakeV(new Vector3(0f, -1f, tau), color));
+            verts.Add(MakeV(new Vector3(0f, 1f, tau), color));
+            verts.Add(MakeV(new Vector3(0f, -1f, -tau), color));
+            verts.Add(MakeV(new Vector3(0f, 1f, -tau), color));
+            verts.Add(MakeV(new Vector3(tau, 0f, -1f), color));
+            verts.Add(MakeV(new Vector3(tau, 0f, 1f), color));
+            verts.Add(MakeV(new Vector3(-tau, 0f, -1f), color));
+            verts.Add(MakeV(new Vector3(-tau, 0f, 1f), color));
+            // 20 faces of the icosahedron (vertex triplets). Generated from the vertex
+            // table above: every triple of pairwise-adjacent vertices, each wound so its
+            // cross(b-a, c-a) normal points away from the centre. Closed + 2-manifold
+            // (30 edges, Euler = 12 - 30 + 20 = 2), which the hand-written variant was not.
             var faces = new (int a, int b, int c)[]
             {
-                (0, 4, 1), (0, 9, 4), (9, 5, 4), (4, 5, 11), (5, 10, 11), (3, 10, 5),
-                (2, 3, 10), (2, 8, 3), (2, 7, 8), (7, 11, 8), (7, 6, 11), (6, 0, 11),
-                (6, 10, 7), (6, 1, 0), (1, 6, 10), (1, 10, 11), (1, 11, 4), (2, 7, 6),
-                (0, 8, 9), (8, 2, 9)
+                (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (2, 3, 4), (2, 4, 11),
+                (3, 6, 8), (3, 8, 9), (4, 5, 11), (5, 1, 0), (6, 3, 2), (6, 7, 8),
+                (8, 7, 1), (9, 4, 3), (9, 5, 4), (9, 8, 1), (10, 6, 2), (10, 7, 6),
+                (11, 5, 0), (11, 10, 2)
             };
             for (int d = 0; d < depth; d++)
             {
                 var nextFaces = new List<(int a, int b, int c)>(faces.Length * 4);
                 var edgeMid = new Dictionary<(int a, int b), int>(faces.Length * 3);
-                int vertCount = verts.Length;
                 foreach (var f in faces)
                 {
-                    int ab = GetOrAddMid(edgeMid, verts, ref vertCount, f.a, f.b, color);
-                    int bc = GetOrAddMid(edgeMid, verts, ref vertCount, f.b, f.c, color);
-                    int ca = GetOrAddMid(edgeMid, verts, ref vertCount, f.c, f.a, color);
+                    int ab = GetOrAddMid(edgeMid, verts, f.a, f.b, color);
+                    int bc = GetOrAddMid(edgeMid, verts, f.b, f.c, color);
+                    int ca = GetOrAddMid(edgeMid, verts, f.c, f.a, color);
                     nextFaces.Add((f.a, ab, ca));
                     nextFaces.Add((f.b, bc, ab));
                     nextFaces.Add((f.c, ca, bc));
@@ -306,60 +319,75 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             return tris.ToArray();
 
-            static int GetOrAddMid(Dictionary<(int a, int b), int> m, Vertex[] v, ref int count, int a, int b, Vector3 color)
+            int GetOrAddMid(Dictionary<(int a, int b), int> m, List<Vertex> v, int a, int b, Vector3 color)
             {
                 if (a > b) (a, b) = (b, a);
                 if (m.TryGetValue((a, b), out var mid)) return mid;
-                mid = count++;
+                mid = v.Count;
                 var pos = Vector3.Normalize((v[a].Position + v[b].Position) * 0.5f);
-                Array.Resize(ref v, v.Length + 1);
-                v[v.Length - 1] = MakeV(pos, color);
+                v.Add(MakeV(pos, color));
                 m[(a, b)] = mid;
                 return mid;
             }
         }
 
         /// <summary>
-        /// Cube sphere: a unit cube (6 faces) whose vertices are normalized onto the
-        /// sphere surface. Each face is a tess x tess grid of quads (2 tris each), so the
-        /// total triangle count is 6 * tess * tess * 2. Lower tess values keep visibly
-        /// faceted but rounder faces than a UV sphere of similar vertex count; poles are a
-        /// 4-vertex seam rather than a single-vertex pinching.</summary>
+        /// Cube sphere: the 6 faces of a unit cube, each subdivided into a
+        /// <paramref name="tess"/> × <paramref name="tess"/> grid of quads, with every
+        /// vertex projected (normalized) onto the sphere. Triangle count = 12 * tess².
+        /// tess = 1 is a plain cube, higher values round it off progressively. Because
+        /// the projection is radial and monotone, the per-face winding survives the
+        /// projection, so back-face culling keeps working.
+        ///
+        /// Each face is described by a corner <c>origin</c> (u = 0, v = 0) plus the two
+        /// face axes <c>du</c> (along u) and <c>dv</c> (along v), chosen so that
+        /// <c>cross(dv, du)</c> is the OUTWARD normal — the same convention the Plane and
+        /// Box builders use (quad order p00, p11, p10 + p00, p01, p11).
+        /// </summary>
         public static Vertex[] CreateCubeSphereVertices(float radius, Vector3 color, int tess)
         {
-            if (tess < 1) tess = 1;
-            Vector3 posOnCube(int ix, int iz, bool px, bool py, bool pz)
+            tess = Math.Clamp(tess, 1, 64);
+
+            var faces = new (Vector3 origin, Vector3 du, Vector3 dv)[6]
             {
-                float u = ix / (float)tess - 0.5f;
-                float v = iz / (float)tess - 0.5f;
-                if (px) return new Vector3(0.5f, u, v);
-                if (py) return new Vector3(u, 0.5f, v);
-                return new Vector3(u, v, 0.5f);
-            }
+                (new( 0.5f, -0.5f, -0.5f), new(0f, 0f, 1f), new(0f, 1f, 0f)), // +X
+                (new(-0.5f, -0.5f, -0.5f), new(0f, 1f, 0f), new(0f, 0f, 1f)), // -X
+                (new(-0.5f,  0.5f, -0.5f), new(1f, 0f, 0f), new(0f, 0f, 1f)), // +Y
+                (new(-0.5f, -0.5f, -0.5f), new(0f, 0f, 1f), new(1f, 0f, 0f)), // -Y
+                (new(-0.5f, -0.5f,  0.5f), new(0f, 1f, 0f), new(1f, 0f, 0f)), // +Z
+                (new(-0.5f, -0.5f, -0.5f), new(1f, 0f, 0f), new(0f, 1f, 0f)), // -Z
+            };
+
             Vertex V(Vector3 p, float u, float v)
             {
                 var n = Vector3.Normalize(p);
-                p = n * radius;
-                return new Vertex(p.X, p.Y, p.Z, n.X, n.Y, n.Z, color.X, color.Y, color.Z, u, v);
+                var sp = n * radius;
+                return new Vertex(sp.X, sp.Y, sp.Z, n.X, n.Y, n.Z,
+                    color.X, color.Y, color.Z, u, v);
             }
+
             var outv = new List<Vertex>(6 * tess * tess * 6);
-            foreach (var (px, py, pz) in new[]
-                {
-                    (true, false, false), (false, true, false), (false, false, true),
-                    (true, true, false), (true, false, true), (false, true, true)
-                })
+            foreach (var (origin, du, dv) in faces)
             {
                 for (int iz = 0; iz < tess; iz++)
                     for (int ix = 0; ix < tess; ix++)
                     {
                         float u0 = (float)ix / tess, u1 = (float)(ix + 1) / tess;
                         float v0 = (float)iz / tess, v1 = (float)(iz + 1) / tess;
-                        var p00 = V(posOnCube(ix, iz, px, py, pz), u0, v0);
-                        var p10 = V(posOnCube(ix + 1, iz, px, py, pz), u1, v0);
-                        var p01 = V(posOnCube(ix, iz + 1, px, py, pz), u0, v1);
-                        var p11 = V(posOnCube(ix + 1, iz + 1, px, py, pz), u1, v1);
-                        outv.Add(p00); outv.Add(p10); outv.Add(p01);
-                        outv.Add(p10); outv.Add(p11); outv.Add(p01);
+
+                        var c00 = origin + du * u0 + dv * v0;
+                        var c10 = origin + du * u1 + dv * v0;
+                        var c01 = origin + du * u0 + dv * v1;
+                        var c11 = origin + du * u1 + dv * v1;
+
+                        // Same winding as the Plane builder: (p00, p11, p10) and (p00, p01, p11).
+                        outv.Add(V(c00, u0, v0));
+                        outv.Add(V(c11, u1, v1));
+                        outv.Add(V(c10, u1, v0));
+
+                        outv.Add(V(c00, u0, v0));
+                        outv.Add(V(c01, u0, v1));
+                        outv.Add(V(c11, u1, v1));
                     }
             }
             return outv.ToArray();

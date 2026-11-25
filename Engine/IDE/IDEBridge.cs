@@ -35,6 +35,17 @@ public class IDEBridge
     public int DrawnObjects { get; set; }
     public int TotalTriangles { get; set; }
     public int RenderedTriangles { get; set; }
+    /// <summary>Objects removed by the FRUSTUM pass this frame (GLTF agents + editor
+    /// objects + terrain chunks). Pairs with <see cref="CulledObjectsOcclusion"/> so the
+    /// in-game stats can show which pass did the culling.</summary>
+    public int CulledObjectsFrustum { get; set; }
+    /// <summary>Objects removed by the OCCLUSION pass this frame (frustum already applied).</summary>
+    public int CulledObjectsOcclusion { get; set; }
+    /// <summary>Triangles skipped by the frustum pass this frame (editor primitives,
+    /// GLB references and terrain chunks — the GLTF agent path reports object counts).</summary>
+    public long CulledTrianglesFrustum { get; set; }
+    /// <summary>Triangles skipped by the occlusion pass this frame.</summary>
+    public long CulledTrianglesOcclusion { get; set; }
     public int AnimatedObjectCount { get; set; }
     public int StaticObjectCount { get; set; }
     /// <summary>Editor objects in the ACTIVE EditorObjectManager (Player2D, Sprite2D,
@@ -608,6 +619,13 @@ public class IDEBridge
     /// viewport drop). Handler lives in IDE: (sheetName, clipName, dropWorldPos — null
     /// when the caller has no world position, e.g. a plain click → spawn at camera).</summary>
     public static Action<string, string, Vector3?>? RequestSprite2DPlacement { get; set; }
+
+    /// <summary>Request a GLB/GLTF model placement from the Asset Browser: a model file
+    /// dragged into the viewport, or double-clicked. Handler lives in IDE:
+    /// (fullAssetPath, dropWorldPos — null when the caller has no world position, e.g. a
+    /// double-click → spawn in front of the camera). Normal editor objects, so undo,
+    /// selection and the Inspector all work like any other object.</summary>
+    public static Action<string, Vector3?>? RequestGlbPlacement { get; set; }
 
     /// <summary>Request the Animation Editor to open AT a clip (sheetName, clipName) —
     /// the Asset Browser's clip boxes, the Inspector's clip combo and action rows call

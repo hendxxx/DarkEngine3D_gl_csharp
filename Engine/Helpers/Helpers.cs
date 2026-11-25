@@ -90,6 +90,74 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
         }
 
 
+        /// <summary>Startup-only check (runs ONCE before GL init) of the gltf shader copies on
+        /// disk: "gltf_vertex.glsl" and "shadow_skinned_vertex.glsl" must declare the
+        /// u_UseSkinning flag. A copy that predates it compiles and links fine, but the flag
+        /// upload becomes a no-op and every unskinned mesh is skinned by another model's
+        /// u_Joints — and the runtime warning in GltfObject.SkinFlagLocation only fires once a
+        /// GLB is actually drawn, so a stale project copy could stay hidden. Scans the exe copy
+        /// plus every "&lt;repo&gt;/Dark Projects/&lt;project&gt;/Artifacts/shaders" and lists the copies
+        /// that need updating. Silent when every copy is current.</summary>
+        public static void VerifyGltfSkinFlagShaderCopies()
+        {
+            string[] names = ["gltf_vertex.glsl", "shadow_skinned_vertex.glsl"];
+            var stale = new List<string>();
+            int found = 0;
+
+            foreach (string dir in EnumerateShaderDirs())
+                foreach (string name in names)
+                {
+                    string file = Path.Combine(dir, name);
+                    try
+                    {
+                        if (!File.Exists(file)) continue;
+                        found++;
+                        if (!File.ReadAllText(file).Contains("u_UseSkinning", StringComparison.Ordinal))
+                            stale.Add(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Shader] warning: cannot read '{file}': {ex.Message}");
+                    }
+                }
+
+            if (stale.Count == 0) return;
+            Console.WriteLine($"[Shader] warning: {stale.Count} of {found} gltf shader copies lack " +
+                              "'u_UseSkinning' — unskinned GLB meshes will inherit another model's " +
+                              "u_Joints and shift/rotate with it:");
+            foreach (string file in stale)
+                Console.WriteLine($"[Shader]   stale copy: {file}");
+        }
+
+        /// <summary>Shader folders to validate: the exe copy, then every project copy under the
+        /// "Dark Projects" folder found by walking up from the executable (bin/Debug/net9.0 →
+        /// repo root) — the same folders PathHelpers.Resolve picks from at runtime.</summary>
+        private static IEnumerable<string> EnumerateShaderDirs()
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string? dir = PathHelpers.AppBaseDir;
+            for (int depth = 0; !string.IsNullOrEmpty(dir) && depth < 8; depth++)
+            {
+                string exeCopy = Path.Combine(dir, "Artifacts", "shaders");
+                if (Directory.Exists(exeCopy) && seen.Add(Path.GetFullPath(exeCopy)))
+                    yield return exeCopy;
+
+                string projects = Path.Combine(dir, "Dark Projects");
+                if (Directory.Exists(projects))
+                {
+                    foreach (string proj in Directory.EnumerateDirectories(projects).Order(StringComparer.OrdinalIgnoreCase))
+                    {
+                        string copy = Path.Combine(proj, "Artifacts", "shaders");
+                        if (Directory.Exists(copy) && seen.Add(Path.GetFullPath(copy)))
+                            yield return copy;
+                    }
+                    yield break; // repo root found — nothing above it to scan
+                }
+
+                dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            }
+        }
+
         public static uint LoadShader(string vertexPath, string fragmentPath,
             string? fragmentPrefix = null)
         {
@@ -646,6 +714,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Helpers
             private uint CreateTextureFromBytes(byte[] bytes)
             {
                 uint textureID;
+                // Upload on unit 0: texture creation used to bind on whatever unit happened to
+                // be active (the CSM shadow maps sit on 6/7/8, PBR maps on 3/4/5), so a GLB
+                // loaded lazily during a draw pass could steal/replace those bindings for the
+                // rest of the frame. Unit choice does not matter for the upload itself.
+                GL.ActiveTexture(Const.GL_TEXTURE0);
                 GL.GenTextures(1, &textureID);
                 GL.BindTexture(Const.GL_TEXTURE_2D, textureID);
 

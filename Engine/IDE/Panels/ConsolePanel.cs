@@ -20,10 +20,19 @@ public class ConsolePanel
     // never gets pulled there, so a console found at the top (or left there by a scroll, a
     // re-docked window, a resize) stayed at the top with Auto-scroll checked. Following the
     // tail is now a state: on by default, and only the user scrolling back turns it off.
+    //
+    // CRITICAL: the wheel has to pause the tail on the SAME frame it is turned, using the raw
+    // wheel delta. ImGui applies a wheel notch at the next BeginChild, so deciding purely from
+    // "did scrollY go down since last frame" left one frame where SetScrollHereY(1) pulled the
+    // view back to the bottom — the wheel looked dead while logs were streaming.
     private bool _followTail = true;
     private float _lastScrollY;
-    // False while the panel is hidden: its window is gone then, so the scroll it comes back
-    // with says nothing about what the user did.
+    // Entry count of the previous draw. The 5000-line cap TRIMS the head of the log, which
+    // clamps scrollY down without the user touching anything — that must not be mistaken for
+    // a scroll-up (it used to stop the console from following after a long session).
+    private int _lastEntryCount;
+    // False while the panel is hidden/collapsed: its window is gone then, so the scroll it
+    // comes back with says nothing about what the user did.
     private bool _drawnLastFrame;
 
     private readonly List<LogEntry> _entries = [];
@@ -152,7 +161,15 @@ public class ConsolePanel
             return;
         }
 
-        ImGui.Begin("Console", ref _visible);
+        // A collapsed/clipped window submits nothing: bailing out here keeps SetScrollHereY
+        // and the tail bookkeeping out of a zero-height child (which reported "at end" and
+        // silently re-armed the tail).
+        if (!ImGui.Begin("Console", ref _visible))
+        {
+            ImGui.End();
+            _drawnLastFrame = false;
+            return;
+        }
         IDE.PanelFocus.Notify("Console");
 
         // ── Toolbar ──
@@ -186,10 +203,18 @@ public class ConsolePanel
             // last scroll and this frame must not count as them having left the end.
             float tailSlack = MathF.Max(2f, ImGui.GetTextLineHeight() * 3f);
             bool atEnd = scrollY >= scrollMaxY - tailSlack;
-            if (_drawnLastFrame && !atEnd && scrollY < _lastScrollY - 1f)
-                _followTail = false;                                 // user scrolled up
-            else if (!_followTail && atEnd) _followTail = true;      // back at the end
+            // Wheel deltas are read BEFORE any content is submitted so the decision matches
+            // what the user did this frame, not what the previous frame's scroll target did.
+            float wheel = ImGui.GetIO().MouseWheel;
+            bool hoveringLog = ImGui.IsWindowHovered();
+            if (_drawnLastFrame && hoveringLog && wheel > 0.01f)
+                _followTail = false;                                 // wheel up = inspect the log
+            else if (_drawnLastFrame && scrollY < _lastScrollY - 1f && _entries.Count >= _lastEntryCount)
+                _followTail = false;                                 // scrollbar drag / PageUp / Home
+            else if (!_followTail && atEnd && wheel >= -0.01f)
+                _followTail = true;                                  // back at the end = follow again
             _lastScrollY = scrollY;
+            _lastEntryCount = _entries.Count;
 
             foreach (var entry in _entries)
             {
@@ -209,7 +234,9 @@ public class ConsolePanel
             }
 
             // SetScrollHereY targets the bottom of the last line, so it lands on the true end
-            // of the content no matter how many lines arrived since the previous frame.
+            // of the content no matter how many lines arrived since the previous frame. It is
+            // skipped while the user is inspecting an older part of the log, and the hovered
+            // wheel-up above is what pauses that inspection reliably.
             if (_autoScroll && _followTail)
                 ImGui.SetScrollHereY(1f);
 

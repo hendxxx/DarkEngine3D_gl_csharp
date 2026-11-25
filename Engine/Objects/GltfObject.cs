@@ -44,9 +44,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         // Mesh visibility control (for 1st person camera mode)
         private readonly HashSet<int> _hiddenMeshIndices = [];
 
+        // Which meshes of the shared GPU set this object actually draws. GltfObject draws
+        // EVERY mesh of GpuData, and GltfModelGpuData appends auto-generated coarser LODs
+        // (_LOD1..3, vertex clustering) for static meshes. Drawing those on top of the
+        // full-detail mesh produced z-fighting and a melted/patchy surface — the model
+        // looked like the GLB had loaded badly. Skinned characters never get auto LODs,
+        // which is why Ybot always looked right while static props did not.
+        private bool[]? _drawMesh;
+
         // ---- node hierarchy working buffers ----
         private Matrix4x4[] _nodeLocal     = [];
         private Matrix4x4[] _nodeGlobal    = [];
+        private bool[]      _nodeVisited   = [];
         private Matrix4x4[] _jointMatrices = [];
 
         // ---- animation clips (channels remapped to THIS model's node indices) ----
@@ -664,8 +673,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                     _nodeLocal[i] = nodes[i].LocalMatrix;
             }
 
-            // FK
+            // FK — start from the real roots only (Parent == -1). The visited buffer keeps a
+            // malformed file (node under two parents, parent cycle) from looping forever or
+            // applying an ancestor transform twice.
             for (int i = 0; i < _nodeGlobal.Length; i++) _nodeGlobal[i] = Matrix4x4.Identity;
+            Array.Clear(_nodeVisited);
             for (int i = 0; i < _nodeLocal.Length; i++)
                 if (nodes[i].Parent == -1)
                     ComputeGlobalRec(i, Matrix4x4.Identity);
@@ -675,6 +687,54 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
         public Matrix4x4[] GetJointMatrices() => _jointMatrices;
+
+        /// <summary>Cached "u_UseSkinning" location per program (gltf colour + skinned shadow).
+        /// Resolved once per program, which also makes the stale-shader warning one-shot: a copy
+        /// without the uniform fails SILENTLY (the flag upload is a no-op), so an unskinned mesh
+        /// would be skinned by whatever u_Joints the previously drawn model left behind.</summary>
+        private static readonly Dictionary<uint, int> _useSkinningLocCache = [];
+
+        /// <summary>The only "u_UseSkinning" lookup: every gltf / skinned-shadow draw path goes
+        /// through it, so a project whose Artifacts/shaders copy predates the flag is reported
+        /// once in the console instead of silently shifting geometry. 0 = no program yet.</summary>
+        public static int SkinFlagLocation(uint program)
+        {
+            if (program == 0) return -1;
+            if (_useSkinningLocCache.TryGetValue(program, out int loc)) return loc;
+            loc = GL.GetUniformLocation(program, "u_UseSkinning");
+            _useSkinningLocCache[program] = loc;
+            if (loc < 0)
+                Console.WriteLine($"[GLB] warning: gltf/skinned-shadow program {program} has no " +
+                                  "'u_UseSkinning' uniform — stale shader copy in this project's " +
+                                  "Artifacts/shaders; unskinned meshes would inherit another " +
+                                  "model's u_Joints.");
+            return loc;
+        }
+
+        private static uint CurrentProgram()
+        {
+            int program = 0;
+            GL.GetIntegerv(Const.GL_CURRENT_PROGRAM, &program);
+            return (uint)program;
+        }
+
+        /// <summary>Upload the skinning state for the currently bound gltf / skinned-shadow
+        /// program: the explicit u_UseSkinning flag, plus the joint matrices only when the
+        /// model really has a skeleton.
+        /// GltfLoader stores BoneWeights (1,0,0,0) on bone 0 for meshes WITHOUT a skeleton, so
+        /// without the flag they were multiplied by u_Joints[0] — the program-level leftover
+        /// rig of the previous model (Ybot in the scene → moved/rotated) or the all-zero GL
+        /// default (nothing skinned drawn yet → the mesh collapsed into a point).
+        /// Must be called before EVERY mesh draw.</summary>
+        public void UploadSkinning(int useSkinningLoc, int jointsLoc)
+        {
+            bool skinned = _jointMatrices.Length > 0;
+            if (useSkinningLoc >= 0) GL.Uniform1i(useSkinningLoc, skinned ? 1 : 0);
+            if (!skinned || jointsLoc < 0) return;
+
+            fixed (Matrix4x4* p = &_jointMatrices[0])
+                GL.UniformMatrix4fv(jointsLoc, _jointMatrices.Length, false, (float*)p);
+        }
 
         // -----------------------------------------------------------------------
         //  Internal helpers
@@ -771,6 +831,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         private void ComputeGlobalRec(int idx, Matrix4x4 parentGlobal)
         {
+            if ((uint)idx >= (uint)_nodeLocal.Length || _nodeVisited[idx]) return;
+            _nodeVisited[idx] = true;
+
             // Row-vector: child first, then parent  ->  global = local * parentGlobal
             var global = _nodeLocal[idx] * parentGlobal;
             _nodeGlobal[idx] = global;
@@ -808,8 +871,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private void AllocateBuffers(GltfNode[] nodes)
         {
             int n = nodes.Length;
-            _nodeLocal  = new Matrix4x4[n];
-            _nodeGlobal = new Matrix4x4[n];
+            _nodeLocal   = new Matrix4x4[n];
+            _nodeGlobal  = new Matrix4x4[n];
+            _nodeVisited = new bool[n];
             _basePose   = new NodeTransform[n];
             _poseCur    = new NodeTransform[n];
             _posePrev   = new NodeTransform[n];
@@ -840,8 +904,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
         public void SetBasePosition(Vector3 pos) => Position = pos;
 
-        internal long DrawableTriangleCount() => CountDrawableTriangles(GpuData.Meshes, _hiddenMeshIndices);
-
         internal static long CountDrawableTriangles(MeshGpu[] meshes, IReadOnlySet<int> hidden)
         {
             long triangles = 0;
@@ -849,6 +911,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             {
                 if (hidden.Contains(i)) continue;
                 var mesh = meshes[i];
+                triangles += (mesh.IndexCount > 0 ? mesh.IndexCount : mesh.VertexCount) / 3;
+            }
+            return triangles;
+        }
+
+        /// <summary>Triangles this object actually submits (hidden + coarser LOD meshes
+        /// excluded) so the viewport statistics match what is drawn.</summary>
+        internal long DrawableTriangleCount()
+        {
+            var mask = DrawMask();
+            long triangles = 0;
+            for (int i = 0; i < GpuData.Meshes.Length && i < mask.Length; i++)
+            {
+                if (!mask[i] || _hiddenMeshIndices.Contains(i)) continue;
+                var mesh = GpuData.Meshes[i];
                 triangles += (mesh.IndexCount > 0 ? mesh.IndexCount : mesh.VertexCount) / 3;
             }
             return triangles;
@@ -871,6 +948,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
+                if (!ShouldDrawMesh(mi)) continue;
+
                 Matrix4x4 modelMat = objMat;
                 if (!isSkinned)
                 {
@@ -899,6 +978,70 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 // -----------------------------------------------------------------------
         //  Draw
         // -----------------------------------------------------------------------
+        /// <summary>True when mesh <paramref name="mi"/> should be drawn: not hidden by the
+        /// 1st-person rules and not a coarser LOD variant of a mesh drawn at full detail.</summary>
+        private bool ShouldDrawMesh(int mi)
+        {
+            if (_hiddenMeshIndices.Contains(mi)) return false;
+            var mask = DrawMask();
+            return mi >= 0 && mi < mask.Length && mask[mi];
+        }
+
+        /// <summary>Build the "draw this mesh" mask once per object.
+        /// Meshes are grouped by their name with the "" + "_LOD&lt;n&gt;"" + "" marker (and anything
+        /// after it) stripped; only the LOWEST level of each group is drawn. That drops
+        /// auto-generated simplification LODs ("rock_LOD1") and built-in export LODs
+        /// ("tree_LOD1_Bark") while keeping models that ONLY ship coarse meshes.
+        /// The GPU mesh array and Data.Meshes share the same indices (UploadToGpu).</summary>
+        private bool[] DrawMask()
+        {
+            if (_drawMesh != null) return _drawMesh;
+
+            int n = GpuData?.Meshes?.Length ?? 0;
+            var mask = new bool[n];
+            var meshes = GpuData?.Data?.Meshes;
+            if (n == 0) { _drawMesh = mask; return mask; }
+            if (meshes == null)
+            {
+                for (int i = 0; i < n; i++) mask[i] = true;
+                _drawMesh = mask;
+                return mask;
+            }
+
+            var bases = new string[n];
+            var levels = new int[n];
+            var bestLevel = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < n; i++)
+            {
+                string? name = i < meshes.Length ? meshes[i].Name : null;
+                bases[i] = LodBaseName(name, out levels[i]);
+                if (bases[i].Length == 0) continue;
+                if (!bestLevel.TryGetValue(bases[i], out int best) || levels[i] < best)
+                    bestLevel[bases[i]] = levels[i];
+            }
+
+            for (int i = 0; i < n; i++)
+                mask[i] = bases[i].Length == 0 || levels[i] == bestLevel[bases[i]];
+
+            _drawMesh = mask;
+            return mask;
+        }
+
+        /// <summary>Strip the LOD marker from a mesh name: "rock_LOD2" → "rock" (level 2),
+        /// "tree_LOD1_Bark" → "tree" (level 1), "rock" → "rock" (level 0).</summary>
+        private static string LodBaseName(string? name, out int level)
+        {
+            level = 0;
+            if (string.IsNullOrEmpty(name)) return "";
+
+            var m = System.Text.RegularExpressions.Regex.Match(name, @"_LOD(\d+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return name;
+            if (!int.TryParse(m.Groups[1].Value, out level)) level = 0;
+            return name[..m.Index];
+        }
+
         public void Draw(int modelLoc, int baseColorFactorLoc, int useAlbedoLoc, int albedoMapLoc,
                          int metallicFactorLoc = -1, int roughnessFactorLoc = -1, int normalScaleLoc = -1,
                          int occlusionStrengthLoc = -1, int emissiveFactorLoc = -1,
@@ -913,8 +1056,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             OpenGL.EnableFaceCulling(true);
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
-                // Skip hidden meshes (for 1st person camera mode)
-                if (_hiddenMeshIndices.Contains(mi))
+                // Skip hidden meshes (1st person) and coarser LOD variants (see DrawMask).
+                if (!ShouldDrawMesh(mi))
                     continue;
 
                 var mesh = GpuData.Meshes[mi];
@@ -1058,6 +1201,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             for (int mi = 0; mi < GpuData.Data.Meshes.Length; mi++)
             {
+                if (!ShouldDrawMesh(mi)) continue;
+
                 var cpuMesh = GpuData.Data.Meshes[mi];
                 var verts = cpuMesh.Vertices;
                 var indices = cpuMesh.Indices;
@@ -1166,6 +1311,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
+                if (!ShouldDrawMesh(mi)) continue;
+
                 var mesh = GpuData.Meshes[mi];
 
                 Matrix4x4 modelMat = objMat;
@@ -1237,6 +1384,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
+                if (!ShouldDrawMesh(mi)) continue;
+
                 var mesh = GpuData.Meshes[mi];
 
                 Matrix4x4 modelMat = objMatOutline;
@@ -1274,19 +1423,18 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
 
-            if (isSkinned && jointsLoc >= 0)
-            {
-                // For LOD2 (frozen animation), _jointMatrices may be stale/default.
-                // We still upload whatever we have — it produces a valid (possibly
-                // T-pose) shadow silhouette that is never cut off at the feet.
-                fixed (Matrix4x4* p = &_jointMatrices[0])
-                    GL.UniformMatrix4fv(jointsLoc, _jointMatrices.Length, false, (float*)p);
-            }
+            // Unskinned models flip u_UseSkinning off, so their shadow can never inherit the
+            // leftover rig of a previously drawn character. For LOD2 (frozen animation)
+            // _jointMatrices may be stale/default — uploading them still produces a valid
+            // (possibly T-pose) shadow silhouette that is never cut off at the feet.
+            UploadSkinning(SkinFlagLocation(CurrentProgram()), jointsLoc);
 
             // Cull state already set by CSM.BindFramebuffer()
             
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
+                if (!ShouldDrawMesh(mi)) continue;
+
                 var mesh = GpuData.Meshes[mi];
 
                 Matrix4x4 modelMat = objMat;

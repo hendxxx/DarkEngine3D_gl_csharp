@@ -14,7 +14,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// drives MSAA samples + shadow quality + shadow filter together (QualitySettings).
         /// Defaults to Low so it runs clean on any GPU out of the box.</summary>
         public int QualityPreset { get; set; } = 0;   // Low by default (MSAA OFF / shadows Low / shadow filter Hard)
-        public int OcclusionMode { get; set; } = 2;    // 0=Software, 1=HiZ, 2=OFF (OFF by default)
+        // 0=Software, 1=HiZ, 2=OFF. Defaults to HiZ (occlusion ON), matching the engine
+        // default in Config.OcclusionConfig — OFF used to override it on every clean install.
+        public int OcclusionMode { get; set; } = 1;
         public int Fov { get; set; } = 70;
         public int MouseSensitivity { get; set; } = 4;  // 0=0.25×, 1=0.50×, 2=0.75×, 3=1.0×, 4=1.5×, 5=2.0×, 6=3.0×
         public bool InGameActive { get; set; } = false;   // F9 toggle — persists IDE input lock state
@@ -39,6 +41,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         /// <summary>Editor viewport shadows on/off (viewport toolbar "Shadow").
         /// When off, the CSM shadow pass is skipped and shadow maps read as fully lit.</summary>
         public bool ShowShadows { get; set; } = false;   // OFF by default (CSM shadow pass skipped)
+
+        // ── Occlusion culling (Game settings → Gameplay) ──
+        /// <summary>Viewport/game occlusion culling master switch. ON by default: culled
+        /// objects are skipped before submission. Persisted so the choice survives restarts
+        /// (applied to EditorObjectManager.ViewportOcclusionEnabled at boot).</summary>
+        public bool OcclusionCulling { get; set; } = true;
+        /// <summary>Occlusion source: false = analytic convex hull (default), true = HZB
+        /// (previous-frame max-depth pyramid). Persisted with the OC toggle.</summary>
+        public bool OcclusionHzb { get; set; } = false;
         /// <summary>UI snap-to-grid on/off (viewport toolbar "Snap").</summary>
         public bool SnapEnabled { get; set; } = true;
         /// <summary>UI snap grid size in px (viewport toolbar grid combo).</summary>
@@ -150,8 +161,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public float ShadowCascadeOverlayAlpha { get; set; } = 0.5f;
         /// <summary>Depth-map texture filtering: true = LINEAR, false = NEAREST.</summary>
         public bool ShadowLinearMap { get; set; } = false;   // OFF by default (NEAREST)
-        /// <summary>Shadow filter mode (0-9: PCF 16, Hard, PCF, PCSS...).</summary>
+        /// <summary>Shadow filter mode (see <see cref="ShadowFilterModes.Names"/>).</summary>
         public int ShadowFilterMode { get; set; } = 1;   // Hard — crisp, unfiltered shadow edges (default)
+        /// <summary>Numbering of <see cref="ShadowFilterMode"/>: 0/absent = the old table where
+        /// "PCF 16" appeared twice (modes 0 and 2); 2 = current table (no duplicate).</summary>
+        public int ShadowFilterSchema { get; set; } = 0;
 
         // ── Post-Processing (AAA: bloom + ACES tonemapping + gamma; tuned live via
         // PostFxSettings, persisted here so the look survives restarts) ──

@@ -11,6 +11,9 @@ uniform mat4 lightSpaceMatrix;
 const int MAX_JOINTS = 128;
 uniform mat4 u_Joints[MAX_JOINTS];
 
+// Explicit skinning switch, uploaded per model (0 = draw the mesh as-is).
+uniform int u_UseSkinning = 0;
+
 // Normal-bias extrusion amount (anti-acne), uploaded live from the Shadow Settings panel.
 uniform float u_NormalBias = 0.0;
 
@@ -26,7 +29,7 @@ void main()
     vec4 skinnedPos;
     vec3 skinnedNormal;
 
-    if (wsum < 1e-6)
+    if (u_UseSkinning == 0 || wsum < 1e-6)
     {
         skinnedPos = vec4(aPos, 1.0);
         skinnedNormal = aNormal;

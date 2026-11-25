@@ -33,6 +33,11 @@ public unsafe class Program
         // Initialize save system directories
         SaveManager.Init();
 
+        // Startup-only shader sanity check: list every project "Artifacts/shaders" copy that
+        // predates the GLB skin flag (u_UseSkinning). Without it a stale copy only shows up as
+        // silently shifted geometry, because the runtime warning fires once a GLB is drawn.
+        Engine.Helpers.ShaderHelpers.VerifyGltfSkinFlagShaderCopies();
+
         // 🛠️ FIX #9: Use shared ResolutionConfig instead of magic numbers.
         // 0=1920x1080, 1=1280x720, 2=2560x1440
         Glfw.WindowWidth = ResolutionConfig.GetWidth(settings.Resolution);
@@ -136,6 +141,10 @@ public unsafe class Program
         // stay consistent across restarts (previously reset to defaults).
         ide.Bridge.ShowDebugGrid = settings.ShowDebugGrid;
         ide.Bridge.ShowShadows = settings.ShowShadows;
+        // Occlusion culling preference (Game settings → Gameplay): restore the ON/OFF state
+        // and the occlusion source so the viewport behaves the same after a restart.
+        Engine.Objects.EditorObjectManager.ViewportOcclusionEnabled = settings.OcclusionCulling;
+        Engine.Objects.EditorObjectManager.ViewportOcclusionHzb = settings.OcclusionHzb;
         ide.Bridge.ShowCursorInGame = settings.ShowCursorInGame;
         ide.SetViewportSnap(settings.SnapEnabled, settings.SnapGridSize);
 

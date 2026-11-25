@@ -31,14 +31,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
         public static int MsaaSamples = 1;
 
         // ── Preset table: (MSAA samples, shadow quality, shadow filter mode) ──
-        // Shadow filter modes: 0=PCF16, 1=Hard, 2=PCF16, 3=PCF16 Soft, 4=PCF32,
-        // 5=PCF32 Soft, 6=PCSS16, 7=PCSS16 Soft, 8=PCSS32, 9=PCSS32 Soft.
+        // Shadow filter modes come from ShadowFilterModes.Names (0=PCF16, 1=Hard,
+        // 2=PCF16 Soft, 3=PCF32, 4=PCF32 Soft, 5=PCSS16, 6=PCSS16 Soft, 7=PCSS32,
+        // 8=PCSS32 Soft).
         private static readonly (int msaa, int shadow, int filter)[] Presets =
         [
             (1, ShadowSettings.QualityLow, 0),    // Low    — MSAA off, Low shadows, PCF 16 (default)
-            (2, ShadowSettings.QualityMedium, 4), // Medium — MSAA 2x, Medium shadows, PCF 32
-            (4, ShadowSettings.QualityHigh, 8),   // High   — MSAA 4x, High shadows, PCSS 32
-            (4, ShadowSettings.QualityUltra, 8),  // Ultra  — MSAA 4x, Ultra shadows, PCSS 32
+            (2, ShadowSettings.QualityMedium, 3), // Medium — MSAA 2x, Medium shadows, PCF 32
+            (4, ShadowSettings.QualityHigh, 7),   // High   — MSAA 4x, High shadows, PCSS 32
+            (4, ShadowSettings.QualityUltra, 7),  // Ultra  — MSAA 4x, Ultra shadows, PCSS 32
                                                  //   (PCSS 32 Soft's radius-12 sampling can
                                                  //   look noisy on the far cascade)
         ];

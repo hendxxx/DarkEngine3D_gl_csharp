@@ -4371,6 +4371,63 @@ ImGui.SameLine();
                 ImGui.EndDragDropTarget();
             }
 
+            //  Drag-drop target: GLB / GLTF model (Asset Browser → viewport) ──
+            // Dropped on empty space → add a GlbReference under the cursor: ground plane
+            // (Y = 0) for a perspective camera, the Z = 0 level plane for a 2D/ortho one.
+            // Falls back to 10 units in front of the camera when the ray hits neither
+            // (looking at the sky), so a drop always lands somewhere visible.
+            if (ImGui.BeginDragDropTarget())
+            {
+                var modelPayload = ImGui.AcceptDragDropPayload(AssetBrowserPanel.ModelPathPayload);
+                if (modelPayload.NativePtr != null && AssetBrowserPanel._dragModelPath != null)
+                {
+                    string modelPath = AssetBrowserPanel._dragModelPath;
+                    AssetBrowserPanel._dragModelPath = null;
+
+                    Vector3? dropPos = null;
+                    var dropCam = _bridge.Camera;
+                    var dropMouse = ImGui.GetMousePos();
+                    bool dropOverImage = dropMouse.X >= _imageMin.X && dropMouse.X <= _imageMax.X &&
+                                         dropMouse.Y >= _imageMin.Y && dropMouse.Y <= _imageMax.Y;
+                    if (dropCam != null && dropOverImage &&
+                        _bridge.SceneTextureWidth > 0 && _bridge.SceneTextureHeight > 0 &&
+                        _imageSize.X > 0f && _imageSize.Y > 0f)
+                    {
+                        float u = (dropMouse.X - _imageMin.X) / _imageSize.X;
+                        float v = (dropMouse.Y - _imageMin.Y) / _imageSize.Y;
+                        float texX = u * _bridge.SceneTextureWidth;
+                        float texY = _bridge.SceneTextureHeight - v * _bridge.SceneTextureHeight;
+                        dropCam.ScreenToRay(texX, texY, _bridge.SceneTextureWidth, _bridge.SceneTextureHeight,
+                            out Vector3 ro, out Vector3 rd);
+                        if (dropCam.IsOrthographic)
+                        {
+                            // 2D level: everything lives on Z = 0.
+                            if (MathF.Abs(rd.Z) > 0.0001f)
+                            {
+                                float tz = (0f - ro.Z) / rd.Z;
+                                if (tz > 0f)
+                                {
+                                    var hit = ro + rd * tz;
+                                    dropPos = new Vector3(hit.X, hit.Y, 0f);
+                                }
+                            }
+                        }
+                        else if (MathF.Abs(rd.Y) > 0.0001f && (0f - ro.Y) / rd.Y > 0f)
+                        {
+                            dropPos = ro + rd * ((0f - ro.Y) / rd.Y);   // ground plane Y = 0
+                        }
+                        else
+                        {
+                            dropPos = ro + Vector3.Normalize(rd) * 10f; // sky: in front of the camera
+                        }
+                    }
+
+                    IDEBridge.RequestGlbPlacement?.Invoke(modelPath, dropPos);
+                    Console.WriteLine($"[Viewport] GLB drop → {Path.GetFileName(modelPath)}");
+                }
+                ImGui.EndDragDropTarget();
+            }
+
             //  Popup suppress: block all scene interactions when a popup/menu
             // is open, AND for 2 frames after it closes (prevents the click that
             bool anyPopupOpen = ImGui.IsPopupOpen(null, ImGuiPopupFlags.AnyPopupId);
@@ -5887,6 +5944,10 @@ ImGui.SameLine();
         string label = GetActiveViewLabel(out Vector4 col);
         bool isOrtho = _bridge.Camera?.IsOrthographic ?? false;
         string text = isOrtho ? $"{label}  Ortho" : $"{label}  Persp";
+        // Status indicator for the global F2 wireframe toggle (the left toolbar's
+        // "Wireframe" badge carries the same state; this one survives a collapsed toolbar).
+        if (Keyboard.GetIsWireframe())
+            text += "  · WIREFRAME (F2)";
 
         var font = ImGui.GetFont();
         float fontSize = _bridge.ViewportFontSize > 0f ? _bridge.ViewportFontSize : 16f;
@@ -6340,27 +6401,10 @@ ImGui.SameLine();
             Console.WriteLine($"[Viewport] 2D cull debug {(EditorObject.Show2DCullDebug ? "ON" : "OFF")} — culled {EditorObject.Cull2DCulled}/{EditorObject.Cull2DTotal} (last pass)");
         }
 
-        bool occlusion = EditorObjectManager.ViewportOcclusionEnabled;
-        int occluders = _bridge.EditorObjectManager?.ViewportOccluderCount ?? 0;
-        bool occlusionActive = _bridge.EditorObjectManager?.ViewportOcclusionActive ?? false;
-        if (ToolButton(occlusion ? $"OC: On ({occluders})" : "OC: Off", occlusion, new Vector4(0.65f, 0.45f, 0.15f, 0.95f),
-            $"Analytic occlusion for Box/Sphere, terrain chunks (octree) and static GLB references.\n" +
-            $"{(occlusionActive ? "Active this frame" : occlusion ? "Enabled, but no occluder is visible in the frustum" : "Disabled")}; {occluders} occluder(s) submitted (maximum {EditorObjectManager.ViewportOccluderLimit}).\n" +
-            "Every Box occludes by default; tick Occluder in Inspector → Flags for Sphere/GLB. Occluded targets are skipped completely (no draw call).", out y))
-            EditorObjectManager.ViewportOcclusionEnabled = !occlusion;
-
-        //  Occlusion SOURCE: hull (default) or the previous frame's depth pyramid.
-        bool hzb = EditorObjectManager.ViewportOcclusionHzb;
-        if (ToolButton(hzb ? "OC: HZB" : "OC: Hull", hzb, new Vector4(0.30f, 0.55f, 0.45f, 0.95f),
-            "Occlusion source for the OC toggle.\n" +
-            "Hull = analytic convex-hull test against Boxes (and objects flagged Occluder in Inspector); only flagged shapes can hide anything.\n" +
-            "HZB = max-depth pyramid of the previous viewport frame: every drawn pixel occludes (terrain, GLB meshes, sprites), no Occluder flag needed. One frame of latency.\n" +
-            $"HZB copies the viewport depth with glBlitFramebuffer, so the viewport renders single-sample while it is on ({EditorObjectManager.ViewportOcclusionHzb} mode). It is skipped while a Preview Camera drives culling or in the camera-preview inset (their depth buffer is the viewport's).", out y))
-        {
-            EditorObjectManager.ViewportOcclusionHzb = !hzb;
-            if (!hzb) EditorObjectManager.ViewportOcclusionEnabled = true;
-            Console.WriteLine($"[Viewport] OC source → {(EditorObjectManager.ViewportOcclusionHzb ? "HZB (previous-frame depth pyramid)" : "Hull (analytic)")}");
-        }
+        // OC on/off and the OC source (Hull / HZB) now live in the GAME settings
+        // (IDE Settings → Gameplay) and are persisted in settings.json, so the viewport
+        // toolbar no longer carries OC buttons. Cull Viz below still enables OC when it is
+        // switched on, because the overlay is meaningless without culling.
 
         bool cull3D = EditorObjectManager.ViewportCullDebug;
         var cullManager = _bridge.EditorObjectManager;
@@ -6419,6 +6463,16 @@ ImGui.SameLine();
             _bridge.ShowShadows = !shadowsOn;
             PersistViewportPrefs();
             Console.WriteLine($"[Viewport] Shadows {(shadowsOn ? "disabled" : "enabled")}");
+        }
+
+        //  Wireframe (F2) — status badge; click toggles the same state as the key.
+        bool wireframeOn = Keyboard.GetIsWireframe();
+        if (ToolButton(wireframeOn ? "Wireframe: On" : "Wireframe: Off", wireframeOn,
+            new Vector4(0.62f, 0.62f, 0.70f, 0.95f),
+            "Render the viewport polygons as lines (F2).\nThis is the global F2 toggle; the Inspector's per-scene 'Wireframe Mode' checkbox is a separate, saved setting.\nWhile wireframe is on, OC: HZB falls back to the hull test (line rendering has no solid depth for the depth pyramid).", out y))
+        {
+            Keyboard.ToggleWireframe();
+            Console.WriteLine($"[Viewport] Wireframe {(Keyboard.GetIsWireframe() ? "ON" : "OFF")}");
         }
 
         //  Floating Views menu + corner axis indicator toggle 

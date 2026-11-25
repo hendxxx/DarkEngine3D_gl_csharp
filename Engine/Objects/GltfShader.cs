@@ -6,17 +6,21 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
     public static class GltfShader
     {
         private static uint _shaderProgram;
-        private static bool _initialized = false;
+        private static bool _loadFailureLogged;
 
         public static uint GetShaderProgram()
         {
-            if (!_initialized) Init();
+            // Retry until the program really exists. The old "_initialized" latch was set
+            // even when LoadShader returned 0 (shader file not resolvable yet, first project
+            // still opening), which left every GLB reference invisible for the rest of the
+            // session no matter what was loaded afterwards.
+            if (_shaderProgram == 0) Init();
             return _shaderProgram;
         }
 
         public static void Init()
         {
-            if (_initialized) return;
+            if (_shaderProgram != 0) return;
 
             //string vSrc = File.ReadAllText("Artifacts\\shaders\\gltf_vertex.glsl");
             //string fSrc = File.ReadAllText("Artifacts\\shaders\\gltf_fragment.glsl");
@@ -50,7 +54,12 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             //Console.WriteLine($"[GltfShader] Program ID={_program}. Ready.");
             _shaderProgram = Helpers.ShaderHelpers.LoadShader("Artifacts/shaders/gltf_vertex.glsl",
                                       "Artifacts/shaders/gltf_fragment.glsl");
-            _initialized = true;
+
+            if (_shaderProgram == 0 && !_loadFailureLogged)
+            {
+                _loadFailureLogged = true;
+                Console.WriteLine("[GltfShader] gltf shader failed to load — GLB references cannot render yet; retrying on next use.");
+            }
         } 
     }
 }

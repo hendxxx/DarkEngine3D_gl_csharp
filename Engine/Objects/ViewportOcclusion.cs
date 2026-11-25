@@ -23,6 +23,79 @@ internal static class ViewportOcclusion
         return float.IsFinite(projected.X) && float.IsFinite(projected.Y) && float.IsFinite(projected.Z);
     }
 
+    /// <summary>Screen footprint (NDC) of a world BOUNDING SPHERE: centre, half extents
+    /// along the camera's right/up axes, the depth of its nearest point and the axes used,
+    /// so the projected rim can be rebuilt. A Sphere object is a sphere, not a box: the
+    /// 8-corner AABB test refused to cull one that sat fully behind a hill because the box
+    /// corners poked above the ridge line (the farther the camera, the smaller that error,
+    /// which is why culling only ever seemed to work at distance).</summary>
+    internal readonly struct SphereScreen
+    {
+        internal readonly float Cx, Cy, Rx, Ry, Nearest;
+        internal readonly Vector3 Right, Up;
+        internal readonly bool Valid;
+
+        internal SphereScreen(float cx, float cy, float rx, float ry, float nearest,
+            Vector3 right, Vector3 up)
+        {
+            Cx = cx; Cy = cy; Rx = rx; Ry = ry; Nearest = nearest;
+            Right = right; Up = up; Valid = true;
+        }
+    }
+
+    private static bool ScreenOffset(in Matrix4x4 vp, Vector3 point, float cx, float cy, out float offset)
+    {
+        var q = Vector4.Transform(new Vector4(point, 1f), vp);
+        offset = 0f;
+        if (!float.IsFinite(q.W) || q.W <= 1e-5f) return false;
+        float dx = MathF.Abs(q.X / q.W - cx);
+        float dy = MathF.Abs(q.Y / q.W - cy);
+        offset = MathF.Max(dx, dy);
+        return float.IsFinite(offset);
+    }
+
+    private static float NdcDepth(in Matrix4x4 vp, Vector3 point, float fallback)
+    {
+        var q = Vector4.Transform(new Vector4(point, 1f), vp);
+        if (!float.IsFinite(q.W) || q.W <= 1e-5f) return fallback;
+        float d = q.Z / q.W;
+        return float.IsFinite(d) ? d : fallback;
+    }
+
+    /// <summary>Project a bounding sphere to NDC. Half extents come from the points one
+    /// radius off the centre along the camera's right/up axes (exact for an orthographic
+    /// camera, a tight over-estimate for a perspective one).</summary>
+    internal static SphereScreen ProjectSphere(in Matrix4x4 viewProjection, Vector3 center, float radius)
+    {
+        var c = Vector4.Transform(new Vector4(center, 1f), viewProjection);
+        if (!float.IsFinite(c.W) || c.W <= 1e-5f) return default;
+        float cx = c.X / c.W, cy = c.Y / c.W, cz = c.Z / c.W;
+
+        // Camera axes: the view-projection's third row is the axis clip.z is measured on.
+        var axis = new Vector3(viewProjection.M31, viewProjection.M32, viewProjection.M33);
+        if (axis.LengthSquared() < 1e-12f) return default;
+        axis = Vector3.Normalize(axis);
+        var worldUp = MathF.Abs(axis.Y) > 0.99f ? Vector3.UnitZ : Vector3.UnitY;
+        var right = Vector3.Normalize(Vector3.Cross(worldUp, axis));
+        var up = Vector3.Cross(axis, right);
+
+        if (!ScreenOffset(viewProjection, center + right * radius, cx, cy, out float rx1) ||
+            !ScreenOffset(viewProjection, center - right * radius, cx, cy, out float rx2) ||
+            !ScreenOffset(viewProjection, center + up * radius, cx, cy, out float ry1) ||
+            !ScreenOffset(viewProjection, center - up * radius, cx, cy, out float ry2))
+            return default;
+
+        float rx = MathF.Max(rx1, rx2), ry = MathF.Max(ry1, ry2);
+        if (!float.IsFinite(rx) || !float.IsFinite(ry)) return default;
+
+        // Nearest point along the view axis (sign of the axis row depends on the matrices,
+        // so take whichever end projects nearer).
+        float n1 = NdcDepth(viewProjection, center + axis * radius, cz);
+        float n2 = NdcDepth(viewProjection, center - axis * radius, cz);
+        float nearest = MathF.Min(cz, MathF.Min(n1, n2));
+        return new SphereScreen(cx, cy, rx, ry, nearest, right, up);
+    }
+
     private static Vector3 Corner(AABB box, int i) => new(
         (i & 1) != 0 ? box.Max.X : box.Min.X,
         (i & 2) != 0 ? box.Max.Y : box.Min.Y,
@@ -146,6 +219,48 @@ internal static class ViewportOcclusion
     {
         return IsOccludedPrepared(target,
             Prepare(boxWorld, cameraPosition, viewProjection, ownerTag), viewProjection, targetOwnerTag);
+    }
+
+    /// <summary>Hull occlusion test for a SPHERE occludee: the sphere's projected disk (centre
+    /// + 8 rim points) must lie inside the occluder silhouette and the sphere's nearest depth
+    /// must be behind the occluder's farthest point.</summary>
+    internal static bool IsOccludedSphere(Vector3 center, float radius, OccluderData occluder,
+        Matrix4x4 viewProjection, int targetOwnerTag)
+    {
+        if (!occluder.IsValid || radius <= 0f) return false;
+        if (targetOwnerTag != 0 && occluder.OwnerTag == targetOwnerTag) return false;
+
+        var s = ProjectSphere(viewProjection, center, radius);
+        if (!s.Valid) return false;
+        if (s.Nearest <= -1f || s.Nearest >= 1f) return false;
+
+        float farthest = float.NegativeInfinity;
+        for (int i = 0; i < 8; i++) farthest = MathF.Max(farthest, occluder.Corner(i).Z);
+        if (farthest + 0.0001f >= s.Nearest) return false;
+
+        Span<Vector2> points = stackalloc Vector2[8];
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * (MathF.PI / 4f);
+            var p = center + s.Right * (MathF.Cos(a) * radius) + s.Up * (MathF.Sin(a) * radius);
+            if (!Project(p, viewProjection, out var ndc)) return false;
+            points[i] = new Vector2(ndc.X, ndc.Y);
+        }
+
+        Span<Vector2> occluderPoints = stackalloc Vector2[8];
+        for (int i = 0; i < 8; i++)
+        {
+            var corner = occluder.Corner(i);
+            occluderPoints[i] = new Vector2(corner.X, corner.Y);
+        }
+        Span<Vector2> hull = stackalloc Vector2[16];
+        int hullCount = ConvexHull(occluderPoints, hull);
+        if (hullCount < 3) return false;
+
+        ReadOnlySpan<Vector2> silhouette = hull[..hullCount];
+        for (int i = 0; i < points.Length; i++)
+            if (!ContainsPoint(silhouette, points[i])) return false;
+        return true;
     }
 
     internal static bool IsOccludedPrepared(AABB target, OccluderData occluder, Matrix4x4 viewProjection,

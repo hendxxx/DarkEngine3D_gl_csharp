@@ -1,4 +1,5 @@
 using DarkEngine3D_gl_csharp.Engine.IDE;
+using DarkEngine3D_gl_csharp.Engine.Inputs;
 using DarkEngine3D_gl_csharp.Engine.Libs;
 using DarkEngine3D_gl_csharp.Engine.Visual;
 using System.Linq;
@@ -34,8 +35,12 @@ public unsafe class EditorObjectManager
     private ViewportCullStatistics _frozenViewportCullStatistics;
     private bool _captureCullSnapshot;
     private bool _loggedNoOccluders;
+    private bool _loggedWireframeHullFallback;
 
-    public static bool ViewportOcclusionEnabled { get; set; }
+    /// <summary>Viewport occlusion culling master switch — ON by default. Owned by the
+    /// Game settings (IDE Settings → Gameplay) and persisted in settings.json; the viewport
+    /// toolbar no longer carries an OC button.</summary>
+    public static bool ViewportOcclusionEnabled { get; set; } = true;
     public static bool ViewportCullDebug { get; set; }
 
     /// <summary>Occlusion source (OC button in the viewport toolbar): false = analytic
@@ -98,8 +103,11 @@ public unsafe class EditorObjectManager
 
     /// <summary>Submit an object's volume as a viewport occluder. Box uses its world
     /// matrix (exact); Sphere uses the cube inscribed in it (conservative); GLB uses its
-    /// world AABB (opt-in: the AABB is larger than the mesh). Displaced geometry is
-    /// skipped — its vertices no longer match the shape.</summary>
+    /// bind-pose mesh AABB in world space — static AND skinned, so one GLB can hide
+    /// another (static prop behind a rigged character). Default ON through
+    /// EditorObject.IsOccluder; the box is slightly larger than the mesh, so a
+    /// hollow/open model — or a rig whose animation leaves the bind pose — can untick it.
+    /// Displaced geometry is skipped — its vertices no longer match the shape.</summary>
     private void AddViewportOccluders(EditorObject obj, Vector3 cameraPosition, Matrix4x4 viewProj)
     {
         if (obj.PbrVertexDisplaceEnabled) return;
@@ -121,7 +129,10 @@ public unsafe class EditorObjectManager
             }
             case EditorPrimitiveType.GlbReference:
             {
-                if (!obj.TryGetGlbCullData(out var bounds, out _) || bounds is not { } glbBounds) return;
+                // Occluder-side box: bind-pose mesh AABB, which a skinned GLB has too. Only
+                // the CULL direction is guarded (TryGetGlbCullData) — a rig may hide things
+                // without ever being culled itself.
+                if (!obj.TryGetGlbOccluderBounds(out var glbBounds)) return;
                 if (!EditorObject.IsAABBInFrustum(viewProj, glbBounds)) return;
                 var prepared = ViewportOcclusion.PrepareBounds(glbBounds, cameraPosition, viewProj, obj.OcclusionTag);
                 if (prepared.IsValid) _viewportOccluders.Add(prepared);
@@ -511,12 +522,42 @@ public unsafe class EditorObjectManager
                 EnsureDirectLightForSky(sky);
         }
 
+        /// <summary>Lowest "&lt;baseName&gt;&lt;n&gt;" (n from 1) that no other object uses;
+        /// <paramref name="self"/> is skipped because a restored object is already in the list.</summary>
+        private string NextFreeName(string baseName, EditorObject? self = null)
+        {
+            int n = 1;
+            while (_objects.Any(o => !ReferenceEquals(o, self) &&
+                                     string.Equals(o?.Name, $"{baseName}{n}", StringComparison.OrdinalIgnoreCase)))
+                n++;
+            return $"{baseName}{n}";
+        }
+
+        /// <summary>Name for an object restored from a scene file: its saved name, numbered only
+        /// when another object already holds it (scenes saved before GLB references were numbered
+        /// contain several "EditorObject" rows), or this type's incremental name when the file has
+        /// none. An already-numbered duplicate continues its stem ("box3" → "box4", never
+        /// "box31").</summary>
+        public string RestoredName(EditorObject self, string? savedName)
+        {
+            if (string.IsNullOrWhiteSpace(savedName)) return GetNextName(self.PrimitiveType);
+            string name = savedName.Trim();
+            bool taken = _objects.Any(o => !ReferenceEquals(o, self) &&
+                                           string.Equals(o?.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (!taken) return name;
+            string stem = name[..(name.Length - ExtractNumberSuffix(name).Length)];
+            return NextFreeName(stem.Length > 0 ? stem : name, self);
+        }
+
         /// <summary>Add a glb reference object (renders the GLB model in the viewport,
         /// casts shadows, and supports the gizmo/outline like other primitives).</summary>
         public EditorObject AddGlbReference(string glbPath, Vector3 position)
         {
             var obj = new EditorObject(EditorPrimitiveType.GlbReference)
             {
+                // Numbered name: the class default left every reference as "EditorObject",
+                // so the outliner showed a stack of identically named rows.
+                Name = NextFreeName("EditorObject"),
                 Position = position,
                 GlbFilePath = glbPath,
                 Scale = Vector3.One,
@@ -715,6 +756,19 @@ public unsafe class EditorObjectManager
         /// every selected object is also rendered as a wireframe line outline in that color
         /// (multi-select supported via <paramref name="selectedObjects"/>).
         /// </summary>
+        /// <summary>Make sure every GLB reference has its model loaded for this frame.
+        /// Cheap after the first frame (one resolved-path + file-stamp check per object).
+        /// Also called when the editor renders a scene without a shadow pass.</summary>
+        public void PrepareGlbReferences()
+        {
+            for (int i = 0; i < _objects.Count; i++)
+            {
+                var o = _objects[i];
+                if (o.PrimitiveType == EditorPrimitiveType.GlbReference && o.IsVisible)
+                    o.PrepareGlb();
+            }
+        }
+
         public void Draw(Camera camera, Lights light, CSM? csm = null, Vector3? wireframeColor = null,
             IReadOnlyCollection<EditorObject>? selectedObjects = null, bool showSkyGizmo = true, bool showEditorGizmos = true,
             bool captureViewportCullSnapshot = true, Camera? viewportCullCamera = null,
@@ -736,6 +790,10 @@ public unsafe class EditorObjectManager
             _viewportCullBoxes.Clear();
             if (_objects.Count == 0) return;
 
+            // Models are loaded up front so nothing loads inside the draw loops below
+            // (see RenderShadowPass for why).
+            PrepareGlbReferences();
+
             GL.UseProgram(_shaderProgram);
 
             var view = camera.GetViewMatrix();
@@ -746,8 +804,22 @@ public unsafe class EditorObjectManager
             // OC: HZB — usable only when the captured depth belongs to THIS pass's camera
             // (the pyramid is copied from the viewport render) and never in the camera
             // preview inset, whose depth buffer is the viewport's rather than its own.
-            bool hzbUsable = ViewportOcclusionHzb && depthOcclusionAllowed
+            //
+            // WIREFRAME (F2) is NOT a valid HZB source: with glPolygonMode(GL_LINE) only the
+            // triangle EDGES write depth, so every pyramid tile that should hold a solid
+            // wall keeps its cleared value (max-depth pyramid takes the MAX, so a single
+            // untouched pixel pins the whole tile to the far plane). Result: the farther the
+            // camera / the coarser the terrain LOD, the fewer depth lines land in a tile and
+            // the less OC culls — near geometry appeared to "work", distant geometry never
+            // culled. Wireframe therefore always uses the analytic hull test (pure geometry,
+            // independent of polygon mode); the manager also gathers hull occluders again.
+            bool hzbUsable = !Keyboard.GetIsWireframe() && ViewportOcclusionHzb && depthOcclusionAllowed
                 && ReferenceEquals(cullCamera, camera) && ViewportHZB.Valid;
+            if (ViewportOcclusionHzb && !hzbUsable && !_loggedWireframeHullFallback && Keyboard.GetIsWireframe())
+            {
+                _loggedWireframeHullFallback = true;
+                Console.WriteLine("[OC] Wireframe is on — HZB cannot read a line-only depth buffer, using the hull test instead.");
+            }
             var hzbViewProj = view * proj;
             EditorObject.UseViewportHZB = hzbUsable;
             GL.UniformMatrix4fv(_viewLoc, 1, false, (float*)&view);
@@ -855,6 +927,14 @@ public unsafe class EditorObjectManager
                     obj.EnsureResources();
                     var bounds = obj.ViewportCullBounds;
                     int triangles = obj.PrimitiveTriangles;
+                    //  A Sphere is culled as a SPHERE: its projected disk (centre + radius),
+                    //  not the 8 corners of the box that encloses it. The AABB test only
+                    //  culled it from far away — up close the box corners projected past the
+                    //  occluder's silhouette, so a fully hidden sphere stayed visible.
+                    bool sphereOccludee = obj.PrimitiveType == EditorPrimitiveType.Sphere;
+                    Vector3 sphereCenter = (bounds.Min + bounds.Max) * 0.5f;
+                    Vector3 sphereSize = bounds.Max - bounds.Min;
+                    float sphereRadius = 0.5f * MathF.Max(sphereSize.X, MathF.Max(sphereSize.Y, sphereSize.Z));
                     int state = 0;
                     if (!EditorObject.IsAABBInFrustum(primitiveViewProj, bounds))
                     {
@@ -869,7 +949,9 @@ public unsafe class EditorObjectManager
                     else if (hzbUsable)
                     {
                         // OC: HZB — the previous frame's max-depth pyramid is the occluder.
-                        if (ViewportHZB.IsOccluded(bounds, hzbViewProj))
+                        if (sphereOccludee
+                            ? ViewportHZB.IsOccludedSphere(sphereCenter, sphereRadius, hzbViewProj)
+                            : ViewportHZB.IsOccluded(bounds, hzbViewProj))
                         {
                             state = 2;
                             if (measured)
@@ -883,7 +965,9 @@ public unsafe class EditorObjectManager
                     else if (occludee)
                     {
                         foreach (var occluder in _viewportOccluders)
-                            if (ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj, obj.OcclusionTag))
+                            if (sphereOccludee
+                                ? ViewportOcclusion.IsOccludedSphere(sphereCenter, sphereRadius, occluder, primitiveViewProj, obj.OcclusionTag)
+                                : ViewportOcclusion.IsOccludedPrepared(bounds, occluder, primitiveViewProj, obj.OcclusionTag))
                             {
                                 state = 2;
                                 if (measured)
@@ -1208,13 +1292,27 @@ public unsafe class EditorObjectManager
             public static int Model, BaseColor, UseAlbedo, AlbedoMap;
             public static int MetallicFactor, RoughnessFactor, NormalScale, OcclusionStrength, EmissiveFactor;
             public static int HasNormalTexture, HasMetallicRoughnessTexture, HasOcclusionTexture, HasEmissiveTexture;
-            public static int NormalMap, MetallicRoughnessMap, OcclusionMap, EmissiveMap, Joints;
+            public static int NormalMap, MetallicRoughnessMap, OcclusionMap, EmissiveMap, Joints, SkinFlag;
             public static int ShowCSMCascadeColor;
+
+            private static bool _noProgramLogged;
 
             public static void Ensure()
             {
                 if (Ready) return;
                 Program = GltfShader.GetShaderProgram();
+                if (Program == 0)
+                {
+                    // Do NOT latch Ready: the first GLB can be drawn before the gltf program
+                    // exists, and the old code then kept Program 0 forever — every GLB
+                    // reference stayed invisible until the editor was restarted.
+                    if (!_noProgramLogged)
+                    {
+                        _noProgramLogged = true;
+                        Console.WriteLine("[GLB] gltf shader program not ready — GLB references will retry rendering.");
+                    }
+                    return;
+                }
                 View = GL.GetUniformLocation(Program, "view");
                 Proj = GL.GetUniformLocation(Program, "projection");
                 SunDir = GL.GetUniformLocation(Program, "sunDir");
@@ -1251,6 +1349,7 @@ public unsafe class EditorObjectManager
                 OcclusionMap = GL.GetUniformLocation(Program, "occlusionMap");
                 EmissiveMap = GL.GetUniformLocation(Program, "emissiveMap");
                 Joints = GL.GetUniformLocation(Program, "u_Joints");
+                SkinFlag = GltfObject.SkinFlagLocation(Program);
                 Ready = true;
             }
         }
@@ -1406,7 +1505,10 @@ public unsafe class EditorObjectManager
                 if (!obj.TryGetGlbCullData(out var bounds, out long triangles)) continue;
 
                 int state = 0;
-                // Skinning can move vertices outside bind-pose bounds; render it without culling.
+                // Skinning can move vertices outside bind-pose bounds; a skinned GLB keeps
+                // bounds == null and is drawn without culling (guard restored on purpose:
+                // an animated character must never disappear). Rigs still occlude others —
+                // see AddViewportOccluders.
                 if (bounds is { } aabb)
                 {
                     if (!EditorObject.IsAABBInFrustum(cullViewProj, aabb)) state = 1;
@@ -1444,13 +1546,9 @@ public unsafe class EditorObjectManager
                     GL.ActiveTexture(Const.GL_TEXTURE0);
                 }
 
-                // Skinned models: upload joint matrices before drawing (mirrors ObjectManager).
-                var joints = obj.GetGlbJointMatrices();
-                if (joints is { Length: > 0 } && GlbUniforms.Joints >= 0)
-                {
-                    fixed (Matrix4x4* p = &joints[0])
-                        GL.UniformMatrix4fv(GlbUniforms.Joints, joints.Length, false, (float*)p);
-                }
+                // Skinning state per model (mirrors ObjectManager): an unskinned GLB turns
+                // u_UseSkinning off instead of inheriting another model's joints.
+                obj.UploadGlbSkinning(GlbUniforms.SkinFlag, GlbUniforms.Joints);
 
                 obj.DrawGlb(
                     GlbUniforms.Model, GlbUniforms.BaseColor, GlbUniforms.UseAlbedo, GlbUniforms.AlbedoMap,
@@ -1471,6 +1569,12 @@ public unsafe class EditorObjectManager
         /// SceneManager bare-editor viewport so shadows match the sun in every view.</summary>
         public void RenderShadowPass(Camera camera, Lights light, CSM csm)
         {
+            // Load/refresh GLB models BEFORE any GL pass runs. Loading used to be triggered
+            // lazily by the first cull/draw/shadow call, i.e. in the middle of a pass: it
+            // created VAOs/VBOs/textures (binding texture units the pass was using) and a
+            // model that parsed while the exporter still held the file stayed invisible until
+            // something else forced a reload. One explicit pass makes it deterministic.
+            PrepareGlbReferences();
             csm.UpdateMatrices(camera, light.ShadowDirStable);
 
             for (int i = 0; i < CSM.NumCascades; i++)

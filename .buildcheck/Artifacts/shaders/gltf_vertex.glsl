@@ -15,6 +15,11 @@ uniform mat4 projection;
 const int MAX_JOINTS = 128;
 uniform mat4 u_Joints[MAX_JOINTS];
 
+// Explicit skinning switch, uploaded per model. Unskinned meshes are stored with
+// BoneWeights (1,0,0,0) on bone 0, so without this flag they would be multiplied by
+// u_Joints[0] — the program-level leftover rig of whichever model was drawn before.
+uniform int u_UseSkinning = 0;
+
 out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
@@ -26,7 +31,7 @@ void main()
  
     float wsum = aBoneWeights.x + aBoneWeights.y + aBoneWeights.z + aBoneWeights.w;
 
-    if (wsum < 1e-6)
+    if (u_UseSkinning == 0 || wsum < 1e-6)
     {
         skinnedPos = vec4(aPos, 1.0);
         skinnedNormal = aNormal;

@@ -11,7 +11,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         private static delegate* unmanaged[Cdecl]<IntPtr, int, int> glfwGetKey;
         private static delegate* unmanaged[Cdecl]<IntPtr, int, void> glfwSetWindowShouldClose;
         static bool isWireframe = false;
-        static bool f1Pressed = false;
 #pragma warning disable CS0414
         static float speedCam = 1.0f;
         static int lineVLoc = 0;
@@ -26,6 +25,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
         public static int GetDebugMode() => debugMode;
         public static bool GetShowBBox() => debugMode >= 1;
         public static bool GetIsWireframe() => isWireframe;
+
+        /// <summary>Flip wireframe mode on/off and apply glPolygonMode immediately.
+        /// Called from the IDE's F2 shortcut so the toggle also works in edit mode,
+        /// where gameplay keyboard input (and therefore Update) is gated off.</summary>
+        public static void ToggleWireframe()
+        {
+            SetWireframe(!isWireframe);
+            Console.WriteLine(isWireframe ? "Wireframe Mode: ON (F2)" : "Wireframe Mode: OFF (F2)");
+        }
+
+        /// <summary>Force the wireframe state (no-op when unchanged).</summary>
+        public static void SetWireframe(bool on)
+        {
+            isWireframe = on;
+            GL.PolygonMode(Const.GL_FRONT_AND_BACK, isWireframe ? Const.GL_LINE : Const.GL_FILL);
+        }
 
         // P: toggle frozen frustum debug visualization (freeze 8 corners at capture time)
         static bool _showFrustumDebug = false;
@@ -70,9 +85,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
 
         // Variabel kontrol untuk toggle kabut
         static bool isFogActive = true;
+        // Mode numbers and names live in Config.ShadowFilterModes (single source of truth
+        // shared with the Shadow Settings panel and the GLSL dispatch).
         static int shadowFilterMode = 0;
-        // 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 soft, 4=PCF 32, 5=PCF 32 Soft,
-        // 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
         static bool fPressed = false;
 
         // Variabel kontrol untuk toggle LOD color
@@ -130,11 +145,11 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             return shadowFilterMode;
         }
 
-        /// <summary>Set the shadow filter mode directly (0-9). The IDE Shadow Settings panel
-        /// uses this instead of cycling with the H key.</summary>
+        /// <summary>Set the shadow filter mode directly (0..ShadowFilterModes.Count-1). The
+        /// IDE Shadow Settings panel uses this instead of cycling with the H key.</summary>
         public static void SetShadowFilterMode(int mode)
         {
-            shadowFilterMode = Math.Clamp(mode, 0, 9);
+            shadowFilterMode = Config.ShadowFilterModes.Normalize(mode);
         }
 
         public static unsafe void Init(nint glfwLib)
@@ -144,7 +159,6 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             glfwSetWindowShouldClose = (delegate* unmanaged[Cdecl]<IntPtr, int, void>)NativeLibrary.GetExport(glfwLib, "glfwSetWindowShouldClose");
 
             isWireframe = false;
-            f1Pressed = false;
              
             lineVLoc = GL.GetUniformLocation(lineShaderProgram, "view");
             linePLoc = GL.GetUniformLocation(lineShaderProgram, "projection");
@@ -177,22 +191,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             //    glfwSetWindowShouldClose(window, 1);
             //}
 
-            // F1 toggle wireframe (rising edge)
-            int f1State = glfwGetKey(window, Const.GLFW_KEY_F1);
-            if (f1State == Const.GLFW_PRESS)
-            {
-                if (!f1Pressed)
-                {
-                    isWireframe = !isWireframe;
-                    GL.PolygonMode(Const.GL_FRONT_AND_BACK, isWireframe ? Const.GL_LINE : Const.GL_FILL);
-                    f1Pressed = true;
-                    Console.WriteLine(isWireframe ? "Wireframe Mode: ON" : "Wireframe Mode: OFF");
-                }
-            }
-            else
-            {
-                f1Pressed = false;
-            }
+            // F2 toggle wireframe is handled by the IDE (IDE.RenderEditor →
+            // Keyboard.ToggleWireframe), NOT here: Update only runs while in-game input
+            // is active, so polling F2 here left the editor without a wireframe toggle.
+            // F2 (not F1): F1 belongs to the in-game stats overlay toggle in IDE.cs.
 
             // =========================================================================
             // F TOGGLE FOG (RISING EDGE)
@@ -217,26 +219,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             // H = toggle shadow filter mode (0 → 1 → 2 → 0 ...)
             if (IsKeyPressed(window, Const.GLFW_KEY_H))
             {
-                shadowFilterMode++;
-                if (shadowFilterMode > 9)
-                    shadowFilterMode = 0;
-
-                string modeName = shadowFilterMode switch
-                {
-                    0 => "PCF 16",
-                    1 => "Hard Shadow",
-                    2 => "PCF 16",
-                    3 => "PCF 16 soft",
-                    4 => "PCF 32",
-                    5 => "PCF 32 Soft",
-                    6 => "PCSS 16",
-                    7 => "PCSS 16 Soft",
-                    8 => "PCSS 32",
-                    9 => "PCSS 32 Soft",
-                    _ => "Unknown"
-                };
-
-                Console.WriteLine($"Shadow Filter Mode: {shadowFilterMode} ({modeName})");
+                shadowFilterMode = (shadowFilterMode + 1) % Config.ShadowFilterModes.Count;
+                Console.WriteLine($"Shadow Filter Mode: {shadowFilterMode} ({Config.ShadowFilterModes.NameOf(shadowFilterMode)})");
             }
 
             // =========================================================================

@@ -245,6 +245,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 s.ShadowCascadeOverlayAlpha = CascadeOverlayAlpha;
                 s.ShadowLinearMap = LinearShadowMap;
                 s.ShadowFilterMode = Keyboard.GetIsHardShadow();
+                s.ShadowFilterSchema = 2;
                 SettingsSave.Save(s);
                 return true;
             }
@@ -281,6 +282,17 @@ namespace DarkEngine3D_gl_csharp.Engine.Config
                 MaxWorldBias = [s.ShadowMaxWorldBias0, s.ShadowMaxWorldBias1, s.ShadowMaxWorldBias2];
                 CascadeOverlayAlpha = s.ShadowCascadeOverlayAlpha;
                 LinearShadowMap = s.ShadowLinearMap;
+
+                // Older settings.json files used the table where "PCF 16" was listed twice
+                // (mode 0 and 2). Remap once and write the new numbering back so the
+                // migration never runs twice on an already-migrated value.
+                if (s.ShadowFilterSchema < 2)
+                {
+                    s.ShadowFilterMode = ShadowFilterModes.FromLegacy(s.ShadowFilterMode);
+                    s.ShadowFilterSchema = 2;
+                    try { SettingsSave.Save(s); }
+                    catch (Exception ex) { Console.WriteLine($"[ShadowSettings] Filter-mode migration not saved: {ex.Message}"); }
+                }
                 Keyboard.SetShadowFilterMode(s.ShadowFilterMode);
 
                 // Make sure already-created CSM instances refresh their depth-map filter.

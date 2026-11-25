@@ -370,7 +370,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Scene
 
                 var pos = new System.Numerics.Vector3(objData.PosX, objData.PosY, objData.PosZ);
                 var obj = manager.AddPrimitive(primType, pos);
-                obj.Name = objData.Name;
+                obj.Name = manager.RestoredName(obj, objData.Name);
                 obj.RotationEuler = new System.Numerics.Vector3(objData.RotX, objData.RotY, objData.RotZ);
                 obj.Scale = new System.Numerics.Vector3(objData.ScaleX, objData.ScaleY, objData.ScaleZ);
                 obj.Color = new System.Numerics.Vector3(objData.ColorR, objData.ColorG, objData.ColorB);

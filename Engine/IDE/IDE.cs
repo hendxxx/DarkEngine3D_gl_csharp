@@ -241,6 +241,14 @@ public class IDE : IDisposable
                     _panelFocusRestorePending = true;
                     _panelFocusRestoreDelay = 4;
                     _focusFreezeFrames = 8; // keep tracking frozen across the transition
+
+                    // Hand the mouse back to the editor. In-game mode hid it for
+                    // mouse-look (``Mouse.ShowMouse(false)`` in RenderInGameMode) and
+                    // edit mode never re-shows it on its own, so the cursor used to
+                    // stay invisible after F8 back to the editor.
+                    Mouse.ShowMouse(true);
+                    Mouse.ResetState();
+                    Console.WriteLine("[IDE] Cursor restored for edit mode");
                 }
                 Console.WriteLine($"[IDE] In-Game Mode: {_inGameMode}");
             }
@@ -1060,6 +1068,27 @@ public class IDE : IDisposable
                 Console.WriteLine($"[IDE] Sprite2D placed: {sheetName}/{clipName} at ({pos.X:F1}, {pos.Y:F1})");
             };
 
+            // GLB placement from the Asset Browser (drag onto the viewport, or
+            // double-click a model tile): same GlbReference object the Model menu
+            // creates, so undo/selection/Inspector behave identically.
+            // worldPos null → spawn in front of the camera (grid spawn).
+            IDEBridge.RequestGlbPlacement = (glbPath, worldPos) =>
+            {
+                var mgr = Bridge.EditorObjectManager;
+                if (mgr == null) return;
+                if (string.IsNullOrWhiteSpace(glbPath) || !File.Exists(glbPath))
+                {
+                    Console.WriteLine($"[IDE] GLB placement skipped — file not found: {glbPath}");
+                    return;
+                }
+                var pos = worldPos ?? GetSpawnPosition(EditorPrimitiveType.GlbReference);
+                var obj = mgr.AddGlbReference(glbPath, pos);
+                if (obj == null) return;
+                Bridge.RecordEditorObjectAdded?.Invoke(obj);
+                Bridge.SelectEditorObject(obj);
+                Console.WriteLine($"[IDE] GLB placed: {Path.GetFileName(glbPath)} at ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
+            };
+
             // Remember the panel the user was last focused on (persisted per project).
             var bootSettings = SettingsSave.Load();
             _restoreFocusPanel = bootSettings.LastFocusedPanel ?? "";
@@ -1165,6 +1194,9 @@ public class IDE : IDisposable
             catch { }
             Console.WriteLine($"[IDE] In-game stats overlay: {(Bridge.ShowInGameStats ? "ON" : "OFF")} (F1)");
         }
+
+        // F2 (wireframe) is polled from GLFW in SceneManager.Update — one site that
+        // runs in both edit and in-game mode.
 
         // ── F5 shortcut: toggle Preview Mode (edit-mode helper hiding) ──
         // Inactive while in-game (matches the View menu, where the item is disabled).
@@ -2680,6 +2712,9 @@ public class IDE : IDisposable
                 $"Render: o={Bridge.RenderObjectsMs:N1}ms  tot={Bridge.RenderTotalMs:N1}ms",
                 $"POS: X={camPos.X:N2}  Y={camPos.Y:N2}  Z={camPos.Z:N2}",
                 $"Yaw: {Bridge.CameraYaw:F1}°  Pitch: {Bridge.CameraPitch:F1}°",
+                // Culling breakdown — which pass removed what (frustum vs occlusion).
+                $"CULL: {Bridge.CulledObjectsFrustum + Bridge.CulledObjectsOcclusion:N0} objs  (F {Bridge.CulledObjectsFrustum:N0} | OC {Bridge.CulledObjectsOcclusion:N0})",
+                $"CULL TRIS: {Bridge.CulledTrianglesFrustum + Bridge.CulledTrianglesOcclusion:N0}  (F {Bridge.CulledTrianglesFrustum:N0} | OC {Bridge.CulledTrianglesOcclusion:N0})",
                 // Clickable in-game option: mouse camera control (drag-pan / fly look)
                 // only affects PLAY mode — the editor preference stays untouched.
                 $"[ ] Mouse Camera  {(Visual.Camera.InGameMouseCameraControl ? "ON — drag-pan + fly look" : "OFF — mouse belongs to the game")}",

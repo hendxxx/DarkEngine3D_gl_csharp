@@ -1555,7 +1555,7 @@ public class SceneManagerPanel
 
                         var pos = new Vector3(objData.PosX, objData.PosY, objData.PosZ);
                         var obj = editorMgr.AddPrimitive(primType, pos);
-                        obj.Name = objData.Name;
+                        obj.Name = editorMgr.RestoredName(obj, objData.Name);
                         obj.RotationEuler = new Vector3(objData.RotX, objData.RotY, objData.RotZ);
                         obj.Scale = new Vector3(objData.ScaleX, objData.ScaleY, objData.ScaleZ);
                         obj.Color = new Vector3(objData.ColorR, objData.ColorG, objData.ColorB);
@@ -1687,6 +1687,10 @@ public class SceneManagerPanel
                         obj.PbrVertexDisplaceScale = Math.Clamp(objData.PbrVertexDisplaceScale, 0f, 500f);
                         obj.PbrVertexDisplaceEnabled = objData.PbrVertexDisplaceEnabled;
                         obj.PbrPrimTessellation = Math.Clamp(objData.PbrPrimTessellation, 1, 64);
+                        // Sphere topology round-trip: absent in older scenes → keep the
+                        // object's default (UV), so old scenes load unchanged.
+                        if (objData.SphereType is { } savedSphereType)
+                            obj.SphereType = savedSphereType;
                         obj.PbrVertexOffset = Math.Clamp(objData.PbrVertexOffset, -250f, 250f);
                         // Terrain base-shape height/offset — separate from the PBR vertex
                         // fields. Legacy scenes without the fields (−1 sentinel) MIGRATE

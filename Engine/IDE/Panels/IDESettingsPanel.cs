@@ -75,15 +75,21 @@ public class IDESettingsPanel
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Multi-Sample Anti-Aliasing.\nHigher = smoother edges but more GPU usage.\nRequires restart to take full effect.");
 
-                // Show Shadows
+                // Show Shadows — apply to the live bridge IMMEDIATELY (it used to only
+                // save, so the checkbox looked dead and the saved value was never applied
+                // until a restart) and persist to settings.json.
                 bool shadows = _showShadows;
                 if (ImGui.Checkbox("Editor Shadows", ref shadows))
                 {
                     _showShadows = shadows;
+                    _bridge.ShowShadows = shadows;
                     SaveSetting(s => s.ShowShadows = shadows);
+                    Console.WriteLine($"[IDESettings] Editor shadows: {(shadows ? "ON" : "OFF")} (saved)");
                 }
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Toggle shadow rendering in the editor viewport.");
+                    ImGui.SetTooltip("Toggle shadow rendering in the editor viewport and in play mode.\nApplied immediately and saved to settings.json, so it is restored on the next launch.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(shadows ? "shadows ON" : "shadows OFF");
 
                 // Show Debug Grid
                 bool grid = _showDebugGrid;
@@ -188,6 +194,46 @@ public class IDESettingsPanel
                 ImGui.SameLine();
                 ImGui.TextDisabled(stats ? "stats overlay ON" : "stats overlay hidden");
 
+                // ── Occlusion culling (moved here from the viewport toolbar) ──
+                // Default ON. Applied immediately to the live manager flag and persisted,
+                // so the OC state survives a restart instead of resetting every launch.
+                var ocSettings = Load();
+                bool ocOn = ocSettings.OcclusionCulling;
+                if (ImGui.Checkbox("Occlusion Culling (OC)", ref ocOn))
+                {
+                    ocSettings.OcclusionCulling = ocOn;
+                    Save(ocSettings);
+                    Engine.Objects.EditorObjectManager.ViewportOcclusionEnabled = ocOn;
+                    Console.WriteLine($"[IDESettings] Occlusion culling: {(ocOn ? "ON" : "OFF")} (saved)");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Occlusion culling for the viewport and play mode (default ON).\nHidden objects are skipped before submission; frustum culling still applies.\nCulling totals (frustum vs OC) are shown in the in-game stats overlay.\nPer project, saved in settings.json.");
+                ImGui.SameLine();
+                ImGui.TextDisabled(ocOn ? "OC enabled" : "OC disabled (frustum only)");
+
+                // Occlusion source: analytic hull (per-object Occluder flag) or HZB depth.
+                int ocSource = ocSettings.OcclusionHzb ? 1 : 0;
+                ImGui.PushItemWidth(220);
+                if (ImGui.Combo("OC Source", ref ocSource, "Hull (analytic)\0HZB (previous-frame depth)\0", 2))
+                {
+                    ocSettings.OcclusionHzb = ocSource == 1;
+                    Save(ocSettings);
+                    Engine.Objects.EditorObjectManager.ViewportOcclusionHzb = ocSettings.OcclusionHzb;
+                    // Choosing a source implies the user wants OC on.
+                    if (!Engine.Objects.EditorObjectManager.ViewportOcclusionEnabled)
+                    {
+                        Engine.Objects.EditorObjectManager.ViewportOcclusionEnabled = true;
+                        ocSettings.OcclusionCulling = true;
+                        Save(ocSettings);
+                    }
+                    Console.WriteLine($"[IDESettings] OC source → {(ocSettings.OcclusionHzb ? "HZB" : "Hull")} (saved)");
+                }
+                ImGui.PopItemWidth();
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Hull = analytic convex-hull test against objects flagged Occluder\n(Inspector → Flags). HZB = max-depth pyramid of the previous frame:\nevery drawn pixel occludes, no flag needed, one frame of latency.\nHZB forces a single-sample viewport (its depth copy cannot resolve MSAA).");
+                ImGui.SameLine();
+                ImGui.TextDisabled(ocSettings.OcclusionHzb ? "source: HZB" : "source: hull");
+
                 // Player2D collision telemetry — the 1 Hz [P2D-Tel] Console lines
                 // (FPS estimate, players, maps, collision layers, rows/tiles/solid
                 // probes per second, X-push + landing counts). Default OFF — turn on
@@ -208,8 +254,10 @@ public class IDESettingsPanel
                 ImGui.PushItemWidth(200);
                 if (ImGui.SliderInt("FOV", ref fov, 30, 120, "%d°"))
                 {
-                    settings.Fov = fov;
-                    Save(settings);
+                    // Re-load inside SaveSetting instead of writing the copy read at the
+                    // top of this section: that stale copy would revert the OC toggle if
+                    // both controls happened to change in the same frame.
+                    SaveSetting(s => s.Fov = fov);
                 }
                 ImGui.PopItemWidth();
             }
@@ -354,6 +402,11 @@ public class IDESettingsPanel
                 s.ShowCursorInGame = false;
                 s.ShowDebugGrid = false;
                 s.ShowShadows = true;
+                _bridge.ShowShadows = true;
+                s.OcclusionCulling = true;
+                s.OcclusionHzb = false;
+                Engine.Objects.EditorObjectManager.ViewportOcclusionEnabled = true;
+                Engine.Objects.EditorObjectManager.ViewportOcclusionHzb = false;
                 s.ShowSelectionBorder = true;
                 _bridge.ShowSelectionBorder = true;
                 s.SpriteNormalMaps2D = true;

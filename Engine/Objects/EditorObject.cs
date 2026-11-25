@@ -341,13 +341,14 @@ public unsafe class EditorObject
 
     // ── Occlusion culling roles (ViewportPanel → OC) ──
     /// <summary>Submit this object's volume as an occluder for the viewport occlusion
-    /// pass. Default ON for a Box, whose mesh IS its AABB, so the silhouette test is
-    /// exact. Sphere/GLB default OFF: their world AABB is larger than the mesh, which
-    /// could hide something that is still visible. Toggle in Inspector → Flags.</summary>
+    /// pass. Default ON for a Box (its mesh IS its AABB, so the silhouette test is
+    /// exact) and for a GLB reference (the world AABB of the drawn mesh — slightly larger
+    /// than the mesh, so a hollow/open model can untick it). Sphere stays OFF. Toggle in
+    /// Inspector → Flags.</summary>
     private bool? _isOccluder;
     public bool IsOccluder
     {
-        get => _isOccluder ?? PrimitiveType == EditorPrimitiveType.Box;
+        get => _isOccluder ?? PrimitiveType is EditorPrimitiveType.Box or EditorPrimitiveType.GlbReference;
         set => _isOccluder = value;
     }
     /// <summary>Explicit value stored in the scene file (null = keep the per-type
@@ -2516,10 +2517,35 @@ public unsafe class EditorObject
     // ── glb reference GPU object (loaded lazily from GlbFilePath) ──
     private GltfObject? _glbObject;
     private string? _glbLoadedPath;
-    private AABB? _glbStaticLocalBounds;
+    /// <summary>BIND-POSE mesh AABB (node hierarchy baked, object transform NOT applied),
+    /// kept for every loaded model — static and skinned alike. The frustum/OC passes use
+    /// it as the object's box, which is also what lets one GLB hide another: the occluder
+    /// volume is this box in world space (see TryGetGlbCullData).</summary>
+    private AABB? _glbBindLocalBounds;
+    /// <summary>True when the loaded model has a skeleton. The box above is still kept for
+    /// it (a rig is a valid OCCLUDER), but it must NEVER drive its own frustum/occlusion
+    /// cull: animation moves vertices outside the bind pose, and a character that vanishes
+    /// mid-clip is worse than a missed cull.</summary>
+    private bool _glbSkinned;
+    // Identity of the file the cached model was built from (length ^ write time). A GLB that
+    // is re-exported in place must be picked up instead of the stale buffers being reused.
+    private long _glbLoadedStamp = -1;
+    // The file resolved fine but has no drawable mesh (an animation-only clip). Remembered
+    // per file so it is parsed once instead of being retried every couple of seconds.
+    private bool _glbNoMesh;
+    // Frame gate for retrying a load that produced nothing (a model still being written, a
+    // file locked by the exporter, ...). Retrying EVERY frame would hitch the editor.
+    private int _glbRetryAfterFrame = -1;
     /// <summary>Shared GPU data cache (Flyweight) so multiple GLB references to the same
-    /// file reuse one set of GPU buffers. Keyed by the resolved absolute path.</summary>
-    private static readonly Dictionary<string, GltfModelGpuData> GlbGpuCache = new();
+    /// file reuse one set of GPU buffers. Keyed by the resolved absolute path, with the file
+    /// stamp so an in-place re-export rebuilds instead of showing the old model.</summary>
+    /// <summary>Windows paths are case-insensitive: two spellings of one file must share the
+    /// model (and its GPU buffers), not load it twice.</summary>
+    private static readonly Dictionary<string, (GltfModelGpuData Data, long Stamp)> GlbGpuCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Last failure message per resolved path — logged once, not once per frame.</summary>
+    private static readonly Dictionary<string, string> GlbLoadErrors =
+        new(StringComparer.OrdinalIgnoreCase);
 
     // Cached uniforms of the SKINNED shadow shader (shadow_skinned_vertex.glsl). GLB
     // references must use this shader — not the static shadow_vertex.glsl — because it
@@ -3101,18 +3127,26 @@ public unsafe class EditorObject
                 // legacy default and drives the tess*12/8 slice/stack layout. Icosphere
                 // and cube sphere use a different subdivision origin and ignore the 12/8
                 // multiplier here; they are rebuilt with their own subdiv count below.
+                // Detail mapping — every topology grows with the same Detail value and
+                // starts deliberately chunky, so switching type at an equal Detail gives a
+                // comparable triangle budget:
+                //   UV   → 4·d slices × 3·d stacks  (~24·d² triangles)
+                //   Cube → d × d quads per cube face (12·d² triangles)
+                //   Ico  → subdivision depth d-1     (20·4^(d-1) triangles, capped at 6),
+                //          so detail 1 is the plain 20-face icosahedron
+                int detail = Math.Clamp(t, 1, 64);
                 Vertex[] sphereVerts;
                 if (SphereType == SphereType.Ico)
                 {
-                    sphereVerts = Object3D.CreateIcoSphereVertices(0.5f, Color, t);
+                    sphereVerts = Object3D.CreateIcoSphereVertices(0.5f, Color, detail - 1);
                 }
                 else if (SphereType == SphereType.Cube)
                 {
-                    sphereVerts = Object3D.CreateCubeSphereVertices(0.5f, Color, t);
+                    sphereVerts = Object3D.CreateCubeSphereVertices(0.5f, Color, detail);
                 }
                 else
                 {
-                    sphereVerts = Object3D.CreateSphereVertices(0.5f, Color, t * 12, t * 8);
+                    sphereVerts = Object3D.CreateSphereVertices(0.5f, Color, detail * 4, detail * 3);
                 }
 
                 _object3D = new Object3D(0, 0, 0);
@@ -7425,43 +7459,155 @@ public unsafe class EditorObject
 
         // Compare against the RESOLVED path so different relative/absolute spellings of the
         // same file (e.g. after a load/save roundtrip) don't trigger a needless reload.
-        string resolvedPath = string.IsNullOrEmpty(GlbFilePath) ? "" : PathHelpers.Resolve(GlbFilePath);
-        if (_glbObject != null && _glbLoadedPath == resolvedPath) return;
+        // Multi-anchor resolution: a scene stores "Artifacts\objects\x.glb" but the scene can
+        // load BEFORE the project is registered, and PathHelpers.Resolve() would then anchor
+        // that path to the exe folder — a file that does not exist there. The object stayed
+        // "not found" for the whole session even though the file was in the project.
+        // ResolveProjectAsset tries as-is → project root → exe folder → seeded by filename.
+        string resolvedPath = string.IsNullOrEmpty(GlbFilePath) ? "" : PathHelpers.ResolveProjectAsset(GlbFilePath);
+        if (string.IsNullOrEmpty(resolvedPath))
+        {
+            _glbObject = null;
+            _glbLoadedPath = null;
+            _glbBindLocalBounds = null;
+            _glbSkinned = false;
+            _glbNoMesh = false;
+            return;
+        }
+
+        // Already loaded from this path: only re-stat the file a couple of times per second
+        // (cache refresh for an in-place re-export), not on every frame.
+        if (_glbObject != null && _glbLoadedPath == resolvedPath && Glfw.FrameId % 30 != 0) return;
+
+        // Identity of the FILE, not just its path: an in-place re-export must be reloaded, and
+        // a load that raced with the writer (empty/partial file) must not be cached forever.
+        long stamp = -1;
+        try
+        {
+            var fi = new FileInfo(resolvedPath);
+            if (fi.Exists) stamp = fi.Length * 31 + fi.LastWriteTimeUtc.Ticks;
+        }
+        catch { }
+
+        if (stamp < 0)
+        {
+            // Missing file: drop the model and say so ONCE (this runs every frame).
+            _glbObject = null;
+            _glbLoadedPath = null;
+            _glbBindLocalBounds = null;
+            _glbSkinned = false;
+            _glbLoadedStamp = -1;
+            _glbNoMesh = false;
+            LogGlbOnce(resolvedPath, $"[GLB] not found: {resolvedPath}");
+            return;
+        }
+
+        // This exact file version is already resolved: either a model is ready to draw, or
+        // the file legitimately has no mesh (animation clip). Do nothing until the stamp
+        // changes — previously an animation-only clip was re-parsed every 2 s forever.
+        if (_glbLoadedPath == resolvedPath && _glbLoadedStamp == stamp && (_glbObject != null || _glbNoMesh))
+            return;
+        // Retry gate for a failed/empty load (a model still being written by the exporter).
+        if (_glbRetryAfterFrame >= 0 && Glfw.FrameId < _glbRetryAfterFrame) return;
 
         _glbObject = null;
         _glbLoadedPath = null;
-        _glbStaticLocalBounds = null;
-        if (string.IsNullOrEmpty(resolvedPath)) return;
+        _glbBindLocalBounds = null;
+        _glbSkinned = false;
+        _glbLoadedStamp = -1;
+        _glbNoMesh = false;
 
         try
         {
-            if (!File.Exists(resolvedPath))
-            {
-                Console.WriteLine($"[EditorObject] GLB not found: {resolvedPath}");
-                return;
-            }
-            if (!GlbGpuCache.TryGetValue(resolvedPath, out var gpuData))
+            if (!GlbGpuCache.TryGetValue(resolvedPath, out var entry) || entry.Stamp != stamp)
             {
                 var data = GltfLoader.Load(resolvedPath);
-                gpuData = new GltfModelGpuData(data);
-                GlbGpuCache[resolvedPath] = gpuData;
+                // A GLB can parse without producing drawable geometry (a file being written, a
+                // malformed mesh). Caching that made the object invisible until the editor was
+                // restarted ("re-add another model and it works"), so refuse it and retry.
+                if (data.Meshes == null || data.Meshes.Length == 0)
+                {
+                    bool animationOnly = (data.Animations?.Length ?? 0) > 0;
+                    GlbLoadErrors.Remove(resolvedPath);
+                    if (animationOnly)
+                    {
+                        // Artifacts/objects/anim/*.glb are animation-only exports: nodes +
+                        // clips, zero meshes. Nothing can be drawn and the file will not turn
+                        // into a mesh by itself, so remember "resolved, empty" and say why.
+                        _glbNoMesh = true;
+                        _glbLoadedPath = resolvedPath;
+                        _glbLoadedStamp = stamp;
+                        LogGlbOnce(resolvedPath, $"[GLB] '{Path.GetFileName(resolvedPath)}' is an animation clip " +
+                            $"({data.Animations!.Length} clip(s), 0 meshes) — nothing to draw; assign the clip to a skinned model instead.");
+                        return;
+                    }
+                    LogGlbOnce(resolvedPath, $"[GLB] '{Path.GetFileName(resolvedPath)}' parsed with 0 meshes — will retry (file still being written?)");
+                    _glbRetryAfterFrame = Glfw.FrameId + 120;
+                    return;
+                }
+                // useNodeHierarchy:true so LocalAABB is the AABB of what is actually DRAWN
+                // (GltfObject applies the full node chain). With the local-only matrix the
+                // bounds of rigged/offset models were far too small, which made the shadow
+                // radius and the culling boxes wrong.
+                entry = (new GltfModelGpuData(data, useNodeHierarchy: true), stamp);
+                GlbGpuCache[resolvedPath] = entry;
+                GlbLoadErrors.Remove(resolvedPath);
+
+                int nodeCount = data.Nodes?.Length ?? 0;
+                int rootCount = 0;
+                if (data.Nodes != null)
+                    for (int i = 0; i < data.Nodes.Length; i++)
+                        if (data.Nodes[i].Parent == -1) rootCount++;
+                var local = entry.Data.LocalAABB;
+                Console.WriteLine($"[GLB] loaded '{Path.GetFileName(resolvedPath)}': {entry.Data.Meshes.Length} mesh(es), " +
+                    $"{nodeCount} node(s)/{rootCount} root(s), {data.Animations?.Length ?? 0} clip(s), " +
+                    $"{data.Skins?.Length ?? 0} skin(s), bounds " +
+                    $"({local.Min.X:F2},{local.Min.Y:F2},{local.Min.Z:F2})..({local.Max.X:F2},{local.Max.Y:F2},{local.Max.Z:F2})");
+
+                // A file whose nodes all point at each other (or at themselves) has no root:
+                // FK then leaves every node at identity and the model collapses, which looks
+                // exactly like "the GLB did not load". Say it instead of rendering nothing.
+                if (nodeCount > 0 && rootCount == 0)
+                    Console.WriteLine($"[GLB] warning: '{Path.GetFileName(resolvedPath)}' has no root node " +
+                        "(broken parent/children graph) — nodes keep their local transform only.");
             }
-            _glbObject = new GltfObject(gpuData, Vector3.Zero, Quaternion.Identity, 1f)
+
+            if (entry.Data.Meshes == null || entry.Data.Meshes.Length == 0) return;
+
+            _glbObject = new GltfObject(entry.Data, Vector3.Zero, Quaternion.Identity, 1f)
             {
                 IsStatic = true,
             };
             _glbObject.Update(0f); // bake node hierarchy transforms for the bind pose
-            if (_glbObject.GetJointMatrices().Length == 0)
-                _glbStaticLocalBounds = _glbObject.ComputeWorldAABB();
+            // Bind-pose mesh bounds for BOTH static and skinned models: a rigged GLB is a
+            // valid occluder (it hides what stands behind it), but _glbSkinned keeps it out
+            // of the frustum/occlusion CULL path, where the bind pose is not trustworthy.
+            _glbBindLocalBounds = _glbObject.ComputeWorldAABB();
+            _glbSkinned = _glbObject.GetJointMatrices().Length > 0;
             SyncGlbTransform();
             _glbLoadedPath = resolvedPath;
+            _glbLoadedStamp = stamp;
+            _glbRetryAfterFrame = -1;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[EditorObject] Failed to load GLB '{GlbFilePath}': {ex.Message}");
+            LogGlbOnce(resolvedPath, $"[GLB] failed to load '{GlbFilePath}': {ex.Message} — will retry");
             _glbObject = null;
+            _glbRetryAfterFrame = Glfw.FrameId + 120;
         }
     }
+
+    /// <summary>Log a GLB load problem once per path+message (loading runs per frame).</summary>
+    private static void LogGlbOnce(string path, string message)
+    {
+        if (GlbLoadErrors.TryGetValue(path, out var previous) && previous == message) return;
+        GlbLoadErrors[path] = message;
+        Console.WriteLine($"[EditorObject] {message}");
+    }
+
+    /// <summary>Force the GLB model to be loaded/refreshed now (called by the manager once per
+    /// frame BEFORE any draw pass, so models never load in the middle of rendering).</summary>
+    public void PrepareGlb() => EnsureGlb();
 
     /// <summary>Push the current editor transform (position/rotation/scale) into the GLB
     /// object so Draw/DrawShadow/outline render at the gizmo transform. GLB scale is uniform
@@ -7486,12 +7632,31 @@ public unsafe class EditorObject
         {
             var aabb = _glbObject.GpuData.LocalAABB;
             float modelRadius = (aabb.Max - aabb.Min).Length() * 0.5f;
+            if (!float.IsFinite(modelRadius)) return MathF.Max(1f, Scale.Length() * 1.5f);
             float maxScale = Math.Max(Scale.X, Math.Max(Scale.Y, Scale.Z));
             return Math.Max(1f, modelRadius * Math.Max(1f, maxScale));
         }
         return Math.Max(1f, 1.5f * Scale.Length() * 0.5f);
     }
 
+    /// <summary>World-space box of the bind-pose mesh bounds, using the same uniform scale
+    /// the model is DRAWN with (GltfObject.Scale = Scale.X) so the box matches the render.
+    /// null = no usable box. Caller must have a loaded model and a synced transform.</summary>
+    private AABB? GlbWorldBounds()
+    {
+        if (_glbBindLocalBounds is not { } local || !IsUsableGlbBounds(local)) return null;
+        var transform = Matrix4x4.CreateScale(_glbObject!.Scale)
+            * Matrix4x4.CreateFromQuaternion(_glbObject.Rotation)
+            * Matrix4x4.CreateTranslation(_glbObject.Position);
+        return local.Transform(transform);
+    }
+
+    /// <summary>Frustum/OC-OCCLUDEE data for a GLB reference. <paramref name="bounds"/> is
+    /// the bind-pose mesh AABB in WORLD space, returned ONLY for a static model: a skinned
+    /// GLB gets null ("no box — always draw it") because animation leaves the bind pose and
+    /// culling a moving character with it made the character vanish. null also means no
+    /// usable bounds, which must fail OPEN. <paramref name="triangles"/> is the model's
+    /// drawable triangle count (unchanged by culling).</summary>
     internal bool TryGetGlbCullData(out AABB? bounds, out long triangles)
     {
         EnsureGlb();
@@ -7500,22 +7665,43 @@ public unsafe class EditorObject
         if (_glbObject == null) return false;
         SyncGlbTransform();
         triangles = _glbObject.DrawableTriangleCount();
-        if (_glbStaticLocalBounds is { } local)
-        {
-            var transform = Matrix4x4.CreateScale(_glbObject.Scale)
-                * Matrix4x4.CreateFromQuaternion(_glbObject.Rotation)
-                * Matrix4x4.CreateTranslation(_glbObject.Position);
-            bounds = local.Transform(transform);
-        }
+        if (!_glbSkinned) bounds = GlbWorldBounds();
         return true;
     }
 
-    /// <summary>Skinned joint matrices of the loaded GLB (or null when not skinned/loaded).</summary>
-    public Matrix4x4[]? GetGlbJointMatrices()
+    /// <summary>World AABB to submit when this GLB is used as an OCCLUDER. Unlike
+    /// <see cref="TryGetGlbCullData"/> this answers for skinned models too — a rigged
+    /// character still hides whatever stands behind it, and that is the only OC role a rig
+    /// takes. The box is the bind-pose mesh AABB (slightly larger than the posed mesh), so
+    /// a hollow/open model or a wide idle pose can untick Inspector → Flags → Occluder.</summary>
+    internal bool TryGetGlbOccluderBounds(out AABB bounds)
     {
+        bounds = default;
         EnsureGlb();
-        return _glbObject?.GetJointMatrices();
+        if (_glbObject == null) return false;
+        SyncGlbTransform();
+        if (GlbWorldBounds() is not { } world) return false;
+        bounds = world;
+        return true;
     }
+
+    /// <summary>False for an empty/NaN AABB. A model whose bounds came out unusable must
+    /// fail OPEN (draw it) — handing the culler a NaN/inside-out box culled the freshly
+    /// added object out of the viewport, which read as "the GLB did not render".</summary>
+    private static bool IsUsableGlbBounds(in AABB b)
+    {
+        static bool Finite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
+        return Finite(b.Min.X) && Finite(b.Min.Y) && Finite(b.Min.Z)
+            && Finite(b.Max.X) && Finite(b.Max.Y) && Finite(b.Max.Z)
+            && b.Max.X >= b.Min.X && b.Max.Y >= b.Min.Y && b.Max.Z >= b.Min.Z
+            && (b.Max - b.Min).LengthSquared() > 1e-10f;
+    }
+
+    /// <summary>Upload the skinning state (u_UseSkinning flag + joint matrices) of the loaded
+    /// GLB into the currently bound gltf shader. Unskinned models set the flag to 0 so their
+    /// geometry is never multiplied by another model's leftover joints.</summary>
+    internal void UploadGlbSkinning(int useSkinningLoc, int jointsLoc)
+        => _glbObject?.UploadSkinning(useSkinningLoc, jointsLoc);
 
     /// <summary>Render the GLB reference meshes with the gltf shader. The caller
     /// (EditorObjectManager) has already bound the gltf program and uploaded the shared

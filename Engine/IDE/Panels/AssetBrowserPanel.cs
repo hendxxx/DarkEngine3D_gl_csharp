@@ -418,11 +418,37 @@ public unsafe class AssetBrowserPanel
         // ── Invisible button for click detection ──
         ImGui.SetCursorScreenPos(cursor);
         ImGui.InvisibleButton($"item_{idx}", _thumbnailSize + new Vector2(0, ImGui.GetTextLineHeightWithSpacing()));
+        // Captured once: the drag-source calls below create/close a tooltip window, after
+        // which ImGui's "last item" is no longer this tile.
+        bool itemHovered = ImGui.IsItemHovered();
 
         if (ImGui.IsItemClicked())
         {
             _selectedIndex = idx;
             OnItemClicked(name, isDir);
+        }
+
+        // ── Model files (.glb/.gltf): drag into the viewport to place the model at the
+        // cursor, or double-click to add it in front of the camera. Double-click is the
+        // second PRESS of the pair (a plain click only selects), so it can never place two
+        // copies. ──
+        if (!isDir && IsModelFile(name))
+        {
+            string modelPath = Path.Combine(_currentPath, name);
+            if (itemHovered && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+            {
+                _selectedIndex = idx;
+                IDEBridge.RequestGlbPlacement?.Invoke(modelPath, null);
+                Console.WriteLine($"[AssetBrowser] Double-click model → {modelPath}");
+            }
+            else if (ImGui.BeginDragDropSource())
+            {
+                ImGui.SetDragDropPayload(ModelPathPayload, nint.Zero, 0);
+                _dragModelPath = modelPath;
+                ImGui.Text($"3D: {name}");
+                ImGui.TextDisabled("drop into the viewport");
+                ImGui.EndDragDropSource();
+            }
         }
 
         // ── Drag-drop source for image files ──
@@ -447,8 +473,10 @@ public unsafe class AssetBrowserPanel
         }
 
         // ── Tooltip with full name ──
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(name);
+        if (itemHovered)
+            ImGui.SetTooltip(!isDir && IsModelFile(name)
+                ? $"{name}\nDrag into the viewport to place the model at the cursor.\nDouble-click to add one in front of the camera."
+                : name);
     }
 
     private void OnItemClicked(string name, bool isDir)
@@ -463,6 +491,15 @@ public unsafe class AssetBrowserPanel
 
     // ── Static drag-drop path (set by source, read by target) ──
     public static string? _dragImagePath = null;
+
+    /// <summary>Payload type for model-file drags (payload data is empty — the path rides
+    /// in <see cref="_dragModelPath"/>, same pattern as ASSET_IMAGE_PATH).</summary>
+    public const string ModelPathPayload = "ASSET_MODEL_PATH";
+
+    /// <summary>Full path of the .glb/.gltf currently being dragged out of the browser.</summary>
+    public static string? _dragModelPath = null;
+
+    private static bool IsModelFile(string name) => ModelExts.Contains(Path.GetExtension(name).ToLower());
 
     private static bool IsImageFile(string name)
     {

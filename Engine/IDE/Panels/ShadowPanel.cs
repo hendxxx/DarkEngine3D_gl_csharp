@@ -52,12 +52,6 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
         private string _notifText = "";
         private float _notifTimer = 0f;
 
-        private static readonly string[] FilterNames =
-        [
-            "PCF 16", "Hard Shadow", "PCF 16", "PCF 16 Soft", "PCF 32",
-            "PCF 32 Soft", "PCSS 16", "PCSS 16 Soft", "PCSS 32", "PCSS 32 Soft",
-        ];
-
         private static readonly string[] QualityNames = ["Low", "Medium", "High", "Ultra"];
 
         /// <summary>Constructor kept bridge-shaped for consistency with the other panels;
@@ -259,21 +253,20 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
             // ════════════════════════════════════════════════════════════════
             if (ImGui.CollapsingHeader("Filtering", ImGuiTreeNodeFlags.DefaultOpen))
             {
-                string cur = _filterMode >= 0 && _filterMode < FilterNames.Length
-                    ? FilterNames[_filterMode]
-                    : "?";
+                string cur = ShadowFilterModes.NameOf(_filterMode);
                 ImGui.SetNextItemWidth(240);
                 if (ImGui.BeginCombo("Shadow filter", cur))
                 {
-                    for (int i = 0; i < FilterNames.Length; i++)
+                    for (int i = 0; i < ShadowFilterModes.Count; i++)
                     {
                         bool selected = _filterMode == i;
-                        if (ImGui.Selectable($"{i}: {FilterNames[i]}", selected))
+                        string name = ShadowFilterModes.Names[i];
+                        if (ImGui.Selectable($"{i}: {name}", selected))
                         {
                             _filterMode = i;
                             Keyboard.SetShadowFilterMode(i);
-                            Console.WriteLine($"[Shadow] Filter mode: {i} ({FilterNames[i]})");
-                            PersistAndNotify($"Filter: {FilterNames[i]}");
+                            Console.WriteLine($"[Shadow] Filter mode: {i} ({name})");
+                            PersistAndNotify($"Filter: {name}");
                         }
                     }
                     ImGui.EndCombo();
@@ -331,22 +324,22 @@ namespace DarkEngine3D_gl_csharp.Engine.IDE.Panels
                 // PCF/PCSS softness — radius is in TEXELS, so per-cascade radius now scales
                 // by texel_i/texel_0 (in the shaders: rScale_i) and the WORLD penumbra width
                 // stays constant at every distance. Show that world width for the current mode.
-                int debugMode = Math.Clamp(_filterMode, 0, FilterNames.Length - 1);
+                string debugName = ShadowFilterModes.NameOf(_filterMode);
                 float baseRadius = _filterMode switch
                 {
-                    3 or 5 => 10f,   // PCF 16/32 Soft
-                    6 or 7 => 6f,    // PCSS 16
-                    8 or 9 => 12f,   // PCSS 32
+                    2 or 4 => 10f,   // PCF 16/32 Soft
+                    5 or 7 => 6f,    // PCSS 16/32
+                    6 or 8 => 12f,   // PCSS 16/32 Soft
                     1 => 0f,         // Hard
                     _ => 5f,         // PCF 16 / PCF 32
                 };
                 if (baseRadius > 0f)
                 {
-                    ImGui.TextDisabled($"Filter {FilterNames[debugMode]}: radius {baseRadius:F0} texels → world penumbra ≈ {baseRadius * t0:F2} m across cascades (radius scales with texel size; far cascades floored at 0.25× radius).");
+                    ImGui.TextDisabled($"Filter {debugName}: radius {baseRadius:F0} texels → world penumbra ≈ {baseRadius * t0:F2} m across cascades (radius scales with texel size; far cascades floored at 0.25× radius).");
                 }
                 else
                 {
-                    ImGui.TextDisabled($"Filter {FilterNames[debugMode]}: hard shadow — no PCF/PCSS radius.");
+                    ImGui.TextDisabled($"Filter {debugName}: hard shadow — no PCF/PCSS radius.");
                 }
 
                 ImGui.TextDisabled("NormalBias (casting) also scales per cascade (×texel ratio) — set at cascade 0, applies everywhere.");

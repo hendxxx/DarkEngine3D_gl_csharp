@@ -198,6 +198,36 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             //  test own that decision.
             if (nearest <= 0f || nearest >= 1f) return false;
 
+            return TestScreenRect(uMin, uMax, vMin, vMax, nearest);
+        }
+
+        /// <summary>Conservative hi-Z test for a SPHERE occludee. Same idea as the AABB test,
+        /// but the covered region is the sphere's projected DISK instead of the 8 AABB
+        /// corners: a sphere hidden behind a hill was never culled from up close because the
+        /// corners of its bounding box projected past the ridge into the sky. Distance is not
+        /// part of the decision — only whether the sphere's deepest-covered tile still shows
+        /// something nearer.
+        public static bool IsOccludedSphere(Vector3 center, float radius, in Matrix4x4 viewProj)
+        {
+            if (!Valid || radius <= 0f) return false;
+
+            var s = ViewportOcclusion.ProjectSphere(viewProj, center, radius);
+            if (!s.Valid) return false;
+
+            float nearest = s.Nearest * 0.5f + 0.5f;      // NDC → GL window depth [0,1]
+            if (nearest <= 0f || nearest >= 1f) return false;
+
+            // NDC centre/half-extents → base-level pixels (base = window/4).
+            float cx = (s.Cx * 0.5f + 0.5f) * _levelW[0];
+            float cy = (s.Cy * 0.5f + 0.5f) * _levelH[0];
+            float hx = s.Rx * 0.5f * _levelW[0];
+            float hy = s.Ry * 0.5f * _levelH[0];
+
+            return TestScreenRect(cx - hx, cx + hx, cy - hy, cy + hy, nearest);
+        }
+
+        private static bool TestScreenRect(float uMin, float uMax, float vMin, float vMax, float nearest)
+        {
             float span = MathF.Max(uMax - uMin, vMax - vMin);
             int level = 0;
             while (level + 1 < _levelCount && (1 << level) < span) level++;

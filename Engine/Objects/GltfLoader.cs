@@ -523,6 +523,22 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
                                  * Matrix4x4.CreateTranslation(t);
                 list.Add(node);
             }
+
+            // glTF only stores `children`; the engine's FK and GetNodeWorldMatrix identify
+            // roots with Parent == -1, so derive the parent links here. Without this every
+            // node looked like a root: an ancestor transform (a Y-up/Z-up root rotation, a
+            // unit-scale parent, an armature offset) was applied or dropped depending on the
+            // node index order — which is exactly why some GLBs loaded correct and others
+            // came out flipped/mis-oriented.
+            for (int p = 0; p < list.Count; p++)
+            {
+                foreach (int c in list[p].Children)
+                {
+                    if (c < 0 || c >= list.Count || c == p) continue;
+                    list[c].Parent = p;
+                }
+            }
+
             return [..list];
         }
 

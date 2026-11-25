@@ -52,9 +52,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         private readonly int _baseColorFactorLoc;
         private readonly int _useAlbedoLoc;
         private readonly int _albedoMapLoc;
-        private readonly int _jointLoc;
         private readonly int _jointsLoc;
-#pragma warning disable CS0649
         private readonly int _useSkinningLoc;
         
         // Shadow map uniforms
@@ -162,8 +160,8 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             _baseColorFactorLoc = GL.GetUniformLocation(_shaderProgram, "baseColorFactor");
             _useAlbedoLoc = GL.GetUniformLocation(_shaderProgram, "useAlbedo");
             _albedoMapLoc = GL.GetUniformLocation(_shaderProgram, "albedoMap");
-            _jointLoc = GL.GetUniformLocation(_shaderProgram, "joints");
             _jointsLoc = GL.GetUniformLocation(_shaderProgram, "u_Joints");
+            _useSkinningLoc = GltfObject.SkinFlagLocation(_shaderProgram);
             
             // Cache shadow map uniform locations
             _shadowMap0Loc = GL.GetUniformLocation(_shaderProgram, "shadowMap0");
@@ -852,15 +850,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
 
 
-                // SKINNED → ENABLE SKINNING
-                GL.Uniform1i(_useSkinningLoc, 1);
-
-                var joints = obj.GetJointMatrices();
-                if (joints != null && joints.Length > 0 && _jointsLoc >= 0)
-                {
-                    fixed (Matrix4x4* p = &joints[0])
-                        GL.UniformMatrix4fv(_jointsLoc, joints.Length, false, (float*)p);
-                }
+                // Skinning state per model: unskinned props keep the passthrough path and
+                // never inherit another model's joints (see GltfObject.UploadSkinning).
+                obj.UploadSkinning(_useSkinningLoc, _jointsLoc);
                
 
                 // Count rendered triangles for this animated object

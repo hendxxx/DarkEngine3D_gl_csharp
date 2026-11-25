@@ -369,19 +369,18 @@ float pcss(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int sampleCo
 }
 
 
-// Dispatch — 10 modes consistent across all shaders
-// 0=PCF 16, 1=Hard, 2=PCF 16, 3=PCF 16 Soft, 4=PCF 32, 5=PCF 32 Soft, 6=PCSS 16, 7=PCSS 16 Soft, 8=PCSS 32, 9=PCSS 32 Soft
+// Dispatch — 9 modes consistent across all shaders
+// 0=PCF 16, 1=Hard, 2=PCF 16 Soft, 3=PCF 32, 4=PCF 32 Soft, 5=PCSS 16, 6=PCSS 16 Soft, 7=PCSS 32, 8=PCSS 32 Soft
 float CalculateShadow(vec4 fragPosLightSpace, sampler2D shadowMap, float bias, float radiusScale)
 {
     if (shadowFilterMode == 1) return hardShadow(fragPosLightSpace, shadowMap, bias);
-    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale);
-    if (shadowFilterMode == 3) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
-    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale);
-    if (shadowFilterMode == 5) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
-    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0, radiusScale);
-    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0, radiusScale);
-    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0, radiusScale);
-    if (shadowFilterMode == 9) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0, radiusScale);
+    if (shadowFilterMode == 2) return poisson16(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
+    if (shadowFilterMode == 3) return poisson32(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale);
+    if (shadowFilterMode == 4) return poisson32(fragPosLightSpace, shadowMap, bias, 10.0 * radiusScale);
+    if (shadowFilterMode == 5) return pcss(shadowMap, fragPosLightSpace, bias, 16, 6.0, radiusScale);
+    if (shadowFilterMode == 6) return pcss(shadowMap, fragPosLightSpace, bias, 16, 12.0, radiusScale);
+    if (shadowFilterMode == 7) return pcss(shadowMap, fragPosLightSpace, bias, 32, 6.0, radiusScale);
+    if (shadowFilterMode == 8) return pcss(shadowMap, fragPosLightSpace, bias, 32, 12.0, radiusScale);
     return poisson16(fragPosLightSpace, shadowMap, bias, 5.0 * radiusScale); // default mode 0  
 }
 
