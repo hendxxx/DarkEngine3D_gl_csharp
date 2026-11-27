@@ -181,6 +181,13 @@ public class IDE : IDisposable
                     {
                         _sceneManagerPanel.SelectEditorScenePublic(previousScene);
                     }
+                    // The fullscreen in-game viewport covers the whole window, so the
+                    // mouse is always over it. ViewportPanel publishes these flags each
+                    // editor frame but is skipped in-game, so stale edit-mode values used
+                    // to block camera WASD/mouse-look until the viewport was clicked first.
+                    Bridge.IsViewportImageHovered = true;
+                    Bridge.SuppressViewportInput = false;
+                    Bridge.ScrollCapturedByUI = false;
                     Bridge.InGameActive = true;
                     // Camera mouse-control now follows the IN-GAME toggle (the IDE
                     // Settings panel shows the option while playing).
@@ -497,6 +504,12 @@ public class IDE : IDisposable
             // (panel/slider states always snapped back to the fallback values).
             Config.PostFxSettings.Apply(projSettings);
             _postFxPanel?.OnProjectChanged();
+            // Fog is per project too (Inspector "Fog" section → settings.json).
+            // Same exe-fallback problem: without this the project's saved fog switch
+            // and values were ignored, so fog stayed ON after restarting even when the
+            // user had disabled and saved it.
+            Config.FogSettings.Apply(projSettings);
+            Keyboard.IsFogActive = Config.FogSettings.Enabled;
             // 2D level maps live INSIDE each scene's .ing (Map2D object payload saved/restored
             // by SceneManagerPanel). A scene only shows its level when the file contains one,
             // so there is no project-wide map auto-load anymore.
@@ -532,6 +545,8 @@ public class IDE : IDisposable
             Bridge.ShowSelectionBorder = fallbackSettings.ShowSelectionBorder;
             // Follow the active settings file back to the exe fallback after close.
             Config.PostFxSettings.Apply(fallbackSettings);
+            Config.FogSettings.Apply(fallbackSettings);
+            Keyboard.IsFogActive = Config.FogSettings.Enabled;
             _postFxPanel?.OnProjectChanged();
             // Clear sprite sheets + map editor state
             _spriteEditor?.OnProjectChanged(null);
@@ -2195,6 +2210,14 @@ public class IDE : IDisposable
         // In fullscreen mode the viewport IS the entire screen — always report focused
         // so the free-fly camera (WASD + mouse look) processes keyboard/mouse input.
         Bridge.IsViewportFocused = true;
+        // The fullscreen viewport IS the whole window: the mouse is always over the
+        // image and no ImGui panel may capture its scroll or suppress input. These are
+        // normally published by ViewportPanel each editor frame, which is skipped here —
+        // stale edit-mode values left the camera WASD/mouse-look dead after F8 until
+        // the user happened to click the viewport before entering the game.
+        Bridge.IsViewportImageHovered = true;
+        Bridge.SuppressViewportInput = false;
+        Bridge.ScrollCapturedByUI = false;
 
         var io = ImGui.GetIO();
         float screenW = io.DisplaySize.X;

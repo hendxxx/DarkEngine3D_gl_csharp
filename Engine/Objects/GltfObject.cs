@@ -1278,10 +1278,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
-        /// First pass of the inverted-hull outline technique.
-        /// Renders all visible meshes to the stencil buffer only (no color output)
-        /// with depth test enabled. Stencil is set to 1 where depth passes.
-        /// Skinned meshes use the object transform (approximate).
+        /// First pass of the selection outline: renders all visible meshes to the
+        /// stencil buffer only (no color output) with depth test enabled, so the mask
+        /// matches the pixels where the model is actually visible. Stencil is set to
+        /// 1 where depth passes. Skinned meshes use the object transform (approximate).
         /// </summary>
         public void DrawOutlineStencil(Camera camera)
         {
@@ -1302,6 +1302,16 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
             GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
+
+            // Mask pass: no extrusion — the hull must sit exactly on the model so the
+            // stencil (and the depth test) matches its silhouette pixel for pixel.
+            GL.Uniform1f(GL.GetUniformLocation(prog, "u_OutlineWidthPx"), 0f);
+            GL.Uniform2f(GL.GetUniformLocation(prog, "u_ViewportSize"),
+                Glfw.WindowWidth, Glfw.WindowHeight);
+
+            // Animated models: the mask must be drawn in the current pose, otherwise it
+            // would cover the bind pose and the stencil would not match the model.
+            UploadSkinning(SkinFlagLocation(prog), GL.GetUniformLocation(prog, "u_Joints"));
 
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
@@ -1337,13 +1347,15 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
         }
 
         /// <summary>
-        /// Second pass of the inverted-hull outline technique.
-        /// Renders all visible meshes slightly scaled up (centered on the object's position)
-        /// with back-face culling, colored in <paramref name="outlineColor"/>.
+        /// Second pass of the selection outline: draws all visible meshes expanded by
+        /// <see cref="SelectionOutline.ThicknessPx"/> screen pixels, colored in
+        /// <paramref name="outlineColor"/>, and masked by the stencil so only the border
+        /// outside the model's silhouette is coloured. The expansion happens in the
+        /// vertex shader (clip space), so the outline is equally thick at any distance.
         /// Should be called after DrawOutlineStencil() with stencil test enabled.
         /// Skinned meshes use the object transform (approximate).
         /// </summary>
-        public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
+        public void DrawOutline(Camera camera, Vector3 outlineColor)
         {
             if (!IsVisible || GpuData?.Data?.Meshes == null || GpuData.Data.Meshes.Length == 0)
                 return;
@@ -1365,22 +1377,32 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
             GL.Uniform3f(colorLoc, outlineColor.X, outlineColor.Y, outlineColor.Z);
 
-            // Use Scale * outlineScale directly so the outline stays centered
-            // on the object's Position (unlike the old scaleAboutPos approach
-            // which caused a positional drift).
-            var objMatOutline = Matrix4x4.CreateScale(Scale * outlineScale)
-                              * Matrix4x4.CreateFromQuaternion(Rotation)
-                              * Matrix4x4.CreateTranslation(Position);
+            // Extrude the hull by the configured width, in framebuffer pixels.
+            GL.Uniform1f(GL.GetUniformLocation(prog, "u_OutlineWidthPx"),
+                SelectionOutline.ThicknessPx);
+            GL.Uniform2f(GL.GetUniformLocation(prog, "u_ViewportSize"),
+                Glfw.WindowWidth, Glfw.WindowHeight);
 
+            // Same pose as the mask pass, so the hull surrounds the animated silhouette.
+            UploadSkinning(SkinFlagLocation(prog), GL.GetUniformLocation(prog, "u_Joints"));
+
+            // The hull is drawn with the model's own transform; the expansion is
+            // applied in the vertex shader, so no matrix scaling is needed.
             var objMat = Matrix4x4.CreateScale(Scale)
                          * Matrix4x4.CreateFromQuaternion(Rotation)
                          * Matrix4x4.CreateTranslation(Position);
 
             bool isSkinned = _jointMatrices != null && _jointMatrices.Length > 0;
 
-            // Cull front faces so only back faces render (inverted hull)
+            // Inverted hull: keep ONLY the back faces, so the expanded front faces
+            // can never bleed over the model's surface or into its crevices.
             GL.Enable(Const.GL_CULL_FACE);
             GL.CullFace(Const.GL_FRONT);
+
+            // Bias the hull away from the camera: the strip that runs along the
+            // silhouette shares its depth with the model and would z-fight.
+            GL.Enable(Const.GL_POLYGON_OFFSET_FILL);
+            GL.PolygonOffset(1f, 1f);
 
             for (int mi = 0; mi < GpuData.Meshes.Length; mi++)
             {
@@ -1388,13 +1410,13 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
 
                 var mesh = GpuData.Meshes[mi];
 
-                Matrix4x4 modelMat = objMatOutline;
+                Matrix4x4 modelMat = objMat;
                 if (!isSkinned)
                 {
                     int nodeIdx = (GpuData.MeshToNode != null && mi < GpuData.MeshToNode.Length)
                         ? GpuData.MeshToNode[mi] : -1;
                     if (nodeIdx >= 0 && _nodeGlobal != null && nodeIdx < _nodeGlobal.Length)
-                        modelMat = _nodeGlobal[nodeIdx] * objMatOutline;
+                        modelMat = _nodeGlobal[nodeIdx] * objMat;
                 }
 
                 GL.UniformMatrix4fv(modelLoc, 1, false, (float*)Unsafe.AsPointer(ref modelMat));
@@ -1407,6 +1429,7 @@ namespace DarkEngine3D_gl_csharp.Engine.Objects
             }
             GL.BindVertexArray(0);
 
+            GL.Disable(Const.GL_POLYGON_OFFSET_FILL);
             GL.CullFace(Const.GL_BACK);
             GL.UseProgram(0);
         }

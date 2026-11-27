@@ -204,8 +204,10 @@ namespace DarkEngine3D_gl_csharp.Engine.Inputs
             {
                 if (!fPressed)
                 {
-                    isFogActive = !isFogActive;
-                    Config.FogSettings.Enabled = isFogActive;
+                    // Toggle the master switch itself (the old mirror could drift from
+                    // FogSettings.Enabled, so the first F press appeared to do nothing).
+                    Config.FogSettings.Enabled = !Config.FogSettings.Enabled;
+                    isFogActive = Config.FogSettings.Enabled;
                     fPressed = true;
                     Console.WriteLine(isFogActive ? "Fog: ON" : "Fog: OFF");
                 }

@@ -1810,11 +1810,25 @@ public class InspectorPanel
                 if (ImGui.IsItemHovered())
                     ImGui.SetTooltip("Color of the inverted-hull outline around selected editor primitives");
 
-                // Reset selection colors to defaults
+                // Outline thickness in screen pixels. Global setting shared by every
+                // outline draw path: the hull is expanded in clip space by this width,
+                // so the value means the same on any object, distance and aspect ratio.
+                float outlineThicknessPx = SelectionOutline.ThicknessPx;
+                if (ImGui.SliderFloat("Outline Thickness", ref outlineThicknessPx,
+                        SelectionOutline.MinThicknessPx, SelectionOutline.MaxThicknessPx, "%.0f px"))
+                {
+                    SelectionOutline.ThicknessPx = outlineThicknessPx;
+                    Console.WriteLine($"[Inspector] Selection outline thickness: {SelectionOutline.ThicknessPx:F0} px");
+                }
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Thickness of the selection outline in screen pixels (1-12 px)");
+
+                // Reset selection colors (and outline thickness) to defaults
                 ImGui.Spacing();
                 if (ImGui.SmallButton("Reset Colors"))
                 {
                     _bridge.SelectionHighlights = SelectionHighlightColors.Default;
+                    SelectionOutline.ThicknessPx = SelectionOutline.DefaultThicknessPx;
                     Console.WriteLine("[Inspector] Selection highlight colors reset to defaults");
                 }
             }

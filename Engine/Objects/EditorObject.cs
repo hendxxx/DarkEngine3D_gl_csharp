@@ -7318,11 +7318,11 @@ public unsafe class EditorObject
     }
 
     /// <summary>
-    /// First pass of the inverted-hull outline technique.
-    /// Renders the object to the stencil buffer only (no color output)
-    /// with depth test enabled. Stencil is set to 1 where depth passes.
-    /// Face culling is intentionally disabled so both front and back faces
-    /// write to the stencil (needed for a complete silhouette outline).
+    /// First pass of the selection outline: writes the object's silhouette into
+    /// the stencil buffer only (no color output), with depth test enabled, so the
+    /// mask matches the pixels where the object is actually visible. Stencil is
+    /// set to 1 where depth passes. Culling is intentionally disabled so both
+    /// front and back faces write to the mask.
     /// </summary>
     public void DrawOutlineStencil(Camera camera)
     {
@@ -7363,6 +7363,15 @@ public unsafe class EditorObject
         GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&view);
         GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
 
+        // Mask pass: no extrusion — the hull must sit exactly on the object so the
+        // stencil (and the depth test) matches its silhouette pixel for pixel.
+        GL.Uniform1f(GL.GetUniformLocation(prog, "u_OutlineWidthPx"), 0f);
+        GL.Uniform2f(GL.GetUniformLocation(prog, "u_ViewportSize"),
+            Glfw.WindowWidth, Glfw.WindowHeight);
+        // Editor primitives have no skeleton — the outline program is shared with the
+        // glTF path, so clear its skinning flag explicitly.
+        GL.Uniform1i(GL.GetUniformLocation(prog, "u_UseSkinning"), 0);
+
         // Disable face culling so all triangles write to stencil
         // (both front and back faces needed for a complete silhouette)
         OpenGL.EnableFaceCulling(false);
@@ -7375,15 +7384,15 @@ public unsafe class EditorObject
     }
 
     /// <summary>
-    /// Second pass of the inverted-hull outline technique.
-    /// Renders the object slightly scaled up (centered on its position)
-    /// with face culling disabled, letting the stencil test (NOTEQUAL, 1)
-    /// block the original object area so only the expanded border shows.
+    /// Second pass of the selection outline: draws the object's hull expanded by
+    /// <see cref="SelectionOutline.ThicknessPx"/> screen pixels, with face
+    /// culling disabled and the stencil test (NOTEQUAL, 1) blocking the object's
+    /// own area, so only the border outside the silhouette is coloured.
+    /// The expansion happens in the vertex shader (clip space), so it is equally
+    /// thick at any distance and for any object scale.
     /// Should be called after DrawOutlineStencil() with stencil test enabled.
-    /// FIXED: Uses Scale * outlineScale directly in the world matrix
-    /// instead of scaleAboutPos to keep the outline centered on the object.
     /// </summary>
-    public void DrawOutline(Camera camera, Vector3 outlineColor, float outlineScale = 1.05f)
+    public void DrawOutline(Camera camera, Vector3 outlineColor)
     {
         if (!IsVisible) return;
 
@@ -7399,7 +7408,7 @@ public unsafe class EditorObject
             EnsureGlb();
             if (_glbObject == null) return;
             SyncGlbTransform();
-            _glbObject.DrawOutline(camera, outlineColor, outlineScale);
+            _glbObject.DrawOutline(camera, outlineColor);
             return;
         }
 
@@ -7410,15 +7419,9 @@ public unsafe class EditorObject
 
         GL.UseProgram(prog);
 
-        // Use Scale * outlineScale directly so the outline stays centered
-        // on the object's Position (unlike the old scaleAboutPos approach
-        // which caused a positional drift proportional to Position * 0.05).
-        float rotY = RotationEuler.Y * MathF.PI / 180f;
-        float rotX = RotationEuler.X * MathF.PI / 180f;
-        float rotZ = RotationEuler.Z * MathF.PI / 180f;
-        var model = Matrix4x4.CreateScale(Scale * outlineScale)
-                  * Matrix4x4.CreateFromYawPitchRoll(rotY, rotX, rotZ)
-                  * Matrix4x4.CreateTranslation(Position);
+        // The hull is expanded in the vertex shader, so it is drawn with the
+        // object's own transform (same matrix as the mask pass → no misalignment).
+        var model = WorldMatrix;
         var view = camera.GetViewMatrix();
         var proj = camera.GetProjectionMatrix();
 
@@ -7432,13 +7435,33 @@ public unsafe class EditorObject
         GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
         GL.Uniform3f(colorLoc, outlineColor.X, outlineColor.Y, outlineColor.Z);
 
-        // Disable face culling: all triangles render, stencil test (NOTEQUAL, 1)
-        // blocks the original area so only the expanded border is visible.
-        OpenGL.EnableFaceCulling(false);
+        // Extrude the hull by the configured width, in framebuffer pixels.
+        GL.Uniform1f(GL.GetUniformLocation(prog, "u_OutlineWidthPx"),
+            SelectionOutline.ThicknessPx);
+        GL.Uniform2f(GL.GetUniformLocation(prog, "u_ViewportSize"),
+            Glfw.WindowWidth, Glfw.WindowHeight);
+        // Editor primitives have no skeleton — the outline program is shared with the
+        // glTF path, so clear its skinning flag explicitly.
+        GL.Uniform1i(GL.GetUniformLocation(prog, "u_UseSkinning"), 0);
+
+        // Inverted hull: keep ONLY the back faces. The extruded front faces would
+        // cover the object's own surface (and fill in its crevices) wherever the
+        // few-pixel shift lands them slightly closer to the camera — that is the
+        // hatched yellow bleed that showed up when both sides were drawn.
+        GL.Enable(Const.GL_CULL_FACE);
+        GL.CullFace(Const.GL_FRONT);
+
+        // Push the hull a hair away from the camera so the strip that runs along
+        // the silhouette can never z-fight with the object's own surface.
+        GL.Enable(Const.GL_POLYGON_OFFSET_FILL);
+        GL.PolygonOffset(1f, 1f);
 
         GL.BindVertexArray(_object3D.VAO);
         GL.DrawArrays(Const.GL_TRIANGLES, 0, _object3D.VertexCount);
         GL.BindVertexArray(0);
+
+        GL.Disable(Const.GL_POLYGON_OFFSET_FILL);
+        GL.CullFace(Const.GL_BACK);
 
         GL.UseProgram(0);
     }
