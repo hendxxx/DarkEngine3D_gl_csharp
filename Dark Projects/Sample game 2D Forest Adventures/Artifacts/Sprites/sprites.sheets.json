@@ -6725,7 +6725,19 @@
     {
       "Path": "Male Skin1",
       "SortOrder": 0,
-      "PreviewLoadout": []
+      "PreviewLoadout": [
+        {
+          "ItemId": "",
+          "Sheet": "Male Hair1",
+          "Clip": "",
+          "Layer": 1,
+          "OffsetX": 0,
+          "OffsetY": 0,
+          "WorldHeight": 0,
+          "SyncFrame": true,
+          "Visible": true
+        }
+      ]
     },
     {
       "Path": "Female Skin1",

@@ -1269,9 +1269,9 @@ public unsafe class EditorObjectManager
                     sel.DrawOutline(camera, outlineCol);
 
                 GL.Disable(Const.GL_STENCIL_TEST);
-                // NOTE: DrawOutline() leaves GL_CULL_FACE disabled (needed for the inverted-hull
-                // stencil technique). The scene's RenderProperties.Apply() re-applies the correct
-                // culling/winding state at the start of the next frame's render pass.
+                // NOTE: DrawOutline() culls the FRONT faces of the hull and restores GL_BACK
+                // afterwards; polygon offset is turned off there as well. The scene's
+                // RenderProperties.Apply() re-applies the full culling state next frame anyway.
             }
         }
 

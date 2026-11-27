@@ -121,7 +121,8 @@ public unsafe class Program
         // Init Shader
         Shader.Init();
 
-        Keyboard.IsFogActive = false;
+        // Keep the F-key mirror in sync with the fog state restored above.
+        Keyboard.IsFogActive = FogSettings.Enabled;
 
         // Init Keyboard and Mouse
         Keyboard.Init(glfwLib);

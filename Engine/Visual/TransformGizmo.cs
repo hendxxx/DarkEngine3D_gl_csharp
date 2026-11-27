@@ -185,6 +185,9 @@ namespace DarkEngine3D_gl_csharp.Engine.Visual
             GL.UniformMatrix4fv(projLoc, 1, false, (float*)&proj);
             GL.UniformMatrix4fv(viewLoc, 1, false, (float*)&ident);
             GL.UniformMatrix4fv(modelLoc, 1, false, (float*)&ident);
+            // The outline program is shared with the glTF selection hull. Gizmo geometry
+            // has no skeleton, so clear the skinning flag left behind by that pass.
+            GL.Uniform1i(GL.GetUniformLocation(prog, "u_UseSkinning"), 0);
 
             GL.Disable(Const.GL_DEPTH_TEST);
             GL.Enable(Const.GL_BLEND);
